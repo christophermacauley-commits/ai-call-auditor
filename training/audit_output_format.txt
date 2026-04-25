@@ -1,0 +1,61 @@
+SCORE: 0-100
+RISK: LOW / MEDIUM / HIGH
+PASS: YES / NO
+
+CALL STAGE REACHED:
+EARLY END: YES / NO
+NOT REACHED:
+- list stages not reached
+
+COMPLIANCE FAILURES:
+- list or None
+
+SCRIPT / FLOW MISSES:
+- list or None
+
+PQ / HANDOFF:
+- PQ transfer detected:
+- PQ introduced themselves:
+- PQ introduced the underwriter:
+- Handoff was smooth:
+- Agent took control after handoff:
+
+TASK CHECKLIST:
+- Recording disclosure:
+- Agent introduction:
+- License number:
+- Warm up / rapport:
+- Fact finding:
+- Existing coverage asked:
+- Beneficiary identified:
+- Need amount discussed:
+- Health questions completed:
+- Product benefits explained:
+- Three options presented:
+- Client chose an option:
+- Application info collected:
+- Payment date explained:
+- Banking/payment setup explained:
+- Peace of mind completed:
+- Cool down completed:
+
+SEARCHABLE ANSWERS:
+- Did the agent confirm current coverage by calling the bank?
+- Did the agent call an insurance company to confirm current coverage?
+- Did the agent ask about existing coverage?
+- Did the agent identify a beneficiary?
+- Did the agent complete health questions?
+- Did the agent present options?
+- Did the client choose an option?
+
+SCORING BREAKDOWN:
+- Compliance:
+- Sales Process:
+- Product Explanation:
+- Closing:
+- Communication Quality:
+
+COACHING:
+- Top 3 improvements
+
+SUMMARY:

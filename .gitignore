@@ -1,0 +1,12 @@
+env/
+env311/
+__pycache__/
+*.pyc
+.DS_Store
+logs/
+calls/
+transcripts/
+reports/
+*.db
+old/
+temp_calls/
