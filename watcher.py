@@ -238,60 +238,123 @@ You are a strict QA auditor for final expense sales calls.
 RULES:
 - Return ONE audit only.
 - Start with SCORE.
-- Do not summarize before SCORE.
-- Do not add Conversation Quality, Relevance, Notable Points, or extra sections.
-- If something is not clearly stated in the transcript, mark it NO or UNCLEAR.
-- Never assume bank verification, insurance verification, application info, payment setup, or close unless clearly stated.
-- Do not require exact script wording.
-- Grade based on intent, compliance, process, and Straight Line sales execution.
+- Do not add extra commentary.
+- If a stage was not reached, mark items as NOT REACHED.
+- Do NOT assume future steps.
+- Do NOT copy the template literally.
+- Replace every placeholder with an actual audit value.
+- SCORE must be a real number like 40, not "0-100".
+- RISK must be one value only: LOW, MEDIUM, or HIGH.
+- PASS must be one value only: YES or NO.
+- Every checklist item must be answered with YES, NO, UNCLEAR, or NOT REACHED.
+- Only evaluate what actually happened in the transcript.
 
-CALL STAGE:
-First identify the furthest stage reached:
-PQ / Handoff, Opening, Who I Am / What I Do, Warm-up / Rapport, Health, Need, Features / Benefits, Quotes, Close, Application, Payment, Banking, Peace of Mind, Cool Down.
+COMPANY STAGE ORDER:
+1. PQ / Handoff
+2. Who I Am / What I Do
+3. Product intro / basic plan explanation
+4. License number
+5. Warm-up / Rapport
+6. Health
+7. Need
+8. Share a story about yourself
+9. Features / Benefits
+10. Change Up
+11. Quotes
+12. Close / Client chooses option
+13. Application information
+14. Payment Date
+15. Collect Banking / Payment Setup
+16. Disclosures
+17. Voice Signature
+18. Filling out application
+19. Peace of Mind
+20. Cooldown
 
-If Close or Application was NOT reached:
-- PASS must be NO
-- SCORE must NOT exceed 55
+STAGE RULES:
+- CALL STAGE REACHED must be the SINGLE furthest stage clearly reached.
+- Do NOT guess or skip ahead.
+- EARLY END must be YES unless Close / Client chooses option or later was reached.
+- If transcript includes recording disclosure, agent says they are a state-licensed field underwriter, or explains what they do, CALL STAGE REACHED must be at least Who I Am / What I Do.
+- If transcript includes explanation of final expense plans providing money for burial/cremation or basic plan purpose, CALL STAGE REACHED must be at least Product intro / basic plan explanation.
+- Do NOT mark License number reached unless an actual license number is clearly spoken.
+- If CALL STAGE REACHED is PQ / Handoff, Who I Am / What I Do, Product intro / basic plan explanation, License number, Warm-up / Rapport, Health, Need, Features / Benefits, Change Up, or Quotes, then EARLY END must be YES.
+- NOT REACHED must list ONLY stages AFTER the stage reached.
+- Do NOT include earlier stages in NOT REACHED.
+- Do not count future script requirements as completed.
 
-If Health was NOT reached:
-- SCORE must NOT exceed 45
+CHECKLIST RULES:
+- Only mark YES if that stage was clearly completed.
+- If a stage was not reached -> mark NOT REACHED.
+- Do NOT mark YES for steps that occur later in the script.
+- Do NOT infer or assume actions.
 
-If the call only reached Opening or Warm-up:
+CHECKLIST MAPPING:
+- Recording disclosure = Who I Am / What I Do
+- Agent introduction = Who I Am / What I Do
+- License number = License number
+- Warm up / rapport = Warm-up / Rapport
+- Fact finding = Warm-up / Rapport
+- Existing coverage asked = Need
+- Beneficiary identified = Application information
+- Need amount discussed = Need
+- Health questions completed = Health
+- Product benefits explained = Features / Benefits
+- Three options presented = Quotes
+- Client chose an option = Close / Client chooses option
+- Application info collected = Application information
+- Payment date explained = Payment Date
+- Banking/payment setup explained = Collect Banking / Payment Setup
+- Peace of mind completed = Peace of Mind
+- Cool down completed = Cooldown
+
+IMPORTANT LOGIC:
+- Do NOT count basic product explanation as full Features / Benefits.
+- Do NOT count early script sections as Need.
+- Do NOT count health questions unless Health stage was reached.
+- Do NOT count existing coverage unless Need stage was reached.
+- Do NOT count application steps unless Application stage was reached.
+- Do NOT count payment/banking unless those stages were reached.
+
+EARLY CALL RULE:
+If the call includes:
+- PQ handoff
+- Agent introduction (Who I Am / What I Do)
+- Product intro / explanation
+
+BUT does NOT reach Warm-up / Rapport:
+
+THEN:
+- CALL STAGE REACHED = Product intro / basic plan explanation OR License number (if license clearly given)
+- EARLY END = YES
+- PASS = NO
 - SCORE must NOT exceed 40
+- Everything from Warm-up / Rapport forward must be NOT REACHED
 
-If the call ended early:
-- EARLY END must be YES.
-- Do not give credit for stages not reached.
-- Do not heavily penalize stages not reached.
-- A call that does not reach Close or Application should normally be PASS: NO.
-
-CHECKLIST:
+SALES TASK CHECKLIST:
 {checklist}
 
-RUBRIC:
+SCORING RUBRIC:
 {rubric}
 
-REQUIRED FORMAT:
+REQUIRED OUTPUT FORMAT:
 {output_format}
 
 TRANSCRIPT:
 {transcript}
 
-Return exactly one audit. Start exactly like this:
-
-SCORE: <number>
-RISK: <LOW/MEDIUM/HIGH>
-PASS: <YES/NO>
+Start EXACTLY like:
+SCORE:
+RISK:
+PASS:
 """
 
     report = run_ollama(prompt).strip()
 
-    # Remove anything before SCORE if the model adds intro text
     score_index = report.upper().find("SCORE:")
     if score_index > 0:
         report = report[score_index:].strip()
 
-    # Remove common unwanted extra sections if the model appends them
     unwanted_markers = [
         "**CONVERSATION QUALITY",
         "CONVERSATION QUALITY:",
@@ -315,12 +378,98 @@ PASS: <YES/NO>
     if cut_positions:
         report = report[:min(cut_positions)].strip()
 
-    if progress_callback:
-        progress_callback(AI_DONE_PROGRESS, "Saving audit report")
+    stage_order = [
+        "PQ / Handoff",
+        "Who I Am / What I Do",
+        "Product intro / basic plan explanation",
+        "License number",
+        "Warm-up / Rapport",
+        "Health",
+        "Need",
+        "Share a story about yourself",
+        "Features / Benefits",
+        "Change Up",
+        "Quotes",
+        "Close / Client chooses option",
+        "Application information",
+        "Payment Date",
+        "Collect Banking / Payment Setup",
+        "Disclosures",
+        "Voice Signature",
+        "Filling out application",
+        "Peace of Mind",
+        "Cooldown",
+    ]
+    stage_index = {name.upper(): i for i, name in enumerate(stage_order)}
 
-    return report
+    score_match = re.search(r"(?im)^SCORE:\s*(\d+)\b", report)
+    stage_match = re.search(r"(?im)^CALL STAGE REACHED:\s*(.+)$", report)
+    score_value = int(score_match.group(1)) if score_match else None
 
-    report = run_ollama(prompt)
+    stage_value_raw = stage_match.group(1).strip() if stage_match else ""
+    stage_value_upper = stage_value_raw.upper()
+    current_stage_idx = stage_index.get(stage_value_upper, 0)
+
+    transcript_upper = transcript.upper()
+
+    if any(token in transcript_upper for token in (
+        "STATE-LICENSED FIELD UNDERWRITER",
+        "STATE LICENSED FIELD UNDERWRITER",
+        "FINAL EXPENSE DEPARTMENT",
+        "WHAT THAT MEANS",
+    )):
+        current_stage_idx = max(current_stage_idx, stage_index["WHO I AM / WHAT I DO"])
+
+    if any(token in transcript_upper for token in (
+        "FINAL EXPENSE PLANS",
+        "BURIAL OR CREMATION",
+        "PROVIDE MONEY TO YOUR FAMILY",
+        "DESIGNED TO PROVIDE MONEY",
+        "PERMANENT AND WILL NEVER CHANGE",
+    )):
+        current_stage_idx = max(current_stage_idx, stage_index["PRODUCT INTRO / BASIC PLAN EXPLANATION"])
+
+    has_license_phrase = "LICENSE NUMBER IS" in transcript_upper
+    has_license_pattern = re.search(
+        r"\bLICENSE(?:\s+NUMBER)?\s*(?:IS|#|NO\.?|NUMBER:)?\s*[A-Z]?\d{4,}\b",
+        transcript_upper
+    ) is not None
+    if has_license_phrase or has_license_pattern:
+        current_stage_idx = max(current_stage_idx, stage_index["LICENSE NUMBER"])
+
+    forced_stage = stage_order[current_stage_idx]
+    if stage_match:
+        report = re.sub(r"(?im)^CALL STAGE REACHED:\s*.+$", f"CALL STAGE REACHED: {forced_stage}", report, count=1)
+    else:
+        report = re.sub(r"(?im)^(PASS:\s*.+)$", rf"\1\nCALL STAGE REACHED: {forced_stage}", report, count=1)
+
+    not_reached_block = "NOT REACHED:\n" + "\n".join(f"- {stage}" for stage in stage_order[current_stage_idx + 1:])
+    report = re.sub(
+        r"(?ims)^NOT REACHED:\s*(?:\n-.*?)*(?=\n[A-Z][A-Z /]+:|\Z)",
+        not_reached_block,
+        report,
+        count=1
+    )
+
+    close_index = stage_index["CLOSE / CLIENT CHOOSES OPTION"]
+    close_or_application_reached = current_stage_idx >= close_index
+    early_end_value = "NO" if close_or_application_reached else "YES"
+    if re.search(r"(?im)^EARLY END:\s*(YES|NO)\s*$", report):
+        report = re.sub(r"(?im)^EARLY END:\s*(YES|NO)\s*$", f"EARLY END: {early_end_value}", report, count=1)
+    else:
+        report = re.sub(
+            r"(?im)^(CALL STAGE REACHED:\s*.+)$",
+            rf"\1\nEARLY END: {early_end_value}",
+            report,
+            count=1
+        )
+
+    if not close_or_application_reached and score_value is not None and score_value > 40:
+        report = re.sub(r"(?im)^SCORE:\s*\d+\b", "SCORE: 40", report, count=1)
+        score_value = 40
+
+    if (score_value is not None and score_value < 70) or not close_or_application_reached:
+        report = re.sub(r"(?im)^PASS:\s*YES\s*$", "PASS: NO", report)
 
     if progress_callback:
         progress_callback(AI_DONE_PROGRESS, "Saving audit report")
