@@ -859,6 +859,204 @@ def call_report_text(row):
     return get_saved_report(row[1]) or (row[3] or "")
 
 
+# Report sections recognized when splitting saved audit text (show / hide in build_clean_report).
+_REPORT_TOP_LEVEL_KEYS = frozenset(
+    {
+        "SCORE",
+        "RISK",
+        "PASS",
+        "CALL STAGE REACHED",
+        "EARLY END",
+        "NOT REACHED",
+        "COMPLIANCE FAILURES",
+        "SCRIPT / FLOW MISSES",
+        "PQ / HANDOFF",
+        "TASK CHECKLIST",
+        "SEARCHABLE ANSWERS",
+        "AUTOMATIC FAIL CHECKS",
+        "SALE OUTCOME",
+        "SCORING BREAKDOWN",
+        "TONE & DELIVERY",
+        "COMMUNICATION ANALYSIS",
+        "COACHING",
+        "BIGGEST MISS",
+        "SUMMARY",
+        "OBJECTIONS DETECTED",
+        "OBJECTION HANDLING",
+        "OPENAI COST ESTIMATE",
+        "TRANSCRIPT NOTE",
+        "AUDIT STATUS",
+    }
+)
+
+_CLEAN_REPORT_SECTIONS = frozenset(
+    {
+        "SCORE",
+        "RISK",
+        "PASS",
+        "CALL STAGE REACHED",
+        "EARLY END",
+        "NOT REACHED",
+        "COMPLIANCE FAILURES",
+        "SCRIPT / FLOW MISSES",
+        "AUTOMATIC FAIL CHECKS",
+        "SALE OUTCOME",
+        "COACHING",
+        "BIGGEST MISS",
+    }
+)
+
+_REPORT_HEADER_LINE = re.compile(r"^([^:\n]+):\s*(.*)$")
+
+
+def build_clean_report(report_text):
+    """
+    Parse a saved audit report by top-level 'Section:' headers and return only
+    manager-facing sections. SUMMARY is omitted here (shown in the dashboard
+    Report Summary card). Subsections (e.g. TOP 3 COACHING PRIORITIES) stay
+    inside their parent block. Falls back to the original text if parsing fails.
+    """
+    if not report_text or not report_text.strip():
+        return (report_text or "").strip()
+
+    try:
+        text = report_text.replace("\r\n", "\n")
+        lines = text.split("\n")
+        sections = []
+        current_key = None
+        buf = []
+
+        def flush():
+            if current_key is not None and buf:
+                sections.append((current_key, "\n".join(buf)))
+
+        for line in lines:
+            m = _REPORT_HEADER_LINE.match(line)
+            if m and not line.lstrip().startswith("-"):
+                key = m.group(1).strip()
+                if key in _REPORT_TOP_LEVEL_KEYS:
+                    flush()
+                    current_key = key
+                    buf = [line]
+                    continue
+            if current_key is not None:
+                buf.append(line)
+
+        flush()
+
+        if not sections:
+            return text.strip()
+
+        parts = []
+        for key, body in sections:
+            if key in _CLEAN_REPORT_SECTIONS:
+                parts.append(body.rstrip())
+        if not parts:
+            return text.strip()
+        return "\n\n".join(parts).rstrip() + "\n"
+    except Exception:
+        return report_text.strip()
+
+
+def build_report_summary(report_text):
+    """
+    Extract headline fields from a saved audit report for the dashboard summary card.
+    Returns a dict with keys: score, risk, result, stage_reached, summary_text,
+    biggest_miss, main_coaching, autofail_reason (reason only when automatic fail is YES).
+    Values are strings or None when missing.
+    """
+    out = {
+        "score": None,
+        "risk": None,
+        "result": None,
+        "stage_reached": None,
+        "summary_text": None,
+        "biggest_miss": None,
+        "main_coaching": None,
+        "autofail_reason": None,
+    }
+    if not report_text or not report_text.strip():
+        return out
+
+    def grab_line(key):
+        m = re.search(rf"(?im)^{re.escape(key)}:\s*(.+)$", report_text)
+        return m.group(1).strip() if m else None
+
+    out["score"] = grab_line("SCORE")
+    out["risk"] = grab_line("RISK")
+    out["result"] = grab_line("PASS")
+
+    stage_m = re.search(
+        r"(?is)^CALL STAGE REACHED:\s*(.*?)(?=^EARLY END\s*:)",
+        report_text,
+        re.MULTILINE,
+    )
+    if stage_m:
+        st = re.sub(r"\s+", " ", stage_m.group(1).strip())
+        out["stage_reached"] = st if st else None
+    else:
+        out["stage_reached"] = parse_stage_from_report(report_text)
+
+    sum_m = re.search(
+        r"(?is)^SUMMARY:\s*(.*?)(?=^(?:OPENAI COST ESTIMATE|TRANSCRIPT NOTE)\s*:|\Z)",
+        report_text,
+        re.MULTILINE,
+    )
+    if sum_m:
+        st = sum_m.group(1).strip()
+        if st:
+            out["summary_text"] = st
+
+    miss_body = extract_biggest_miss(report_text).strip()
+    if miss_body:
+        out["biggest_miss"] = miss_body
+
+    top3_block = extract_top3_coaching(report_text)
+    first_coach = None
+    if top3_block.strip():
+        for line in top3_block.splitlines():
+            line = line.strip()
+            bm = re.match(r"^-\s*(.+)$", line)
+            if bm:
+                first_coach = bm.group(1).strip()
+                break
+    out["main_coaching"] = first_coach
+
+    if re.search(r"(?im)^-\s*Automatic fail triggered:\s*YES\b", report_text):
+        rm = re.search(r"(?im)^-\s*Reason:\s*(.+)$", report_text)
+        out["autofail_reason"] = (
+            rm.group(1).strip() if rm else "Unknown"
+        )
+
+    return out
+
+
+def _format_report_summary_plain(summary):
+    """Plain-text block for Copy Summary."""
+    lines = []
+    labels = (
+        ("Score", summary.get("score")),
+        ("Risk", summary.get("risk")),
+        ("Result", summary.get("result")),
+        ("Stage Reached", summary.get("stage_reached")),
+    )
+    for label, val in labels:
+        lines.append(f"{label}: {val if val else 'Unknown'}")
+    if summary.get("summary_text"):
+        lines.append("")
+        lines.append("Audit Summary:")
+        lines.append(summary["summary_text"])
+    if summary.get("biggest_miss"):
+        if summary.get("summary_text"):
+            lines.append("")
+        lines.append(f"Biggest Miss: {summary['biggest_miss']}")
+    if summary.get("main_coaching"):
+        lines.append(f"Main Coaching Priority: {summary['main_coaching']}")
+    if summary.get("autofail_reason") is not None:
+        lines.append(f"Automatic Fail Reason: {summary['autofail_reason']}")
+    return "\n".join(lines).strip()
+
+
 def row_sort_unix(ts):
     """Unix seconds for client-side date sort (dashboard table only)."""
     if ts is None:
@@ -2324,34 +2522,12 @@ def view_call(call_id):
         """)
 
     report_text = call_report_text(call)
-    stage_raw = parse_stage_from_report(report_text)
-    top3 = extract_top3_coaching(report_text)
-    miss = extract_biggest_miss(report_text)
     saved_transcript = get_saved_transcript(call[1])
     transcript_export = saved_transcript or ""
     transcript_body = (
         saved_transcript
         if saved_transcript
         else "Saved redacted transcript is not on disk yet. Open View Transcript after processing completes."
-    )
-    status_html, _, _ = primary_status_badge_html(report_text)
-    audit_badge_html = format_audit_badge_html(report_text)
-
-    score_val = call[4] if call[4] is not None else "—"
-    stage_block = (
-        f'<p class="body-text">{escape(stage_raw)}</p>'
-        if stage_raw
-        else '<p class="muted">Not found in the saved report.</p>'
-    )
-    top3_block = (
-        f'<pre>{escape(top3)}</pre>'
-        if top3.strip()
-        else '<p class="muted">TOP 3 COACHING PRIORITIES section was not found in this report file.</p>'
-    )
-    miss_block = (
-        f'<pre>{escape(miss)}</pre>'
-        if miss.strip()
-        else '<p class="muted">BIGGEST MISS section was not found in this report file.</p>'
     )
 
     name_esc = escape(call[1])
@@ -2360,6 +2536,48 @@ def view_call(call_id):
 
     report_disk_path = os.path.join(REPORTS_FOLDER, f"{call[1]}_report.txt")
     report_on_disk = os.path.isfile(report_disk_path)
+
+    if not (report_text or "").strip():
+        report_pre_full = escape("Report not available.")
+        report_pre_clean = report_pre_full
+    else:
+        report_pre_full = escape(report_text)
+        report_pre_clean = escape(build_clean_report(report_text))
+
+    summary_data = build_report_summary(report_text)
+    summary_plain = _format_report_summary_plain(summary_data)
+
+    def _sv(key):
+        v = summary_data.get(key)
+        return escape(v) if v else "Unknown"
+
+    bm_html = ""
+    if summary_data.get("biggest_miss"):
+        bm_html = (
+            '<p class="body-text" style="margin:10px 0 6px;line-height:1.5;"><strong>Biggest Miss:</strong> '
+            f"{escape(summary_data['biggest_miss'])}</p>"
+        )
+    coach_html = ""
+    if summary_data.get("main_coaching"):
+        coach_html = (
+            '<p class="body-text" style="margin:6px 0;line-height:1.5;"><strong>Main Coaching Priority:</strong> '
+            f"{escape(summary_data['main_coaching'])}</p>"
+        )
+    af_html = ""
+    if summary_data.get("autofail_reason") is not None:
+        af_html = (
+            '<p class="body-text" style="margin:6px 0;line-height:1.5;"><strong>Automatic Fail Reason:</strong> '
+            f"{escape(summary_data['autofail_reason'])}</p>"
+        )
+
+    audit_summary_html = ""
+    if summary_data.get("summary_text"):
+        audit_summary_html = (
+            '<div style="margin:14px 0 12px;">'
+            '<div class="muted" style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px;">Audit Summary</div>'
+            f'<p class="body-text" style="margin:0;line-height:1.55;white-space:pre-wrap;">{escape(summary_data["summary_text"])}</p>'
+            "</div>"
+        )
 
     transcript_save = (
         f'''<form method="post" action="/transcript/{call[0]}/save" style="display:inline;">
@@ -2370,10 +2588,10 @@ def view_call(call_id):
     )
     report_save = (
         f'''<form method="post" action="/call/{call[0]}/report/save" style="display:inline;">
-            <button type="submit" class="button">Save Report to Downloads</button>
+            <button type="submit" class="button">Save Report</button>
         </form>'''
         if report_on_disk
-        else '<span class="button" style="opacity:0.55;cursor:not-allowed;" title="No saved report file on disk yet" role="text">Save Report to Downloads</span>'
+        else '<span class="button" style="opacity:0.55;cursor:not-allowed;" title="No saved report file on disk yet" role="text">Save Report</span>'
     )
 
     content = f"""
@@ -2381,6 +2599,7 @@ def view_call(call_id):
 
     <textarea id="export-report-src" class="hidden" readonly aria-hidden="true">{escape(report_text)}</textarea>
     <textarea id="export-transcript-src" class="hidden" readonly aria-hidden="true">{escape(transcript_export)}</textarea>
+    <pre id="reportSummaryPlain" style="position:absolute;left:-9999px;top:0;width:1px;height:1px;overflow:hidden;" aria-hidden="true">{escape(summary_plain)}</pre>
 
     <div class="header">
         <div>
@@ -2397,40 +2616,32 @@ def view_call(call_id):
 
     <div class="detail-grid">
         <div class="card detail-card span-12">
-            <h3>Export &amp; share</h3>
-            <p class="muted" style="margin-top:0;">Copy or save the saved audit report and the <strong>saved redacted</strong> transcript from disk only.</p>
-            <p class="muted" style="margin-top:8px;font-size:13px;">Save writes a copy to your Downloads folder. Use Copy if you need to paste elsewhere.</p>
-            <div class="export-actions">
-                <button type="button" class="button button-secondary" onclick="copyTextById('reportText', 'Report')">Copy Report</button>
+            <h3>Report Summary</h3>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:14px;margin:12px 0 16px;">
+                <div><div class="muted" style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.04em;">Score</div><div style="font-size:22px;font-weight:800;margin-top:4px;">{_sv("score")}</div></div>
+                <div><div class="muted" style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.04em;">Risk</div><div style="font-size:22px;font-weight:800;margin-top:4px;">{_sv("risk")}</div></div>
+                <div><div class="muted" style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.04em;">Result</div><div style="font-size:22px;font-weight:800;margin-top:4px;">{_sv("result")}</div></div>
+                <div><div class="muted" style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.04em;">Stage Reached</div><div style="font-size:15px;font-weight:700;margin-top:6px;line-height:1.35;">{_sv("stage_reached")}</div></div>
+            </div>
+            {audit_summary_html}
+            {bm_html}
+            {coach_html}
+            {af_html}
+            <div class="export-actions" style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
+                <a href="/" class="button button-secondary" style="text-decoration:none;display:inline-block;">Back to Dashboard</a>
+                <button type="button" class="button" onclick="copyTextById('reportSummaryPlain', 'Summary')">Copy Summary</button>
+                <button type="button" class="button button-secondary" onclick="copyTextById('reportText', 'Full report')">Copy Full Report</button>
                 {report_save}
+            </div>
+        </div>
+
+        <div class="card detail-card span-12">
+            <h3>Export transcript</h3>
+            <p class="muted" style="margin-top:0;">Save a copy of the <strong>saved redacted</strong> transcript from disk.</p>
+            <div class="export-actions">
                 {transcript_save}
             </div>
             <p class="muted" id="exportStatus" style="min-height:1.25em;margin-top:10px;font-size:13px;"></p>
-        </div>
-        <div class="card detail-card span-12">
-            <h3>Score &amp; sold status</h3>
-            <div class="detail-summary">
-                <div class="score-xl">{score_val}</div>
-                <div class="badge-row">
-                    {status_html}
-                    {audit_badge_html}
-                </div>
-            </div>
-        </div>
-
-        <div class="card detail-card span-12">
-            <h3>Stage reached</h3>
-            {stage_block}
-        </div>
-
-        <div class="card detail-card span-6">
-            <h3>Top 3 coaching priorities</h3>
-            {top3_block}
-        </div>
-
-        <div class="card detail-card span-6">
-            <h3>Biggest miss</h3>
-            {miss_block}
         </div>
 
         <div class="card detail-card span-12">
@@ -2450,18 +2661,36 @@ def view_call(call_id):
         </div>
 
         <div class="card detail-card span-12">
-            <h3>Full report</h3>
-            <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:12px; align-items:center;">
-                <a href="/" class="button button-secondary" style="text-decoration:none;display:inline-block;">Back to Dashboard</a>
-                <button type="button" class="button button-secondary" onclick="copyTextById('reportText', 'Report')">Copy Report</button>
-                {report_save}
-            </div>
-            <p class="muted" style="margin-top:0;font-size:13px;">Save writes a copy to your Downloads folder. Use Copy if you need to paste elsewhere.</p>
-            <pre id="reportText" class="transcript-viewer">{escape(report_text) if report_text.strip() else "Report not available."}</pre>
+            <h3>Detailed Report</h3>
+            <p class="muted" style="margin-top:0;font-size:13px;">Manager-friendly excerpt by default. Toggle to view the complete saved audit text.</p>
+            <pre id="reportTextClean" class="transcript-viewer">{report_pre_clean}</pre>
+            <pre id="reportText" class="transcript-viewer" style="display:none;">{report_pre_full}</pre>
+            <p style="margin:10px 0 0;font-size:13px;">
+                <button type="button" id="toggleFullReportBtn" class="button button-secondary" style="font-size:13px;padding:6px 12px;" onclick="toggleFullReport()">Show Full Report</button>
+            </p>
         </div>
     </div>
 
     {CLIPBOARD_HELPERS_SCRIPT}
+
+    <script>
+    function toggleFullReport() {{
+        const clean = document.getElementById("reportTextClean");
+        const full = document.getElementById("reportText");
+        const btn = document.getElementById("toggleFullReportBtn");
+        if (!clean || !full || !btn) return;
+        const fullVisible = full.style.display !== "none";
+        if (fullVisible) {{
+            full.style.display = "none";
+            clean.style.display = "block";
+            btn.textContent = "Show Full Report";
+        }} else {{
+            full.style.display = "block";
+            clean.style.display = "none";
+            btn.textContent = "Hide Full Report";
+        }}
+    }}
+    </script>
 
     <script>
     (function() {{
