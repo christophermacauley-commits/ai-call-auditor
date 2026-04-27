@@ -1,53 +1,108 @@
+PQ / HANDOFF
 - PQ transfer occurred
 - PQ introduced themselves
 - PQ introduced the underwriter/agent
 - Smooth handoff from PQ to agent
 - Agent took control after transfer
-o Answer the phone with energy and enthusiasm by saying: “Hello this is <<Your Name>> in the final expense department,
-who do I have the pleasure of speaking with today?”
-o “Who I Am, What I Do” – Did I use call control when needed, andmaintain high energy and enthusiasm?
-o “Fact Finding” – Tasks to accomplish:
-o Did I use the 3&1 Method?
-o Does this prospect like me and find me credible?
-o Did I gather information that I can later refer to in the script?
-o “Medical” – Tasks to accomplish:
-o Did I produce an effective medical takeaway?
-o Which product does this client qualify for?
-o Have I built urgency with this client using my voice inflection and drill down method?
-o “Need” – Tasks to accomplish:
-o Did someone share a vivid story with details about people, places, and things?
-o Did I uncover any current or canceled coverage? Premium, face amount, length of time in plan, type of coverage,
-why the plan was purchased (and canceled), and how the plan was purchased?
-o Did I find the need?
-o Does the prospect feel that need?
-o Did I suggest the client needing around $60 to $100 of life insurance premium?
-o “Features& Benefits” – Did I share a relevant story with the prospect about one of the specific features and benefits?
-o “Change Up” – Did I correctly use volume, tempo, tonality, pausing, bottled enthusiasm, and voice inflection to
-summarize the entire experience in one paragraph for the prospect?
-o “Pre-Close” – Tasks to accomplish:
-o Did I sound genuine when I said, “OK, WOW!”
-o Did I maintain the proper voice inflection throughout the section?
-o “Quotes” – Did I quote $100/$70/$60 in order?
-o “Close” – Tasks to accomplish:
-o Was I quiet after I asked the prospect to choose a check amount?
-o If the client needed help picking a plan, did I interrupt them and read the second paragraph?
-o “Application Information” – Tasks to accomplish:
-o Was I able to keep the section moving rhythmically and notstall at any time?
-o Did I maintain the proper voice inflection throughout the section?
-o Did I correctly overcome any SSN concern by simply stating, “Its ok, go ahead.”
-o “Payment Date” – Tasksto accomplish:
-o Did I read this section word for word?
-o Did I a.) Speak with confidence and certainty to to make the client feel comfortable b.) Set the payment up for the
-day the client gets their benefits?
-o “Banking” – Tasks to accomplish:
-o Did I read this section word for word?
-o Did I maintain the proper voice inflection throughout the section?
-o Did I look up the routing number and share it with the prospect (if possible)?
-o Did the prospect repeat account information three separate times and give the same digits?
-o Did I verify the check number was not placed on the account number line?
-o “Disclosures” – Did I read the disclosures to the prospect?
-o “3rd Party Underwriting” – Did the client clearly answer all questions correctly, and did medication that was brought up
-still qualify customer for the quoted plan?
-o “Peace of Mind” – Did I maintain high energy and enthusiasm?
-o “Cool Down” – Did I spend the last number of minutes with my prospect talking about topicsthat are unrelated to life
-insurance?
+
+OPENING
+- Agent answered with energy and enthusiasm
+- Agent said: "Hello this is <<Your Name>> in the final expense department, who do I have the pleasure of speaking with today?"
+- Agent confirmed who they were speaking with
+
+WHO I AM / WHAT I DO
+- Agent completed the Who I Am / What I Do section
+- Agent used call control when needed
+- Agent maintained energy and enthusiasm
+- Agent explained their role clearly
+- Agent explained the purpose of the call clearly
+
+Fact Finding / Warm-up
+(Single combined stage: warm-up, rapport building, 3 and 1 Method, personal/background questions before medical, credibility and connection — stage reached on entry; completion below.)
+- Fact Finding / Warm-up: YES / NO / PARTIAL / NOT REACHED
+- 3 and 1 Method used: YES / NO / PARTIAL / NOT REACHED (questions alone are never enough for YES — need BOTH strong rapport/fact-finding across ≥3 major topic groups AND meaningful personal self-disclosure tied to prospect answers; if rapport is NO or PARTIAL, 3 and 1 cannot be YES; vague self-disclosure (“I can relate,” “same here”) supports PARTIAL at most on rapport, not YES; PARTIAL/NO lowers SCORE per audit prompt — not automatic fail)
+- Agent shared personal rapport information: YES / NO / PARTIAL / NOT REACHED (YES only with clear personal/relatable/experience-based statements about the agent tied to the prospect — not acknowledgments-only, vague empathy alone, compliments-only, echoing the prospect, or script/product/medical/banking lines; vague partial lines ⇒ PARTIAL not YES)
+- Agent built credibility
+- Agent built rapport
+- Agent gathered information to reference later in the script
+
+MEDICAL / HEALTH
+- Agent screened for DNQ / disqualifying conditions per audit prompt (hospitalized, oxygen, cancer, ADL assistance, HIV/AIDS, etc.); unclear wording = UNCLEAR, not YES
+- Agent produced an effective medical takeaway
+- Agent determined which product the client qualifies for
+- Agent built urgency using voice inflection and drill-down method
+
+NEED
+- Agent uncovered a vivid story with details about people, places, and things
+- Agent asked about current or canceled coverage
+- Agent uncovered premium, face amount, length of time in plan, type of coverage, why it was purchased or canceled, and how it was purchased
+- Agent found the need
+- Prospect felt the need
+- Agent suggested the client may need around $60 to $100 of life insurance premium
+- If prospect may have existing coverage (e.g. ambiguous "Only one"), agent clarifies with carrier follow-up or clear identifying questions per audit prompt — do not treat as resolved without clarification
+
+FEATURES / BENEFITS
+- Agent shared a relevant story about a specific feature or benefit
+- Agent explained the value of the product clearly
+- Product benefits explained: YES / NO / PARTIAL — YES when the agent clearly explains meaningful product value, features, or benefits (not Who I Am / What I Do alone). Plan types: Immediate (expect up to four benefit themes when explained), Graded (two), ROP (one). Credit immediate coverage, 100% death benefit after first payment, no waiting period, tax-free to family/beneficiary, government cannot tax it, additional benefits, or count of benefits for the plan. Example YES language: immediate plan best, 100% death benefit day of first payment, no waiting period, money to family tax-free, government cannot tax, four additional benefits with immediate plan. Do not require listing every benefit by name. Do not mark NO when those themes are clearly explained. PARTIAL/NO only for vague “life insurance / final expense” with no meaningful benefit detail
+
+CHANGE UP
+- Agent used volume, tempo, tonality, pausing, bottled enthusiasm, and voice inflection
+- Agent summarized the experience in one paragraph for the prospect
+
+PRE-CLOSE
+- Agent sounded genuine when saying "OK, WOW!"
+- Agent maintained proper voice inflection
+
+QUOTES
+- Agent quoted $100, $70, and $60 in order
+
+CLOSE
+- Agent was quiet after asking the prospect to choose a check amount
+- If the client needed help picking a plan, agent interrupted and read the second paragraph
+
+APPLICATION INFORMATION
+- Agent kept the section moving rhythmically
+- Agent did not stall
+- Agent maintained proper voice inflection
+- Agent overcame SSN concern by stating: "It's ok, go ahead."
+
+PAYMENT DATE
+- Payment Date stage may be reached when draft/payment/premium timing is discussed even if dates show as [DATE]/[NUMBER]/[MONEY] after redaction — not from Social Security deposit timing alone unless tied to policy draft date (see audit prompt)
+- Agent read this section word for word
+- Agent spoke with confidence and certainty
+- Agent set payment for the day the client gets their benefits
+- Payment date explained: NO after Banking is a serious process miss (draft/payment date must be explained/set/confirmed — see audit prompt)
+
+BANKING
+- CALL STAGE / NOT REACHED: infer Banking from transcript cues and redacted placeholders ([ACCOUNT_NUMBER], [ROUTING_NUMBER], [BANK_NUMBER], [NUMBER] in banking context) — do not mark Banking NOT REACHED only because digits were redacted (see audit prompt)
+- Agent read this section word for word
+- Agent maintained proper voice inflection
+- Agent looked up and shared routing number if possible
+- Redacted banking/account information requested or verified at least 2 times when possible (target 3); agent read back for prospect confirmation (do not echo full account/routing numbers in reports)
+- Banking/account information requested or verified 3 times: YES / NO / PARTIAL / NOT REACHED
+- Banking/account information verified at least 2 times: YES / NO / NOT REACHED
+- Agent read banking/account information back to prospect: YES / NO / NOT REACHED
+- Prospect confirmed banking/account read-back: YES / NO / NOT REACHED
+- Agent verified check number was not placed on account number line
+
+DISCLOSURES
+- Agent read disclosures to the prospect
+- If Policy sold YES and Disclosures reached with opportunity: skipping required post-sale (TPU when required, Peace of Mind, Cool Down) is automatic-fail level per audit prompt — not a minor miss
+- If Policy sold YES and Banking reached: missing payment/draft date is automatic-fail level per audit prompt
+
+THIRD PARTY UNDERWRITING
+- Hard trigger: American Amicable recording system / app ID / pound sign / voice signature / recorded line / recorded verification in post-disclosure enrollment flow ⇒ Third Party Underwriting reached; do not list only under NOT REACHED when that language appears (see audit prompt)
+- Transcript clearly shows post-disclosure recorded third-party underwriting (e.g. American Amicable recorded line / recording started / official recorded verification questions) — not reached from sale, application, banking, or disclosures alone
+- Strong evidence includes American Amicable IVR / recording system language (e.g. "Welcome to the American Amicable Group recording system", "For the app ID, only enter the numbers", "Enter the app ID followed by the pound sign") — when present, Third Party Underwriting was reached; do not list it only under NOT REACHED while claiming an earlier furthest stage
+- Sale Outcome evidence must not claim voice signature/recorded verification if Third Party Underwriting is not supported by transcript (see audit prompt)
+- Client clearly answered recorded verification questions when that step occurred
+- Medication mentioned still qualified customer for quoted plan when applicable
+
+PEACE OF MIND
+- Specific post-sale reassurance section (welcome letter / mailing, not forgetting the prospect, personal + company info, decision confidence, family/beneficiary protection) — NOT from thank-you, goodbye, normal close, or completing application/banking/disclosures alone; not required if customer hung up first
+- Agent maintained high energy and enthusiasm
+
+COOL DOWN
+- Clear casual non-insurance conversation after the sale (weather, family, hobbies, etc.) — NOT from thank-you, goodbye, warm tone, or wrapping up the application alone; not required if customer hung up first
+- Agent spent time in back-and-forth on topics unrelated to life insurance after the sale

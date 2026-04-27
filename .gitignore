@@ -10,3 +10,21 @@ reports/
 *.db
 old/
 temp_calls/
+
+# Local secrets
+.env
+
+# Virtual environment
+venv/
+
+# Local processed call/transcript data
+processed_calls/
+processed_transcripts/
+transcripts_role_labeled/
+
+# Local backups and working backups
+backups/
+cleanup_backup/
+
+# Temporary save files
+*.save

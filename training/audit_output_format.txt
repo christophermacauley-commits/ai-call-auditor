@@ -1,6 +1,6 @@
 SCORE: 0-100
 RISK: LOW / MEDIUM / HIGH
-PASS: YES / NO
+PASS: YES / NO / AT RISK
 
 CALL STAGE REACHED:
 EARLY END: YES / NO
@@ -24,8 +24,9 @@ TASK CHECKLIST:
 - Recording disclosure:
 - Agent introduction:
 - License number:
-- Warm up / rapport:
-- Fact finding:
+- Fact Finding / Warm-up: YES / NO / PARTIAL / NOT REACHED
+- 3 and 1 Method used: YES / NO / PARTIAL / NOT REACHED
+- Agent shared personal rapport information: YES / NO / PARTIAL / NOT REACHED
 - Existing coverage asked:
 - Beneficiary identified:
 - Need amount discussed:
@@ -36,17 +37,38 @@ TASK CHECKLIST:
 - Application info collected:
 - Payment date explained:
 - Banking/payment setup explained:
+- Banking/account information requested or verified 3 times: YES / NO / PARTIAL / NOT REACHED
+- Banking/account information verified at least 2 times: YES / NO / NOT REACHED
+- Agent read banking/account information back to prospect: YES / NO / NOT REACHED
+- Prospect confirmed banking/account read-back: YES / NO / NOT REACHED
 - Peace of mind completed:
 - Cool down completed:
 
 SEARCHABLE ANSWERS:
-- Did the agent confirm current coverage by calling the bank?
-- Did the agent call an insurance company to confirm current coverage?
-- Did the agent ask about existing coverage?
+- Did the agent set a callback? YES / NO / UNCLEAR
+- Did the agent confirm current coverage? YES / NO / UNCLEAR
+- Did the agent call an insurance company to confirm current coverage? YES / NO / UNCLEAR
+- Did the agent call the bank to verify banking/account information? YES / NO / UNCLEAR
+- Did the agent verify credit union account information if a credit union was mentioned? YES / NO / UNCLEAR
+- Did the agent ask about existing coverage? YES / NO / UNCLEAR
 - Did the agent identify a beneficiary?
 - Did the agent complete health questions?
 - Did the agent present options?
 - Did the client choose an option?
+- Was the policy sold? YES / NO / UNCLEAR
+
+AUTOMATIC FAIL CHECKS:
+- Callback set: YES / NO / UNCLEAR
+- Objection occurred without proper call control: YES / NO / UNCLEAR
+- Existing coverage mentioned but not confirmed: YES / NO / UNCLEAR
+- Credit union mentioned but bank/account not verified: YES / NO / UNCLEAR
+- Automatic fail triggered: YES / NO
+- Reason: <short explanation or None>
+
+SALE OUTCOME:
+- Policy sold: YES / NO / UNCLEAR
+- Evidence: <brief evidence from transcript>
+- Final stage supporting sale: <Quotes / Close / Application / Payment / Banking / Disclosures / Third Party Underwriting / Peace of Mind / Cool Down / None>
 
 SCORING BREAKDOWN:
 - Compliance:
@@ -55,7 +77,32 @@ SCORING BREAKDOWN:
 - Closing:
 - Communication Quality:
 
+TONE & DELIVERY:
+- Agent Tone: Confident / Neutral / Uncertain
+- Prospect Tone: Engaged / Neutral / Disengaged
+
+COMMUNICATION ANALYSIS:
+- Did the agent sound confident? YES / NO
+- Did the agent maintain control of the conversation? YES / NO
+- Was the prospect engaged? YES / NO
+- Any hesitation or uncertainty detected? YES / NO
+
 COACHING:
-- Top 3 improvements
+TOP 3 COACHING PRIORITIES:
+- (exactly three concise, high-impact bullets tied to stages reached)
+
+BIGGEST MISS:
+- (the single biggest miss tied to a stage reached, or the word None if there is no meaningful miss)
+
+(Optional — only if the transcript clearly contains at least one customer objection; otherwise omit entirely.)
+
+OBJECTIONS DETECTED:
+- each distinct objection as a bullet
+
+OBJECTION HANDLING:
+- For each objection above:
+  - Objection: <label>
+  - Handled: YES / NO
+  - Explanation: <one brief sentence>
 
 SUMMARY:
