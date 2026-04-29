@@ -271,6 +271,7 @@ Fact Finding / Warm-up — STAGE ENTRY vs TASK CHECKLIST (MANDATORY):
 - **If the agent transitions into Medical / Health** (health questions, medications, height/weight, tobacco, underwriting health, etc.), **Fact Finding / Warm-up must be considered already reached** — do **not** leave CALL STAGE REACHED at Who I Am / What I Do or Opening solely because 3+1 or rapport checklist items were incomplete.
 - **NOT REACHED** must **not** list **Fact Finding / Warm-up** if the transcript shows that segment was **entered** or superseded by **Medical / Health**.
 - **Separation of concerns:** **CALL STAGE REACHED** = progression; **TASK CHECKLIST** lines for **Fact Finding / Warm-up**, **3 and 1 Method used**, and **Agent shared personal rapport information** = **completion quality** — use **NO** / **PARTIAL** / **YES** (and **NOT REACHED** only when that line’s stage segment was **never entered**, per rules below), not “stage not reached” for the whole call when the segment clearly started.
+- **Stage anchors** (see **STAGE ANCHORS** below) that match **Fact Finding / Warm-up** / rapport prove **segment entry** for **CALL STAGE REACHED** — they do **not** set **3 and 1 Method used: YES**; **3 and 1** completion stays per **TASK CHECKLIST**.
 
 OPENING
 - Agent answered with energy and enthusiasm
@@ -300,6 +301,28 @@ Choose ONLY ONE from this list:
 - Peace of Mind
 - Cool Down
 
+STAGE ANCHORS (SUPPLEMENTARY TRANSCRIPT EVIDENCE — **REACH** vs **COMPLETION**):
+- **GLOBAL STAGE-ANCHOR RULE (STRICT):** Mark a stage **reached** **only** when **(1)** the transcript contains a **valid anchor phrase** for that stage **from the numbered list below** (paraphrase OK; **[STATE]**, **[CLIENT NAME]**, **[MONEY]**, **[DATE]**, **[NUMBER]**, redacted tokens OK), **or (2)** the transcript **clearly performs** that stage’s **required scripted action** in context. **Do NOT** classify stages by **loose topic similarity** alone (e.g. terminal illness / DNQ wording ⇒ **Medical / Health** only, **not** **Peace of Mind**; **walk you through step-by-step** / **direct toll-free number** ⇒ **Features / Benefits**, **not** **Peace of Mind**). **Existing coverage** autofail logic is **unchanged**.
+- **STAGE ORDER:** **CALL STAGE REACHED** = the **latest** stage with a valid anchor or clear scripted performance; if a **later** anchor appears, **do not** stop at an earlier stage (e.g. **Medical** then **Quotes** anchors ⇒ **at least Quotes**; **Quotes** then **Close** anchors ⇒ **at least Close**; **Close** then **Application** anchors ⇒ **at least Application**; **Payment Date** then **Banking** ⇒ **at least Banking**).
+- **REACH vs COMPLETION:** Anchors prove **entry** / **reached**, **not** full **TASK CHECKLIST** completion — e.g. **Quotes** reached ≠ **three options presented: YES** (use **PARTIAL** if only one option); **Banking** reached ≠ verification complete; **Fact Finding / Warm-up** reached ≠ **3 and 1 Method used: YES** (grade **3 and 1** separately per **TASK CHECKLIST** / **PHE** / vivid disclosure). **Payment Date** reached vs **Payment date explained** per **PAYMENT DATE STAGE** (DOB / date-of-proof false positives unchanged).
+1. **Fact Finding / Warm-up:** **Reached** when rapport / location / background begins. **Anchors:** **Now that we got all that out of the way**; **I know that [STATE] is a beautiful part of the country**; **Were you born and raised there**; **How long have you been in [STATE]**; **What's your favorite part of living in [STATE]**; **Have you always lived in the same city**; **Are you still working or are you retired**; **Are you married**; **Do you have any children**; **Do you have any grandchildren**; **were you born and raised there** (paraphrase OK). **Important:** These prove **Fact Finding / Warm-up** reached — **not** automatic **3 and 1 Method used: YES**.
+2. **Medical / Health:** **Reached** when health qualification / DNQ begins. **Anchors:** **Because this is a special state regulated plan**; **No physical exam is needed**; **There are just a few basic health questions** / **just a few basic health questions**; **To see if you'll qualify** / **see if you'll qualify**; **basic health questions**; **Do you currently**; **Have you ever been diagnosed**; **Terminal medical condition**; **End-stage disease**; **Expected to result in death**; **Respiratory failure**; **Liver failure**; **Hospice**; **Oxygen**; **Cancer**; **Nursing facility**. **Important:** Terminal / end-stage / respiratory / liver / DNQ language is **Medical / Health (this §2 list) only** — **never** **Peace of Mind**.
+3. **Need:** **Reached** when reasonable need, current coverage, or only-policy discussion begins. **Anchors:** **Your total coverage can't exceed reasonable need**; **We can't apply for [MONEY] with these programs**; **Do you have any kind of final expense plan or life insurance now**; **Will this be your only policy**; **Have you ever had coverage in the past**; **current coverage**; **existing coverage**; **final expense plan**; **life insurance now**; **reasonable need**. **Important:** **Need** reached does **not** by itself trigger coverage autofail — use **current vs past** coverage rules.
+4. **Features / Benefits:** **Reached** when product features / plan benefits / how the plan works begins (**pre-sale**). **Anchors:** **Do you still have your pen and paper handy**; **I am going to walk you through this step by step** / **walk you through this step-by-step**; **So you can know exactly what you're getting** / **know exactly what you're getting**; **First I'll give you my direct toll-free number** / **direct toll-free number**; **no waiting period**; **100% of your death benefit**; **tax-free**; **government cannot tax this money**; **additional benefits**; **immediate plan**; **ROP**; **graded**. **Important:** **Not** **Peace of Mind**.
+5. **Change Up:** **Anchors:** **Before we get to your plans**; **On top of it all**; **We pay most claims immediately** / **most claims immediately**; **Usually within 48 hours of notification** / **48 hours of notification**.
+6. **Pre-Close:** **Anchors:** **OK, WOW**; **I'm looking over these options**; **I've got to congratulate you**; **It looks like you may be eligible** / **eligible to qualify**; **One of our top tier plans** / **top tier plans**; **This is amazing**; **Congratulations to you**.
+7. **Quotes:** **Reached** when premium / coverage **options** presentation begins. **Anchors:** **I'm going to share three affordable options with you**; **Three affordable options**; **I'm going to start with the largest amount first**; **Work my way all the way down**; **Are you ready**; **The first option you've qualified for is**; **The first option** / **second option** / **third option**; **That one is only [MONEY] per month**; **[MONEY] per month**; **per month**; **coverage amount**; **monthly premium** — furthest **≥ Quotes**; **three options presented** still by actual count (**PARTIAL** if only one). **Examples:** **three affordable options** + **first option** ⇒ **Quotes** reached — **do not** leave **CALL STAGE REACHED** at **Medical** or earlier.
+8. **Close / Option selection:** **Reached** when the agent asks the prospect to **choose or commit** to an option. **Anchors:** **Which option would you want**; **Which one would you want your family to receive**; **Which option works best**; **Circle that option**; **Go ahead and circle**; **Let's go with the lowest option**; **The lowest option**; **Most affordable option**; **Go with that one**; **Choose an option**. **Important:** **Client chose an option** ≠ **Policy sold YES** without completion evidence.
+9. **Application Information:** **Anchors:** **What's your middle initial**; **Please verify the spelling of your full name**; **How do you spell their name**; **Primary beneficiary**; **You stated that you would like [BENEFICIARY NAME] to be your primary beneficiary**; **Verify the spelling**; **Middle initial**; **Date of birth** / **DOB** / **Birth date**; **Address**; **Height and weight**; **Driver's license**; **Social Security** (application intake context). **Important:** **Reached** ≠ application completed.
+10. **Payment Date (stage reached — separate from Payment date explained YES):** **Anchors:** **Since you're not receiving any government benefits yet**; **We'll set this up for the 1st or the 15th** / **1st or the 15th**; **Which of those two works best for you**; **We work on the same payment schedule as Social Security** / **same payment schedule as social security**; **Your first payment won't be until after you receive your government benefits** / **was not going to be until after**; **What day do you receive your benefits on**; **1st, 3rd, 2nd Wednesday, 3rd Wednesday, or 4th Wednesday**; **first payment is not going to draft until after your benefits have been deposited**; **after your benefits have been deposited on [DATE] / [NUMBER]**; **draft date**; **payment date**; **first payment**. **Payment date explained** still per **PAYMENT DATE STAGE**; **DOB** / **date of proof** (DOB) ≠ **Payment Date** evidence.
+11. **Banking:** **Anchors:** **Now, since we work with all the banks directly** / **we work with all the banks directly**; **This is really easy to set up** / **really easy to set up**; **Are you with a bank or a credit union**; **What's their name**; **Bank or credit union**; **Routing number**; **Account number**; **Checking account**; **Savings account**; **Payment account**; **Draft account**; **[ACCOUNT_NUMBER]** / **[ROUTING_NUMBER]** / **[BANK_NUMBER]** in banking context. **Important:** **Reached** ≠ verification complete.
+12. **Disclosures:** **Anchors:** **I just need to review a few disclosures that are required by law** / **review a few disclosures that are required by law**; **Required by law**; **The first one is the Fair Credit Reporting Act**; **Fair Credit Reporting Act**; **We are required by law to inform you**; **Disclosures** (read-in context).
+13. **Third Party Underwriting / voice signature:** **Anchors:** **As a final step to completing the application process**; **I need you to please verify the following** / **verify the following**; **Can you please state your full name and today's date** / **Please state your full name and today's date** / **state your full name and today's date**; **Voice signature**; **Recorded line**; **Recorded verification**; **Welcome to the American Amicable Group recording system**; **For the app ID, only enter the numbers**; **Enter the app ID followed by the pound sign**; **App ID**; **Pound sign**; **American Amicable recording system** — **HARD TRIGGER**; furthest **≥ Third Party Underwriting** unless **Peace of Mind** / **Cool Down** clearly after per **§14–15** — and **§14** requires **all** listed conditions (not voice-signature cues alone).
+14. **Peace of Mind (strict — ALL required, after §13):** **CALL STAGE REACHED: Peace of Mind** only when **all** are true: **(1)** **Policy sold: YES** (or transcript clearly completes the sale process per **POLICY SALE / SALE OUTCOME**). **(2)** **Third Party Underwriting / voice signature** reached or completed **first** per **§13**. **(3)** **Peace of Mind script after that:** **You're good**; **We're not going to forget about you either**; **We're going to mail that welcome letter**; **That will include all my personal information**; **Some information about the company**; **We got you qualified for today**; **Welcome letter**. **(4)** **Peace of mind completed: YES** in the report. **Never output invalid pairs:** **CALL STAGE REACHED: Peace of Mind** with **Peace of mind completed: NOT REACHED** or **NO**; with **Policy sold: NO**; with **Third Party Underwriting** listed only under **NOT REACHED**; with **Final stage supporting sale** at **Medical / Health**, **Features / Benefits**, **Quotes**, **Close**, **Application Information**, **Payment Date**, or **Banking**; or when evidence is only medical/DNQ, terminal illness, end-stage disease, product benefits, or quote language. If **Peace of Mind** was **not** actually reached, **CALL STAGE REACHED** must **not** be **Peace of Mind**. If **Policy sold** is **NO**, treat **Peace of Mind** / **Cool Down** as **NOT REACHED** and set **CALL STAGE REACHED** to the **latest valid pre-sale** stage from transcript anchors (**Quotes** when **§7** quote anchors appear and no later valid stage; **Medical / Health** or **Features / Benefits** when only those segments occurred). **Invalid:** generic reassurance **before** **(2)** completes; **Features / Benefits** or **Quotes** alone. **Policy sold** scoring unchanged elsewhere.
+15. **Cool Down:** **Post-sale** casual non-insurance. **Anchors:** **You did something really important today and it got me thinking**; **handling stuff like this always makes people reflect**; **You've got things taken care of now, so I'm curious**; back-and-forth on family, memories, hobbies, weather, plans, location — **not** thank-you/goodbye alone; **not** required if **Policy sold** is **NO** / not completed.
+
+**STAGE ORDER WITH ANCHORS:** Use the **latest** valid anchor-backed stage as **CALL STAGE REACHED**. **Medical** then **Quotes** ⇒ **≥ Quotes**; **Quotes** then **Close** ⇒ **≥ Close**; **Close** then **Application** ⇒ **≥ Application**; **Application** then **Payment Date** ⇒ advance; **Banking** after **Payment Date** ⇒ **≥ Banking**; **Disclosures** / **Third Party Underwriting** / **Peace of Mind** / **Cool Down** cues ⇒ advance per ordered list — **never** under-select when a **later** anchor is present.
+
 FURTHEST STAGE — POST-APPLICATION (MANDATORY):
 - **CALL STAGE REACHED** must be the **latest** stage in the ordered list above that the agent **clearly performed** in the transcript.
 - **POST-SALE / ENROLLMENT ORDER (after Application Information):** Application Information → **Payment Date** → **Banking** → **Disclosures** → **Third Party Underwriting** → **Peace of Mind** → **Cool Down**. **CALL STAGE REACHED** must be the **furthest** stage in this order that was **clearly performed** in the transcript — do **not** skip ahead in the label unless that stage clearly occurred.
@@ -312,7 +335,7 @@ FURTHEST STAGE — POST-APPLICATION (MANDATORY):
 - If the agent **read disclosures** (legal/state/product disclosures to the prospect), **Disclosures** is reached when clearly performed.
 - **Third Party Underwriting** is **NOT** reached merely because the policy was sold, application information was collected, banking was handled, payment date was handled, disclosures were read, or the agent said the application was complete. **Third Party Underwriting** is reached **only** when the transcript **clearly** shows the agent starting or completing the **post-disclosure** third-party recorded verification step, such as: calling into the **American Amicable recorded line**, starting the **American Amicable** recording, beginning **recorded third-party underwriting**, asking **official recorded verification / underwriting questions after disclosures**, or clearly placing the prospect into the required **carrier/third-party recorded verification** process. **Strong transcript evidence** includes (non-exhaustive): **"Welcome to the American Amicable Group recording system."**; **"For the app ID, only enter the numbers."**; **"Enter the app ID followed by the pound sign."**; **American Amicable Group recording system**; **American Amicable recording system**; carrier IVR-style **recording system** plus **app ID** / **pound sign** instructions; **voice signature** / **recorded verification** through American Amicable. When that language appears, **Third Party Underwriting** is reached — set **CALL STAGE REACHED** to at least **Third Party Underwriting** (unless **Peace of Mind** or **Cool Down** clearly occurred afterward per their strict definitions) and **do not** list **Third Party Underwriting** under **NOT REACHED**. If **Peace of Mind** and **Cool Down** did not occur afterward, list them under **NOT REACHED** instead. If sale/application/banking/disclosures appear but **no** clear recorded third-party underwriting cues (above or equivalent), do **NOT** mark **Third Party Underwriting** as reached and do **NOT** mention **recorded third-party underwriting** in **SALE OUTCOME** evidence or **SUMMARY**. If **Disclosures** were reached and **Third Party Underwriting** was **skipped** when it should have happened next, include a **SCRIPT / FLOW MISS** and **lower the score**, unless the prospect ended the call before the agent had a reasonable chance.
 - **Third Party Underwriting — HARD TRIGGER (post-application / post-disclosure context):** If any of these appear in transcript-backed enrollment flow — **Welcome to the American Amicable Group recording system**; **For the app ID, only enter the numbers**; **Enter the app ID followed by the pound sign**; **American Amicable recording system**; **app ID**; **pound sign**; **voice signature**; **recorded line**; **recorded verification** — treat **Third Party Underwriting** as **reached**: **CALL STAGE REACHED** must be **at least Third Party Underwriting** unless **Peace of Mind** or **Cool Down** clearly occurred afterward; **never** list **Third Party Underwriting** only under **NOT REACHED**.
-- **Peace of Mind** is reached **only** when the transcript clearly shows the **specific post-sale reassurance section** (not generic politeness). **Do NOT** mark **Peace of Mind** or treat it as reached from: generic politeness; a normal closing; thank you; goodbye; confirming the sale; completing application/payment/banking/disclosures; or simply saying the policy is done. It usually includes language along the lines of reassurance after the sale, **welcome letter** / **mailing tomorrow**, **not going to forget about you**, **personal information** plus **company you qualified for**, confidence about the decision, beneficiary/family protection, or similar **post-sale confidence** before ending — **after** sale/application/payment setup when evidenced. If the agent skips this section and only moves toward ending, **Peace of mind completed** is **NO** when there was reasonable opportunity (not when the prospect hung up or disconnected first).
+- **Peace of Mind** is reached **only** when **§14 BOTH** are satisfied: **Third Party Underwriting / voice signature completed** per **§13**, **then** the **Peace of Mind script** (you're good / not going to forget / welcome letter mailing / personal information + company qualified for today, etc.). **Do NOT** mark **Peace of Mind** or treat it as reached from **medical / health / DNQ** language (**terminal medical condition**, **end-stage disease**, **expected to result in death**, **respiratory failure**, **liver failure**, hospice, oxygen, cancer, etc. — **Medical / Health (anchor §2)** only); generic politeness; thank you/goodbye; application/payment/banking/disclosures **without** completed **§13**; **Features / Benefits** or **Quotes** alone; generic reassurance **before** **§13** completion. If voice signature / **§13** is **not** completed, **Peace of Mind** is **NOT REACHED** and **Peace of mind completed: NOT REACHED** (or **NO**) even if other sale language appears. **Quotes** anchors ⇒ **at least Quotes**; **Features / Benefits** anchors ⇒ **at least Features / Benefits** — **never** jump to **Peace of Mind** from medical/DNQ or early-stage wording. If the agent skips **Peace of Mind** after a completed sale path when **(1)+(2)** were possible, **Peace of mind completed** is **NO** when there was reasonable opportunity (not when the prospect hung up first).
 - **Cool Down** is **separate** from **Peace of Mind**. **Cool Down** means the agent clearly spends time in **casual non-insurance conversation after the sale** (e.g. weather, family, hobbies, location, work, pets — **back-and-forth** away from insurance/application). **Do NOT** mark **Cool Down** or set **CALL STAGE REACHED** to **Cool Down** from: polite ending; thank you; goodbye; confirming the sale; wrapping up the application; warm tone; or a normal close. If there is **no** clear non-insurance small talk after the sale, **Cool down completed** is **NO** and **Cool Down** is **not** the furthest stage reached when it was required and the agent had reasonable opportunity (not when the prospect ended the call first).
 - **NOT REACHED** must include **only** stages **after** the furthest reached stage, in order — **never** list a stage as NOT REACHED if it clearly occurred in the transcript.
 - Tie-break: if uncertain between two **early** (pre-application) adjacent stages, prefer the **earlier** stage; after **Application Information**, when the transcript **clearly** shows a **later** listed stage occurred **per that stage's strict definition** (especially **Third Party Underwriting**, **Peace of Mind**, **Cool Down**), set **CALL STAGE REACHED** to that **furthest** later stage — do **not** under-select **Application Information** because of sale alone, and do **not** use sale or politeness to infer **Third Party Underwriting**, **Peace of Mind**, or **Cool Down**.
@@ -338,6 +361,7 @@ BANKING STAGE (CALL STAGE REACHED / NOT REACHED):
 
 PAYMENT DATE STAGE (STRICT — SEPARATE FROM DEPOSIT TIMING):
 - **Payment Date** / **Payment date explained** is judged **separately** from whether **Banking** was **finished** — use **PAYMENT DATE STAGE** below even when **Banking** was only **started** or **incomplete**.
+- **DOB / application false positives (mandatory):** **Date of birth** / **DOB** / **birth date** / **date of proof** (when context is clearly **DOB** / identity), **age**, medical DOB questions, and redacted **\[NUMBER\].\[NUMBER\]** patterns used for **birth** are **not** **Payment Date** evidence — **do not** mark **Payment date explained: NO**, **do not** add **SCRIPT / FLOW MISS** / autofail for payment date, and **do not** cite those lines as payment/draft misses. If the **Payment Date** segment **never** began, use **Payment date explained: NOT REACHED** (or equivalent **NOT REACHED** treatment per template) — **not** **NO**. If **Payment Date** was **reached** but draft/premium timing was **not** explained, then **NO** per **PAYMENT DATE STAGE** below.
 - **Payment Date** is reached when the agent **explains, sets, or confirms** the policy **draft/payment date** (or **first** draft / premium timing) for **this** sale — including when the agent ties **first payment / first draft** to the prospect’s **benefits or Social Security deposit** (e.g. first payment will **not** draft until **after** benefits are deposited; payment will draft after your deposit; we'll set it up after your benefits come in; first draft/payment on or after **[DATE]**; we'll set payment **around** / **after** that deposit). That **deposit-to-draft** explanation counts as explaining/setting draft or payment timing. **Asking only** which day benefits hit **without** any policy draft/payment-after-deposit explanation does **not** satisfy **Payment Date** — keep **Payment Date** under **NOT REACHED** / **Payment date explained: NO** for that narrow gap only.
 - **Redaction:** Do **not** mark **Payment date explained: NO** **solely** because the calendar day is **[DATE]** / **[NUMBER]** / **[MONEY]** when the agent clearly stated first draft/payment occurs **after** the benefits deposit (or equivalent).
 - **TASK CHECKLIST / SEARCHABLE:** If the agent asked benefits deposit timing **and** then explained the **first** policy payment/draft will happen **after** that deposit, mark **Payment date explained: YES** — do **not** mark **NO** when that linkage is clear in the transcript.
@@ -348,7 +372,7 @@ PAYMENT DATE STAGE (STRICT — SEPARATE FROM DEPOSIT TIMING):
 
 LATE-STAGE SCRIPT / FLOW MISSES (WHEN BANKING REACHED):
 - If **Banking** was reached and **Payment Date** was not explained/set/confirmed per above, include a **SCRIPT / FLOW MISS** for missing payment/draft date handling.
-- Do **NOT** add that **SCRIPT / FLOW MISS**, **Reason: Payment/draft date not explained after banking**, section **6)** payment autofail, or score penalties for “missing Payment Date” when the transcript already satisfies **PAYMENT DATE STAGE** (including **MANDATORY** examples / deposit-after-benefits linkage / **ASH_TEST payment** above).
+- Do **NOT** add that **SCRIPT / FLOW MISS**, **Reason: Payment/draft date not explained after banking**, section **6)** payment autofail, or score penalties for “missing Payment Date” when the transcript already satisfies **PAYMENT DATE STAGE** (including **MANDATORY** examples / deposit-after-benefits linkage / **ASH_TEST payment** above), **or** when the **only** cited issue is **DOB** / **date of proof** (DOB) / application identity per **DOB / application false positives**.
 - **Self-negating payment miss (forbidden):** **Never** output a **SCRIPT / FLOW MISS** bullet that **claims** a payment/draft-date gap **and** then says it is **not applicable**, **withdrawn**, or that the agent **did explain** draft timing — if the miss does **not** apply, **omit** the bullet **entirely** (do **not** leave a stricken or contradictory line).
 - When **Payment date explained** is **YES** per **PAYMENT DATE STAGE**, there must be **zero** payment/draft-date lines under **SCRIPT / FLOW MISSES**, **no** payment-date item in **TOP 3 COACHING PRIORITIES**, and **do not** include **Payment/draft date not explained after banking** in **Reason** / **AUTOMATIC FAIL CHECKS** for that basis alone.
 
@@ -408,17 +432,26 @@ EARLY END RULE:
 - Do NOT penalize for stages that were not reached unless the agent skipped required steps before ending (does **not** apply when the **customer** hung up — that is not the agent “ending” early).
 - Judge early-ended calls only up to the furthest stage reached.
 
+EARLY-END REFUSAL (PROSPECT REFUSES / ENDS BEFORE THE SALES PROCESS CAN CONTINUE):
+- Treat as an **early-end refusal** when the **prospect** says they are **not interested**, already have **final expenses / coverage handled**, do **not** want to continue, and **ends the call** (or forces a stop) **before** the agent could reasonably move into **Fact Finding / Warm-up**, **Medical / Health**, **Need**, **Quotes**, **Application**, **Banking**, etc. — e.g. ends during **Who I Am / What I Do** or **Opening** with no warm-up entry.
+- **EARLY END: YES**; **CALL STAGE REACHED** = the **latest stage actually performed** (often **Who I Am / What I Do** or **Opening** when refusal is immediate).
+- **Do not** penalize, list as **SCRIPT / FLOW MISSES**, or coach **future** stages that were **never reached** (Medical, Need, Quotes, Application, Payment Date, Banking, Disclosures, Third Party Underwriting, Peace of Mind, Cool Down).
+- **Do not** list **3 and 1 Method used** or rapport as **incomplete** / **SCRIPT / FLOW MISS** when **Fact Finding / Warm-up** is **NOT REACHED** — set **3 and 1 Method used: NOT REACHED** and **Agent shared personal rapport information: NOT REACHED**; **do not** coach 3 and 1 for that call unless warm-up was **entered**.
+- **Callback (false positive guard):** A prospect **refusing** or **hanging up** is **not** a callback. **Did the agent set a callback?** = **YES** only when the **agent** clearly **offers, agrees to, schedules, or commits** to a **later** call (**I'll call you back**, **we'll call tomorrow**, **I'll follow up**, **let's schedule**, **we can finish this later**, etc.). **NO** when the only “end” is prospect **not interested** / **goodbye** / disconnect **without** agent callback commitment.
+- **Existing coverage on early refusal:** When **EARLY-END REFUSAL** applies and the prospect only explains they **already handled** final expenses / coverage **as their reason to stop**, **do not** apply the normal **existing-coverage automatic fail** — the agent never had a fair chance to clarify **active** in-force coverage on a continuing sale. Set **Existing coverage mentioned but not confirmed: NO** (or **UNCLEAR** only if the template requires ambiguity language — **not** **YES** solely from “I already have it taken care of” on a refusal hang-up); **do not** trigger **Automatic fail triggered: YES** **solely** from coverage; **do not** put coverage in **COMPLIANCE FAILURES**, **SCRIPT / FLOW MISSES**, **BIGGEST MISS**, **Reason**, or **TOP 3 COACHING PRIORITIES** as the main failure. **Did the agent ask about existing coverage?** may be **YES** if the topic was discussed; **Did the agent confirm current coverage?** remains **NO** when no carrier verification — that is **not** the same as the **“mentioned but not confirmed”** autofail path here.
+- **Professionalism:** If the **agent** uses **profanity**, **slurs**, **insults**, or **clearly disrespectful / hostile** language **toward or about** the prospect (including **after** refusal or hang-up, e.g. muttering **what a bitch** or similar), treat as a **serious** failure: include **Unprofessional language / disrespectful call ending** in **COMPLIANCE FAILURES** or **SCRIPT / FLOW MISSES**; **lower Communication Quality** and **final SCORE** substantially; make it **TOP 3 COACHING** and **BIGGEST MISS** when it is the **most serious** issue. If rubric allows autofail for this, set **Automatic fail triggered: YES** with **Reason** naming **Unprofessional language / disrespectful call ending**; otherwise still use **PASS: NO** and **RISK: HIGH** for this severity. **Do not** let **Reason** cite **callback** or **existing coverage** as the **primary** autofail when unprofessional language is the real driver.
+
 SCORING RULES:
 
 3 AND 1 METHOD — SCORE IMPORTANCE (MAJOR IMPACT, **NOT** AUTOMATIC FAIL):
 - Building rapport through the **3 and 1 Method** is one of the most important parts of the sales call when **Fact Finding / Warm-up** was **entered**.
 - Missing, weak, or partial **3 and 1** is **not** a compliance **automatic fail** by itself. Do **not** set **Automatic fail triggered: YES**, **RISK: HIGH**, **PASS: NO**, or **PASS: AT RISK** **solely** because of weak, partial, or missing **3 and 1** (those outcomes require their own rules, e.g. coverage, callback, post-sale, payment date, credit union verification).
-- If **Fact Finding / Warm-up** was **NOT** reached, do **not** penalize **3 and 1** — keep **3 and 1 Method used** / **Agent shared personal rapport information** as **NOT REACHED** when the segment never started; do **not** treat pre-entry silence as a rapport fail.
+- If **Fact Finding / Warm-up** was **NOT** reached, do **not** penalize **3 and 1** — keep **3 and 1 Method used** / **Agent shared personal rapport information** as **NOT REACHED** when the segment never started; do **not** treat pre-entry silence as a rapport fail; do **not** add a **SCRIPT / FLOW MISS** for incomplete **3 and 1**; do **not** coach **3 and 1** improvement for that call (**EARLY-END REFUSAL** / pre–warm-up stop).
 - If **Fact Finding / Warm-up** was **reached** and **3 and 1 Method used** is **YES** (only when the **evidence gate**, **A + B**, **and** **substantial** warm-up execution per **SCRIPT STRUCTURE** in **Fact Finding / Warm-up — TASK CHECKLIST** are fully met — **questions alone are never enough**), apply **no** score deduction **for this item** (other dimensions still score normally).
 - If **Fact Finding / Warm-up** was **reached** and **3 and 1 Method used** is **PARTIAL**, lower the **final SCORE** meaningfully — generally about **5–10** points depending on how much was completed; reduce **Sales Process** and **Communication Quality** when rapport was rushed, shallow, interrogative, or lacked meaningful tied self-disclosure.
 - If **Fact Finding / Warm-up** was **reached** and **3 and 1 Method used** is **NO**, lower the **final SCORE** heavily — generally about **10–15** points when the warm-up segment clearly occurred; **Sales Process** and **Communication Quality** must both reflect the gap.
 - A call with weak or missing **3 and 1** must **not** receive a **near-perfect** final **SCORE** (or near-perfect **Sales Process** / **Communication Quality**) unless the transcript shows **exceptional** strengths elsewhere **and** there are **no other material misses**.
-- When **Fact Finding / Warm-up** was reached: put incomplete or missing **3 and 1** in **SCRIPT / FLOW MISSES**; put it in **TOP 3 COACHING PRIORITIES** when it is a top issue; it may be **BIGGEST MISS** only when **no** higher-priority issue exists (compliance / coverage, payment date after Banking, banking verification, post-sale skips, callback, DNQ handling, etc.).
+- When **Fact Finding / Warm-up** was reached: put incomplete or missing **3 and 1** in **SCRIPT / FLOW MISSES**; put it in **TOP 3 COACHING PRIORITIES** when it is a top issue; it may be **BIGGEST MISS** only when **no** higher-priority issue exists (unprofessional language, compliance / coverage, payment date after Banking, banking verification, post-sale skips, callback, DNQ handling, etc.).
 - **Mandatory:** If the agent **only asked questions** or shared **nothing meaningful** about herself tied to the prospect’s answers, **3 and 1 Method used** **cannot** be **YES**. If **Agent shared personal rapport information** is **NO** or **PARTIAL**, **3 and 1 Method used** **cannot** be **YES** — use **PARTIAL** or **NO** by depth of questioning.
 
 SCORE IMPACT (MANDATORY — tie to rubric when these issues are clear):
@@ -432,7 +465,7 @@ SCORE IMPACT (MANDATORY — tie to rubric when these issues are clear):
 - **Post-sale process incomplete** (skipped **Peace of Mind** / **Cool Down** / **Third Party Underwriting** when required after **Disclosures** on a **sold** call with opportunity — **only** when **Policy sold** is **YES**) and **missing payment/draft date after Banking** on a **sold** call (**Policy sold YES**) must **lower Sales Process**, **Compliance** (when applicable), **Closing** / payment-related categories, **final SCORE**, and **RISK** per **SCORE CAP RULES** — these are **not** minor coaching items. When **Policy sold** is **NO**, do **not** score as post-sale incomplete for Peace of Mind / Cool Down.
 
 SCORE CAP RULES (MANDATORY — align **SCORE**, **RISK**, **PASS**, and **SCORING BREAKDOWN** with misses):
-- **HARD — Existing coverage mentioned but not confirmed: YES:** **Automatic fail triggered** must be **YES**; **RISK** must be **HIGH**; **Reason** must name that gap (never **Reason: None**); **PASS** must be **AT RISK** if **Policy sold** is **YES**, else **PASS: NO**; **Compliance** must be **significantly reduced**; final **SCORE** must **generally not exceed 80** and **must not be 90+**.
+- **HARD — Existing coverage mentioned but not confirmed: YES:** **Automatic fail triggered** must be **YES**; **RISK** must be **HIGH**; **Reason** must name that gap (never **Reason: None**); **PASS** must be **AT RISK** if **Policy sold** is **YES**, else **PASS: NO**; **Compliance** must be **significantly reduced**; final **SCORE** must **generally not exceed 80** and **must not be 90+**. **Does not apply** when **EARLY-END REFUSAL** applies — use **Existing coverage mentioned but not confirmed: NO** and **do not** fire coverage-only autofail on that pattern.
 - **HARD — Automatic fail triggered: YES** (any cause): **PASS** cannot be **YES**; **RISK** cannot be **LOW**; **Reason** cannot be **None** — it must name at least one applicable automatic-fail cause. Final **SCORE** should **generally not exceed 85**; for **compliance-related** automatic fails (especially **Existing coverage mentioned but not confirmed** or **Credit union mentioned but bank/account not verified**), final **SCORE** should **generally be below 80**. If **Policy sold** is **YES**, **PASS** must be **AT RISK**, not **YES**. If **Policy sold** is **NO** or **UNCLEAR**, **PASS** must be **NO** (not **AT RISK**).
 - If **Policy sold** is **YES**, **Disclosures** were reached, and **Peace of Mind** + **Cool Down** were **both skipped** with reasonable opportunity (per **5) POST-SALE PROCESS INCOMPLETE**): final **SCORE** must **not exceed 80**; **RISK** must be **HIGH**; **PASS** must be **AT RISK**.
 - If **Banking** was reached and **Payment date explained** is **NO** (no clear policy draft/payment date **per PAYMENT DATE STAGE**, including deposit-to-draft linkage when present in transcript): **Sales Process** and **Banking/Payment** category scores must be materially reduced; final **SCORE** must **not exceed 88** unless there are **no other material issues**; with **Policy sold YES** and this gap, treat as a serious failure per **6) PAYMENT / DRAFT DATE**. **Do not** use this cap when **Payment date explained** should be **YES** per deposit-after-benefits explanation.
@@ -701,17 +734,22 @@ BIGGEST MISS RULE (MANDATORY):
 - The section must appear in the report body after the TOP 3 COACHING PRIORITIES bullets and before optional OBJECTION sections or SUMMARY (see REQUIRED OUTPUT FORMAT).
 - Identify the single most important mistake in the call, as one bullet line starting with "- ".
 - If there is no meaningful miss, output exactly: - None
-- When a miss exists, it must be specific and tied to a stage that was reached.
-- If the dominant issue is only that the **customer** ended the call early (hang-up / disconnect), **BIGGEST MISS** must **not** blame the agent — use **- None** or a neutral factual line that attributes the stop to the **customer**, not agent error.
+- When a miss exists, it must be specific and tied to a stage that was reached (**Exception:** **Unprofessional language / disrespectful call ending** may be **BIGGEST MISS** when clearly tied to this call’s transcript, including remarks **after** the prospect hangs up).
+- If the dominant issue is only that the **customer** ended the call early (hang-up / disconnect) **and** there is **no** separate agent conduct issue, **BIGGEST MISS** must **not** blame the agent — use **- None** or a neutral factual line that attributes the stop to the **customer**, not agent error.
 
 BIGGEST MISS PRIORITY (WHEN MULTIPLE ISSUES EXIST — pick the single highest-priority miss):
-1. **Existing coverage mentioned but not confirmed** (compliance / at-risk)
-2. **DNQ** condition mishandled (when clearly applicable)
-3. **Callback set without allowed exception** (when clearly applicable)
-4. **Required post-sale process skipped** after **sold** call (Peace of Mind / Cool Down / Third Party Underwriting when required)
-5. **Payment date missing** after **Banking** (when no higher-priority compliance/automatic-fail issue exists)
-6. **Banking/account verification insufficient** (when Banking reached — includes **separate** account vs routing gaps per **BANKING VERIFICATION — ACCOUNT AND ROUTING SEPARATE**)
-7. **3 and 1 / rapport** misses in **Fact Finding / Warm-up**
+1. **Unprofessional language / disrespectful call ending** (profanity, slurs, insults, hostile or mocking talk **toward or about** the prospect — including after refusal or hang-up) — **outranks** callback, coverage, and **3 and 1** when clearly evidenced in transcript.
+2. **Existing coverage mentioned but not confirmed** (compliance / at-risk) — **not** when **EARLY-END REFUSAL** applies per prompt (**do not** pick coverage as **BIGGEST MISS** on a short refusal hang-up solely from “already handled” language).
+3. **DNQ** condition mishandled (when clearly applicable)
+4. **Callback set without allowed exception** (when clearly applicable — **not** when only prospect refusal/hang-up per **WHAT COUNTS AS CALLBACK LANGUAGE**)
+5. **Required post-sale process skipped** after **sold** call (Peace of Mind / Cool Down / Third Party Underwriting when required)
+6. **Payment date missing** after **Banking** (when no higher-priority compliance/automatic-fail issue exists)
+7. **Banking/account verification insufficient** (when Banking reached — includes **separate** account vs routing gaps per **BANKING VERIFICATION — ACCOUNT AND ROUTING SEPARATE**)
+8. **3 and 1 / rapport** misses in **Fact Finding / Warm-up** (**only** when warm-up was **reached**)
+
+BENEFICIARY IDENTIFICATION (SEARCHABLE / EVIDENCE — STRICT — FALSE POSITIVE GUARD):
+- **Did the agent identify a beneficiary?** / **Beneficiary identified:** **YES** **only** when the transcript **clearly** shows the agent **asks for**, **confirms**, **collects**, or **states** who receives **policy proceeds** / **death benefit** / **the check** as **beneficiary** (or equivalent). **Valid evidence** (paraphrase OK): **Who would you want to be your beneficiary**; **Who do you want this money to go to**; **Who would receive the death benefit** / **the check**; **You stated that you would like [NAME] to be your primary beneficiary**; **primary beneficiary**; **How do you spell their name** (in **beneficiary** intake context); **relationship to you** as beneficiary; **would that be your wife/son/daughter as beneficiary**.
+- **Invalid for YES:** generic PQ lines; vague relationship talk; **secret to you saying this**-style non-sequiturs; rapport/family chat **without** tying a **specific person** to **receiving proceeds**; need discussion **alone**; spouse/children talk **without** naming/selecting them as **beneficiary**; product benefit explanation **alone**; generic **family will get the money** **unless** a **specific recipient** is identified or confirmed. If the topic was **started** but **not** completed ⇒ **PARTIAL** where applicable; otherwise **NO**. **Do not** mark **YES** from irrelevant lines.
 
 CALLBACK AND SCHEDULING (STRICT — TRANSCRIPT EVIDENCE ONLY):
 
@@ -735,7 +773,8 @@ POLICY (same intent as Callback rule):
 
 WHAT COUNTS AS CALLBACK LANGUAGE (DO NOT HALLUCINATE):
 - Only treat callback behavior as present if the transcript CLEARLY shows the **agent** offering, agreeing to, or scheduling a reconnect that **defers or ends** this live sales attempt (not the prospect alone saying "call me" without the agent agreeing).
-- Treat as **YES** when the agent clearly uses language such as: **"call you back"**, **"I'll call back"** / **"I'll call you back"**, **"we can finish this later"**, **"let's schedule another time"**, **"when would be a better time"**, **"I can call you later"**, **"we'll call you back"**, **"let me call you back"**, **"ring you back"**, or clearly schedules a specific time to continue on a **later** call instead of now.
+- Treat as **YES** when the agent clearly uses language such as: **"call you back"**, **"I'll call back"** / **"I'll call you back"**, **"we can finish this later"**, **"let's schedule another time"**, **"when would be a better time"**, **"I can call you later"**, **"we'll call you back"**, **"let me call you back"**, **"ring you back"**, **I'll call you tomorrow** / **when your wife is home** / **at [time]**, **I'll reach back out**, **I'll follow up with you**, or clearly schedules a specific time to continue on a **later** call instead of now.
+- **Invalid for Callback set YES / callback autofail evidence:** discussion of a **letter**, **age**, a **term policy**, **past coverage**, **found out** without **callback** commitment; rapport or medical talk; policy-type talk **without** an actual **later-call agreement**; **prospect-only** deferral unless the **agent** clearly agrees/offers/schedules per above; **prospect** says **not interested**, **already taken care of**, **have coverage**, **goodbye**, or **ends/hangs up** **without** the **agent** committing to **call back** / **follow up** / **schedule**; agent trying to continue while the **prospect** stops the call. **Do not** trigger **automatic fail** for callback **without** valid callback evidence.
 - Vague phrases alone ("touch base later," "follow up") without clearly deferring THIS call are **UNCLEAR** unless the agent clearly agrees to call back later.
 - If there is no clear callback discussion, the searchable answer is **NO** — do NOT infer from silence.
 
@@ -749,6 +788,7 @@ WHEN THE PROSPECT ASKS TO CALL BACK LATER:
 
 DO NOT PENALIZE WHEN:
 - The call naturally ends, the customer hangs up, or the transcript stops before any callback / "call you later" discussion — do NOT mark callback misses or coaching for callbacks in that situation.
+- **EARLY-END REFUSAL:** prospect **not interested** / **already handled** / **goodbye** / hang-up **without** **agent** callback commitment — do **NOT** mark **Did the agent set a callback? YES** or callback **SCRIPT / FLOW MISS** / autofail.
 - Do NOT add callback-related misses or coaching unless callback language is clearly present as defined above.
 
 SEARCHABLE ANSWERS (CALLBACK):
@@ -918,8 +958,8 @@ These rules drive **Automatic fail triggered** and the **PASS** line together wi
 - **Do NOT** trigger this automatic fail when the **customer** ended the call, disconnected, refused to continue, or the transcript ended before the agent had a **reasonable opportunity**.
 
 6) PAYMENT / DRAFT DATE AFTER **Banking** (WHEN **Banking** WAS REACHED — TRANSCRIPT EVIDENCE):
-- If **Banking** was reached and **Payment Date** was **not** explained, set, or confirmed (checklist **Payment date explained: NO** or equivalent) **per PAYMENT DATE STAGE** — i.e. **no** clear policy draft/payment timing including **no** deposit-to-first-draft/payment linkage when that is the applicable standard — this is a **serious sales process miss** — **not** minor. It must appear in **SCRIPT / FLOW MISSES**, **lower Sales Process** and **Banking/Payment accuracy** in **SCORING BREAKDOWN**, and factor into **BIGGEST MISS** when no higher-priority compliance/automatic-fail issue exists. **Do not** treat as missing when the agent clearly explained first payment/draft **after** benefits deposit per **PAYMENT DATE STAGE** (including **MANDATORY** patterns above).
-- If **Policy sold** is **YES** and banking/payment setup occurred **without** a clear policy **draft/payment date** (**excluding** transcripts that already meet **PAYMENT DATE STAGE** / **MANDATORY** deposit-after-benefits first-payment language), treat this as a **serious post-sale/payment process failure**: set **Automatic fail triggered: YES** and include **Payment/draft date not explained after banking** in **Reason** (combine with other reasons as needed). Align **SCORE** per **SCORE CAP RULES** below.
+- If **Banking** was reached and **Payment Date** was **not** explained, set, or confirmed (checklist **Payment date explained: NO** or equivalent) **per PAYMENT DATE STAGE** — i.e. **no** clear policy draft/payment timing including **no** deposit-to-first-draft/payment linkage when that is the applicable standard — this is a **serious sales process miss** — **not** minor. It must appear in **SCRIPT / FLOW MISSES**, **lower Sales Process** and **Banking/Payment accuracy** in **SCORING BREAKDOWN**, and factor into **BIGGEST MISS** when no higher-priority compliance/automatic-fail issue exists. **Do not** treat as missing when the agent clearly explained first payment/draft **after** benefits deposit per **PAYMENT DATE STAGE** (including **MANDATORY** patterns above). **Do not** apply this block or section **6)** autofail when **Payment date explained** is **NOT REACHED** because the **Payment Date** segment **never** began, or when the **only** cited gap is **DOB** / **date of proof** (DOB) / application identity per **PAYMENT DATE STAGE** **DOB / application false positives**.
+- If **Policy sold** is **YES** and banking/payment setup occurred **without** a clear policy **draft/payment date** (**excluding** transcripts that already meet **PAYMENT DATE STAGE** / **MANDATORY** deposit-after-benefits first-payment language; **excluding** **DOB-only** false positives per **PAYMENT DATE STAGE**), treat this as a **serious post-sale/payment process failure**: set **Automatic fail triggered: YES** and include **Payment/draft date not explained after banking** in **Reason** (combine with other reasons as needed). Align **SCORE** per **SCORE CAP RULES** below.
 
 AUTOMATIC FAIL CHECKS (REQUIRED IN REPORT):
 - Include the exact block from REQUIRED OUTPUT FORMAT titled AUTOMATIC FAIL CHECKS with all six lines filled.
@@ -1047,6 +1087,24 @@ Before you finish, scan for contradictions — **especially 3 and 1 / rapport** 
 - **SCRIPT / FLOW MISSES** (or **Reason**) cites missing payment/draft / **Payment/draft date not explained after banking** while the transcript matches **PAYMENT DATE STAGE** deposit-after-benefits / **MANDATORY** examples — **invalid**; remove that miss and align **Payment date explained: YES**; do **not** apply section **6)** payment autofail on that basis alone.
 - **Banking** reached + transcript shows first payment/draft **after** benefits (or equivalent **MANDATORY** pattern) + **Payment date explained: NO** — **invalid**; set **YES** and align **SCORING BREAKDOWN** / **SCRIPT / FLOW MISSES** / **Automatic fail triggered** (do **not** fire section **6)** for payment date alone).
 - **Payment date explained: NO** when the transcript includes the **Same-call flow (mandatory YES)** pattern under **PAYMENT DATE STAGE** (Social Security schedule + first payment after government benefits + benefit day Q&A + draft after deposit on **May [NUMBER]** / redacted) — **invalid**; set **YES**; remove payment-date **SCRIPT / FLOW MISS** and payment-date **coaching**; do **not** lower score for missing Payment Date on that basis.
+- **Beneficiary identified: YES** (or **Did the agent identify a beneficiary? YES**) when the cited evidence does **not** mention beneficiary / receive / death benefit / proceeds / money going to someone / primary beneficiary / **specific recipient** selection tied to policy proceeds — **invalid**; set **NO** or **PARTIAL** per **BENEFICIARY IDENTIFICATION**; fix Evidence.
+- **CALL STAGE REACHED: Peace of Mind** (or **Peace of Mind** as furthest) **without** completed **Third Party Underwriting / voice signature** per **§13** — **invalid**; furthest stays **Disclosures** / **Third Party Underwriting** / earlier as evidenced — **not** **Peace of Mind**.
+- **CALL STAGE REACHED: Peace of Mind** or **Peace of mind completed: YES** **without** actual **Peace of Mind script** after **§13** (**you're good** / **not going to forget about you** / **welcome letter** mailing / **personal information** + **company we got you qualified for today**-type lines) — **invalid**; **Peace of Mind** is **NOT REACHED** / **Peace of mind completed: NOT REACHED** or **NO** per template.
+- **CALL STAGE REACHED: Peace of Mind** (or **Peace of Mind** as furthest) from **only** **Features / Benefits** anchors (pen and paper / walk step-by-step / direct toll-free / hoping we get you qualified / preferred plans) **without** **§14 (1)+(2)** — **invalid**; set furthest to **Features / Benefits** (or latest valid stage) per **§4** vs **§14**.
+- **CALL STAGE REACHED: Peace of Mind** or **Peace of mind completed: YES** when evidence is **terminal medical condition** / **end-stage disease** / **expected … death** / **respiratory failure** / **liver failure** / **DNQ** / **medical questions** — **invalid**; **§2 Medical / Health** only.
+- **CALL STAGE REACHED: Peace of Mind** when transcript includes **Quotes** anchors (**three affordable options** / **largest amount first** / **work my way all the way down** / **Are you ready**) but **§14 (1)+(2)** are missing — **invalid**; set **at least Quotes** per **§7**; **do not** set **Peace of Mind** from medical/DNQ or early-stage wording.
+- **CALL STAGE REACHED: Peace of Mind** when the latest real stage is **Medical / Health**, **Features / Benefits**, **Quotes**, **Close**, **Application**, **Payment Date**, **Banking**, **Disclosures**, or **Third Party Underwriting** without **all** **§14** conditions — **invalid**; align furthest to that latest **valid** stage.
+- **CALL STAGE REACHED: Peace of Mind** + (**Policy sold: NO** or **UNCLEAR**) — **invalid**; set **CALL STAGE REACHED** to **Final stage supporting sale** when that stage precedes **Peace of Mind**, else latest valid earlier stage.
+- **CALL STAGE REACHED: Peace of Mind** + **Peace of mind completed** not **YES** — **invalid**; same alignment as prior bullet.
+- **FINAL REPORT (post-render):** If **CALL STAGE REACHED** is **Peace of Mind** but **Policy sold** is not **YES**, **Peace of mind completed** is not **YES**, **Third Party Underwriting** appears under **NOT REACHED**, **Final stage supporting sale** is earlier than **Peace of Mind**, or transcript lacks strict **§14** POM evidence after **§13** — replace **CALL STAGE REACHED** with the latest valid earlier stage (prefer **Final stage supporting sale** when it precedes **Peace of Mind**).
+- **Did the agent set a callback? YES** or callback autofail when evidence lacks **call back** / **call later** / **follow up** / **schedule** / **finish later** / **tomorrow**-type agent commitment — **invalid** if evidence is **letter** / **age** / **term policy** / **found out** alone — set **NO** and **do not** autofail per **WHAT COUNTS AS CALLBACK LANGUAGE**.
+- **Did the agent set a callback? YES** when the transcript only shows **prospect** refusal, **not interested**, **already handled**, **goodbye**, or **hang-up** **without** **agent** callback/follow-up/schedule language — **invalid**; set **NO** per **EARLY-END REFUSAL** / **WHAT COUNTS AS CALLBACK LANGUAGE**.
+- **EARLY-END REFUSAL** pattern + **Existing coverage mentioned but not confirmed: YES** + **Automatic fail triggered: YES** **solely** from coverage — **invalid**; align **NO** on coverage line and remove coverage-only autofail per prompt.
+- **Fact Finding / Warm-up: NOT REACHED** + **SCRIPT / FLOW MISSES** or **BIGGEST MISS** cites **3 and 1** / rapport incompleteness — **invalid**; use **NOT REACHED** on **3 and 1** lines and remove those misses per **3 AND 1 METHOD** / **EARLY-END REFUSAL**.
+- **Unprofessional / disrespectful agent language** (profanity, insults, slurs toward/about prospect) appears in transcript but **BIGGEST MISS** or **Reason** centers **callback** or **existing coverage** — **invalid**; elevate **Unprofessional language / disrespectful call ending** per **BIGGEST MISS PRIORITY** and **PROFESSIONALISM** rules.
+- **TOP 3 COACHING PRIORITIES** coach **Medical / Quotes / Application** etc. when **CALL STAGE REACHED** is **Who I Am / What I Do** or **Opening** and **EARLY-END REFUSAL** applies — **invalid**; coach only reached-stage / professionalism issues.
+- **Payment date explained: NO** or section **6)** payment autofail when **only** evidence is **DOB** / **date of birth** / **date of proof** (DOB context) / application identity — **invalid**; align **NOT REACHED** / remove payment miss per **PAYMENT DATE STAGE** **DOB / application false positives**.
+- **Payment date explained: NO** when **Payment Date** segment never began (**CALL STAGE REACHED** is **Features / Benefits** or earlier per transcript) — **invalid**; use **Payment date explained: NOT REACHED** (or template-equivalent), **not** **NO**; do **not** list **Payment/draft date not explained after banking** from DOB-only lines.
 - Agent used **bottom paragraph** / **lowest-option** call control per **BOTTOM PARAGRAPH / LOWEST OPTION** and the call **continued into application**, but narrative claims the prospect **did not commit** **solely** because of initial spouse/family deferral — **invalid**; align **Objection occurred without proper call control: NO**, objection handling, and **SALE OUTCOME** / **Evidence** to the transcript (deferral **then** recovery).
 - **Did the agent set a callback?** **YES** + **neither** allowed **exception** (see **CALLBACK AND SCHEDULING**) + **Automatic fail triggered: NO** — **invalid**; set **Automatic fail triggered: YES**, **Reason** includes **Callback set without allowed exception** (and/or long-form phrase), **RISK: HIGH**, **PASS** per **AUDIT OUTCOME**.
 - **Did the agent set a callback?** **YES** + **neither** allowed **exception** + **Automatic fail triggered: YES** + **Reason** omits **Callback set without allowed exception** / long-form callback phrase — **invalid**; add callback wording to **Reason** (may supplement with **Callback set too early**).
@@ -1070,6 +1128,17 @@ Before you finish, scan for contradictions — **especially 3 and 1 / rapport** 
 - **3 and 1 Method used: YES** when **major** warm-up areas from **SCRIPT STRUCTURE** are **skipped** or **barely** touched — **invalid**; use **PARTIAL** or **NO**.
 - **Agent shared personal rapport information: YES** when sharing is **brief/vague** only (no **vivid-detail** tied texture) while **3 and 1** would not merit **YES** — **invalid**; align **PARTIAL** or **NO**.
 - **3 and 1 Method used: YES** + transcript matches **ASH_TEST — 3 AND 1 / RAPPORT** partial pattern (location/work/family touched, **some** agent share, **missing** scripted depth) — **invalid**; set **3 and 1 Method used: PARTIAL** and **Agent shared personal rapport information: PARTIAL** per that reference.
+- **STAGE ANCHORS — Quotes (§7):** Transcript includes **I'm going to share three affordable options** / **first option you've qualified for** / **per month** option framing in quotes context but **CALL STAGE REACHED** is **Medical / Health** or earlier — **invalid**; set furthest to **at least Quotes** per **STAGE ANCHORS** + ordered list.
+- **STAGE ANCHORS — Close (§8):** Transcript includes **circle that option** / **which option** / **lowest option** / **go with that one** (option-selection) but **CALL STAGE REACHED** is **Quotes** or earlier only — **invalid**; set **at least Close** when **§8** anchors clearly appear after **Quotes** framing.
+- **STAGE ANCHORS — Application (§9):** Transcript includes **What's your middle initial** / **verify the spelling of your full name** / **primary beneficiary** (application intake) but **CALL STAGE REACHED** is **Quotes** or **Close** or earlier — **invalid**; set **at least Application Information**.
+- **STAGE ANCHORS — Payment Date (§10):** Transcript includes **same payment schedule as Social Security** / **first payment** … **after** … **government benefits** / **What day do you receive your benefits** / **draft until after your benefits have been deposited** / **draft date** / **payment date** but **CALL STAGE REACHED** omits **Payment Date** or lists **Payment Date** only under **NOT REACHED** when that segment clearly began — **invalid**; align furthest stage (**Payment date explained** still per **PAYMENT DATE STAGE** — deposit-only Q without draft-after-deposit tie does **not** force **Payment date explained: YES**).
+- **STAGE ANCHORS — Banking (§11):** Transcript includes **bank or credit union** / **routing** / **account number** / banking placeholders in context but **Banking** only under **NOT REACHED** or furthest label **before Banking** — **invalid**; align per **STAGE ANCHORS** and **BANKING REACHED vs COMPLETED**.
+- **STAGE ANCHORS — Disclosures (§12):** Transcript includes **Fair Credit Reporting Act** / **required by law** disclosure framing but **Disclosures** only under **NOT REACHED** or furthest stops before **Disclosures** — **invalid**.
+- **STAGE ANCHORS — Third Party Underwriting (§13):** Transcript includes **voice signature** / **American Amicable** recording / **app ID** / **pound sign** cues but **Third Party Underwriting** only under **NOT REACHED** — **invalid** (see also **HARD TRIGGER** bullets below).
+- **STAGE ANCHORS — Features / Benefits vs Peace of Mind:** **walk you through step-by-step** / **direct toll-free number** / pen and paper anchors present but **CALL STAGE REACHED: Peace of Mind** — **invalid**; furthest **≤ Features / Benefits** unless **§14 (1)+(2)**.
+- **STAGE ANCHORS — Peace of Mind / Cool Down (§14–15):** After **Policy sold YES** and completion, transcript matches **Peace of Mind** or **Cool Down** per **§14 (1)+(2)** / **§15** but furthest stage / **NOT REACHED** omits that stage — **invalid**; align (**do not** require **Peace of Mind** when **§13** not completed or **Peace of Mind script** missing; **do not** require **Peace of Mind** / **Cool Down** when **Policy sold** is **NO** / not completed).
+- **STAGE ANCHORS — Peace of Mind after §13:** Transcript shows **§14** script (**you're good** / **not going to forget** / **welcome letter** / **personal information** + company qualified) **after** **§13** voice signature / recorded line but **Peace of Mind** is only under **NOT REACHED** or furthest stops before **Peace of Mind** — **invalid**; align furthest.
+- **STAGE ANCHORS — Cool Down §15:** Transcript shows **§15** casual post-sale anchors after a **completed** sale but **Cool Down** only under **NOT REACHED** when plainly reached — **invalid**; align (**Policy sold** / opportunity rules unchanged).
 - **SALE OUTCOME** Evidence claims **voice signature** / **recorded verification** / **American Amicable recording system** but **Third Party Underwriting** is only under **NOT REACHED** — invalid; align **CALL STAGE REACHED** / **NOT REACHED** or remove unsupported Evidence phrases.
 - Transcript includes **Welcome to the American Amicable Group recording system**, **app ID** / **pound sign** IVR, **voice signature**, or **recorded verification** in enrollment context but **Third Party Underwriting** only under **NOT REACHED** — invalid; set furthest stage per **HARD TRIGGER**.
 - **Banking**-context wording or placeholders (**[ACCOUNT_NUMBER]**, **[ROUTING_NUMBER]**, **[BANK_NUMBER]**, **[NUMBER]** with routing/account/bank cues) but **Banking** only under **NOT REACHED** — invalid unless a **later** stage clearly supersedes.
@@ -1873,6 +1942,15 @@ CALL_STAGE_ORDER = (
     "Cool Down",
 )
 
+# CALL STAGE REACHED block: stage may appear on the same line as the label or on the following line.
+_CALL_STAGE_BLOCK_RE = re.compile(
+    r"(?is)^CALL STAGE REACHED:\s*(?:\n\s*)?([^\n]+)\s*\n"
+    r"^EARLY END:\s*(YES|NO)\s*\n"
+    r"^NOT REACHED:\s*\n"
+    r"((?:- [^\n]*\n)+)",
+    re.MULTILINE,
+)
+
 
 def _call_stage_canonical_index(label):
     """Map model or shorthand stage label to CALL_STAGE_ORDER index, or None if unknown."""
@@ -2075,58 +2153,92 @@ def _third_party_underwriting_evidence(blob):
 
 def _peace_of_mind_stage_evidence(blob):
     """
-    Post-sale reassurance section — conservative: generic beneficiary/mail mentions alone are not enough.
+    Peace of Mind stage — transcript must show completed third-party / voice-signature
+    flow first, then POM script cues. Medical/DNQ terminal language alone is never POM.
     """
     if not blob or not str(blob).strip():
         return False
     b = str(blob)
+    bl = b.lower()
+    if not _third_party_underwriting_evidence(bl):
+        return False
+
+    dnq_terminal = bool(
+        re.search(
+            r"terminal\s+medical\s+condition|end-stage\s+disease|end\s+stage\s+disease|"
+            r"expected\s+to\s+result\s+in\s+death|respiratory\s+failure|liver\s+failure",
+            bl,
+        )
+    )
+    explicit_script = bool(
+        re.search(
+            r"\b(?:peace\s+of\s+mind\b|you'?re\s+good\b|not\s+going\s+to\s+forget\s+about\s+you\b|"
+            r"welcome\s+letter|mail(?:ing|ed)?\s+(?:the\s+)?(?:welcome|policy)\s+letter|"
+            r"all\s+my\s+personal\s+information|company\s+we\s+got\s+you\s+qualified\s+for\s+today)\b",
+            b,
+            re.I,
+        )
+    )
+
     if re.search(r"\bpeace\s+of\s+mind\b", b, re.I):
+        if dnq_terminal and not explicit_script:
+            return False
         return True
     if re.search(
         r"\b(?:rest\s+easy|sleep\s+(?:better|at\s+night)|feel\s+good\s+about\s+(?:this|your|the)\s+decision)\b",
         b,
         re.I,
     ):
+        if dnq_terminal and not explicit_script:
+            return False
         return True
     if re.search(r"\b(?:not|ain'?t)\s+going\s+to\s+forget\s+about\s+you\b", b, re.I):
+        if dnq_terminal and not explicit_script:
+            return False
         return True
     if re.search(
         r"\b(?:welcome|policy)\s+letter\b.{0,120}\b(?:mail|tomorrow|send|sent|going\s+to\s+mail)\b",
         b,
         re.I,
     ) or re.search(r"\bmail(?:ing|ed)?\s+(?:the\s+)?(?:welcome|policy)\s+letter\b", b, re.I):
+        if dnq_terminal and not explicit_script:
+            return False
         return True
     if re.search(
         r"\b(?:all\s+)?my\s+personal\s+information\b.{0,100}\b(?:company|qualified|carrier|policy)\b",
         b,
         re.I,
     ):
+        if dnq_terminal and not explicit_script:
+            return False
         return True
     if re.search(
         r"\byou'?re\s+good\b.{0,120}\b(?:forget|here|with\s+you|company|qualified)\b",
         b,
         re.I,
     ):
+        if dnq_terminal and not explicit_script:
+            return False
         return True
     if re.search(
         r"\bprotect(?:ed|ing)\s+your\s+family\b.{0,80}\b(?:beneficiary|coverage|policy|approved|qualified)\b",
         b,
         re.I,
     ):
+        if dnq_terminal and not explicit_script:
+            return False
         return True
     if re.search(r"\bcoverage\s+is\s+in\s+place\b", b, re.I):
-        return True
-    if re.search(
-        r"\breassur(?:e|ing)\b.{0,120}\b(?:approved|qualified|family|beneficiary|decision|policy|mail|letter)\b",
-        b,
-        re.I,
-    ):
+        if dnq_terminal and not explicit_script:
+            return False
         return True
     if re.search(
         r"\bpolicy\s+(?:in\s+the\s+)?mail\b.{0,80}\b(?:tomorrow|few\s+days|welcome|letter)\b",
         b,
         re.I,
     ):
+        if dnq_terminal and not explicit_script:
+            return False
         return True
     return False
 
@@ -2258,13 +2370,24 @@ def apply_refined_call_stage(result, transcript):
     if _third_party_underwriting_evidence(transcript_blob):
         floors.append(CALL_STAGE_ORDER.index("Third Party Underwriting"))
 
-    if _peace_of_mind_stage_evidence(transcript_blob):
+    if (
+        result.get("policy_sold") == "YES"
+        and _peace_of_mind_stage_evidence(transcript_blob)
+        and _checklist_peace_of_mind_completed_yes(result.get("checklist_results"))
+    ):
         floors.append(CALL_STAGE_ORDER.index("Peace of Mind"))
 
-    if _cool_down_stage_evidence(transcript_blob):
+    if result.get("policy_sold") == "YES" and _cool_down_stage_evidence(transcript_blob):
         floors.append(CALL_STAGE_ORDER.index("Cool Down"))
 
     furthest = min(max(floors), len(CALL_STAGE_ORDER) - 1)
+    idx_pom = CALL_STAGE_ORDER.index("Peace of Mind")
+    if result.get("policy_sold") != "YES":
+        furthest = min(furthest, idx_pom - 1)
+    elif furthest == idx_pom and not _checklist_peace_of_mind_completed_yes(
+        result.get("checklist_results")
+    ):
+        furthest = idx_pom - 1
     result["stage_reached"] = CALL_STAGE_ORDER[furthest]
     result["not_reached"] = list(CALL_STAGE_ORDER[furthest + 1 :])
 
@@ -2273,6 +2396,17 @@ def apply_refined_call_stage(result, transcript):
         result["early_end"] = "NO"
     else:
         result["early_end"] = "YES"
+
+
+def _checklist_peace_of_mind_completed_yes(checklist_results):
+    """True only when checklist explicitly shows Peace of mind completed: YES."""
+    for raw in checklist_results or []:
+        line = str(raw).strip().lower()
+        if "peace of mind" not in line or "completed" not in line:
+            continue
+        if re.search(r":\s*yes\b", line):
+            return True
+    return False
 
 
 def _checklist_line_has_verdict_no(checklist_results, must_contain_all):
@@ -2711,6 +2845,17 @@ Re-read your verdicts and fix any contradiction:
 - **sale_outcome_evidence** mentioning **voice signature** / **recorded verification** / **American Amicable recording** while **not_reached** lists **Third Party Underwriting** only — invalid; align **stage_reached** / **not_reached** or trim Evidence.
 - Transcript includes **Welcome to the American Amicable Group recording system** (or equivalent app ID / pound-sign IVR) ⇒ **Third Party Underwriting** reached; do not leave it only under **not_reached** while claiming an earlier stage as furthest.
 - **Policy sold YES** + skipped Peace of Mind / Cool Down with opportunity + **Payment date explained: NO** after Banking + coverage gap ⇒ **score** not **90+**, **pass** not **YES**, **risk** not **LOW**.
+- **Beneficiary** **YES** in **checklist_results** when evidence lacks beneficiary/receive/death benefit/proceeds/primary beneficiary/specific recipient — invalid; align with **BENEFICIARY IDENTIFICATION**.
+- **stage_reached** / furthest **Peace of Mind** from **only** Features/Benefits anchors without **§14 (1)+(2)** — invalid; align per **§4** vs **§14**.
+- **stage_reached** **Peace of Mind** (or peace-of-mind completion **YES**) without completed **Third Party Underwriting** / **voice signature** per **§13** — invalid.
+- **stage_reached** **Peace of Mind** without **Peace of Mind script** lines after **§13** (you're good / not going to forget / welcome letter / personal information + company qualified today) — invalid; **NOT REACHED** / **NO**.
+- **stage_reached** / **Peace of Mind** (or peace-of-mind completion) from medical/DNQ/terminal/end-stage/respiratory-or-liver-failure wording — invalid; **Medical / Health** only per anchor list **§2**; **Quotes** anchors ⇒ minimum **Quotes** when **§14** not met.
+- **agent_set_callback** / callback autofail when evidence lacks callback/follow-up/schedule language (letter/age/term alone) — invalid per **WHAT COUNTS AS CALLBACK LANGUAGE**.
+- **agent_set_callback: YES** when transcript only shows **prospect** refusal / hang-up **without** **agent** callback commitment — invalid; align **NO** per **EARLY-END REFUSAL**.
+- **autofail_coverage_not_confirmed: YES** on **early-end refusal** (prospect ended before sale path) **solely** from “already have coverage / final expenses handled” — invalid; align **NO** and **automatic_fail_triggered** per **EARLY-END REFUSAL**.
+- **Fact Finding / Warm-up** not reached in structured checklist but **3 and 1 Method used** is **YES**/**NO**/**PARTIAL** (not **NOT REACHED**) — invalid; align **NOT REACHED** for **3 and 1** / rapport lines.
+- Transcript shows **agent** profanity/insults toward/about prospect but **biggest_miss** / **automatic_fail_reason** ignore it — invalid; align per **BIGGEST MISS PRIORITY** / **PROFESSIONALISM** in main prompt.
+- **Payment date explained: NO** or payment autofail from DOB/date-of-proof-only — invalid; use **NOT REACHED** when Payment Date segment never began per **PAYMENT DATE STAGE**.
 - **Routing number requested or verified 3 times:** **NO** or **PARTIAL** (Banking reached) but **summary** claims banking verification was **fully** completed — invalid.
 - **Account number requested or verified 3 times:** **NO** or **PARTIAL** (Banking reached) but **summary** claims **full** banking verification — invalid.
 - **Banking/account information requested or verified 3 times:** **YES** in **checklist_results** when either account-side or routing-side **three-times** line is **not** **YES** — invalid.
@@ -2950,14 +3095,7 @@ def _text_enforce_tpu_stage_report(report, transcript):
     tb = transcript.strip().lower()
     if not _third_party_underwriting_evidence(tb):
         return report
-    m_block = re.search(
-        r"(?is)^CALL STAGE REACHED:\s*(.+?)\s*\n"
-        r"^EARLY END:\s*(YES|NO)\s*\n"
-        r"^NOT REACHED:\s*\n"
-        r"((?:- [^\n]*\n)+)",
-        report,
-        re.MULTILINE,
-    )
+    m_block = _CALL_STAGE_BLOCK_RE.search(report)
     if not m_block:
         return report
     current_stage = m_block.group(1).strip()
@@ -2975,10 +3113,8 @@ def _text_enforce_tpu_stage_report(report, transcript):
     if not has_tpu_in_nr and idx_cur >= idx_tpu:
         return report
     floors = [idx_cur, idx_tpu]
-    if _peace_of_mind_stage_evidence(tb):
-        floors.append(CALL_STAGE_ORDER.index("Peace of Mind"))
-    if _cool_down_stage_evidence(tb):
-        floors.append(CALL_STAGE_ORDER.index("Cool Down"))
+    # Do not raise CALL STAGE to Peace of Mind / Cool Down from transcript alone;
+    # text report lacks structured policy_sold / checklist to validate §14.
     furthest = min(max(floors), len(CALL_STAGE_ORDER) - 1)
     new_stage = CALL_STAGE_ORDER[furthest]
     tail = list(CALL_STAGE_ORDER[furthest + 1 :])
@@ -2991,6 +3127,271 @@ def _text_enforce_tpu_stage_report(report, transcript):
         f"NOT REACHED:\n{nr_lines}\n"
     )
     return report[: m_block.start()] + new_section + report[m_block.end() :]
+
+
+def _report_policy_sold_line_verdict(report):
+    m = re.search(r"(?im)^- Policy sold:\s*(YES|NO|UNCLEAR)\b", report)
+    if m:
+        return m.group(1).upper()
+    m = re.search(r"(?im)^- Was the policy sold\?\s*(YES|NO|UNCLEAR)\b", report)
+    if m:
+        return m.group(1).upper()
+    return None
+
+
+def _report_peace_of_mind_completed_line_is_yes(report):
+    m = re.search(
+        r"(?im)^- Peace of mind completed:\s*(YES|NO|NOT REACHED|PARTIAL|UNCLEAR)\b",
+        report,
+    )
+    return bool(m and m.group(1).strip().upper() == "YES")
+
+
+def _parse_final_stage_supporting_sale_raw(report):
+    m = re.search(r"(?im)^- Final stage supporting sale:\s*(.+)$", report)
+    if not m:
+        return None
+    raw = m.group(1).strip()
+    if "<" in raw:
+        raw = raw.split("<", 1)[0].strip()
+    return raw or None
+
+
+def _enforce_peace_of_mind_call_stage_consistency(report, transcript=None):
+    """
+    Remove invalid CALL STAGE REACHED: Peace of Mind when Policy sold / Peace of mind completed /
+    NOT REACHED / Final stage supporting sale / transcript evidence contradict strict §14.
+    """
+    if not report:
+        return report
+    m_block = _CALL_STAGE_BLOCK_RE.search(report)
+    if not m_block:
+        return report
+    current_stage = m_block.group(1).strip()
+    idx_cur = _call_stage_canonical_index(current_stage)
+    idx_pom = CALL_STAGE_ORDER.index("Peace of Mind")
+    if idx_cur != idx_pom:
+        return report
+    not_reached_raw = m_block.group(3)
+    bullets = []
+    for line in not_reached_raw.strip().split("\n"):
+        s = line.strip()
+        if s.startswith("- "):
+            bullets.append(s[2:].strip())
+    has_tpu_in_nr = any("third party" in b.lower() for b in bullets)
+    policy = _report_policy_sold_line_verdict(report)
+    pom_yes = _report_peace_of_mind_completed_line_is_yes(report)
+    fs_raw = _parse_final_stage_supporting_sale_raw(report)
+    fs_idx = _call_stage_canonical_index(fs_raw) if fs_raw else None
+    idx_bank = CALL_STAGE_ORDER.index("Banking")
+    early_fs_vs_pom = fs_idx is not None and fs_idx <= idx_bank
+    transcript_tb = (transcript or "").strip().lower()
+    pom_transcript_ok = True
+    if transcript_tb:
+        pom_transcript_ok = bool(_peace_of_mind_stage_evidence(transcript_tb))
+    need_fix = False
+    if policy != "YES":
+        need_fix = True
+    if not pom_yes:
+        need_fix = True
+    if has_tpu_in_nr:
+        need_fix = True
+    if early_fs_vs_pom:
+        need_fix = True
+    if transcript_tb and not pom_transcript_ok:
+        need_fix = True
+    if not need_fix:
+        return report
+    if fs_idx is not None and fs_idx < idx_pom:
+        new_idx = fs_idx
+    else:
+        cand = []
+        if has_tpu_in_nr:
+            cand.append(CALL_STAGE_ORDER.index("Third Party Underwriting") - 1)
+        if bullets:
+            fi = _call_stage_canonical_index(bullets[0])
+            if fi is not None and 0 < fi <= idx_pom:
+                cand.append(fi - 1)
+        below = [c for c in cand if c < idx_pom]
+        new_idx = max(below) if below else max(0, idx_pom - 1)
+    new_idx = min(new_idx, idx_pom - 1)
+    new_stage = CALL_STAGE_ORDER[new_idx]
+    tail = list(CALL_STAGE_ORDER[new_idx + 1 :])
+    nr_lines = "\n".join(f"- {s}" for s in tail) if tail else "- None"
+    cd_idx = CALL_STAGE_ORDER.index("Cool Down")
+    early_end = "NO" if new_idx >= cd_idx else "YES"
+    new_section = (
+        f"CALL STAGE REACHED: {new_stage}\n"
+        f"EARLY END: {early_end}\n"
+        f"NOT REACHED:\n{nr_lines}\n"
+    )
+    return report[: m_block.start()] + new_section + report[m_block.end() :]
+
+
+def _task_checklist_field_value(report_text, label_regex):
+    """Value after colon on first matching '- <label>:' line (case-insensitive)."""
+    if not report_text:
+        return None
+    m = re.search(
+        rf"(?im)^-\s*{label_regex}\s*:\s*([^\n]+)$",
+        report_text,
+    )
+    return m.group(1).strip() if m else None
+
+
+def _checklist_yes(value):
+    return bool(value and re.match(r"^\s*YES\b", value, re.I))
+
+
+def _checklist_partial_or_yes(value):
+    return bool(value and re.match(r"^\s*(YES|PARTIAL)\b", value, re.I))
+
+
+def _checklist_not_reached_line(value):
+    return bool(value and "NOT REACHED" in value.upper())
+
+
+def _call_stage_block_tail_lines(new_idx):
+    tail = list(CALL_STAGE_ORDER[new_idx + 1 :])
+    nr_lines = "\n".join(f"- {s}" for s in tail) if tail else "- None"
+    cd_idx = CALL_STAGE_ORDER.index("Cool Down")
+    early_end = "NO" if new_idx >= cd_idx else "YES"
+    return new_idx, early_end, nr_lines
+
+
+def _replace_call_stage_block(report_text, new_idx):
+    m_block = _CALL_STAGE_BLOCK_RE.search(report_text)
+    if not m_block:
+        return report_text
+    _, early_end, nr_lines = _call_stage_block_tail_lines(new_idx)
+    new_stage = CALL_STAGE_ORDER[new_idx]
+    new_section = (
+        f"CALL STAGE REACHED: {new_stage}\n"
+        f"EARLY END: {early_end}\n"
+        f"NOT REACHED:\n{nr_lines}\n"
+    )
+    return report_text[: m_block.start()] + new_section + report_text[m_block.end() :]
+
+
+def enforce_report_stage_consistency(report_text: str) -> str:
+    """
+    Deterministic caps on CALL STAGE REACHED when checklist / SALE OUTCOME contradict
+    the stage label (e.g. Third Party Underwriting with no application or sale).
+    """
+    if not report_text:
+        return report_text
+    m_block = _CALL_STAGE_BLOCK_RE.search(report_text)
+    if not m_block:
+        return report_text
+    current = m_block.group(1).strip()
+    cur_idx = _call_stage_canonical_index(current)
+    if cur_idx is None:
+        return report_text
+
+    not_reached_raw = m_block.group(3)
+    bullets = []
+    for line in not_reached_raw.strip().split("\n"):
+        s = line.strip()
+        if s.startswith("- "):
+            bullets.append(s[2:].strip())
+    has_tpu_nr = any("third party" in b.lower() for b in bullets)
+    has_disc_nr = any("disclosure" in b.lower() for b in bullets)
+
+    three = _task_checklist_field_value(report_text, r"Three options presented")
+    client = _task_checklist_field_value(report_text, r"Client chose an option")
+    app = _task_checklist_field_value(report_text, r"Application info(?:rmation)? collected")
+    pay = _task_checklist_field_value(report_text, r"Payment date explained")
+    bank = _task_checklist_field_value(report_text, r"Banking/payment setup explained")
+    pom = _task_checklist_field_value(report_text, r"Peace of mind completed")
+    cool = _task_checklist_field_value(report_text, r"Cool down completed")
+
+    policy = _report_policy_sold_line_verdict(report_text)
+    policy_no = policy != "YES"
+
+    fs_raw = _parse_final_stage_supporting_sale_raw(report_text)
+    fs_idx = _call_stage_canonical_index(fs_raw) if fs_raw else None
+
+    idx_pom = CALL_STAGE_ORDER.index("Peace of Mind")
+    idx_cd = CALL_STAGE_ORDER.index("Cool Down")
+    idx_app = CALL_STAGE_ORDER.index("Application Information")
+    idx_pay = CALL_STAGE_ORDER.index("Payment Date")
+    idx_bank = CALL_STAGE_ORDER.index("Banking")
+    idx_quotes = CALL_STAGE_ORDER.index("Quotes")
+    idx_close = CALL_STAGE_ORDER.index("Close")
+
+    pay_nr = _checklist_not_reached_line(pay)
+    bank_nr = _checklist_not_reached_line(bank)
+
+    later_than_quotes = _checklist_yes(app) or _checklist_yes(pay) or (
+        bank and not _checklist_not_reached_line(bank) and _checklist_partial_or_yes(bank)
+    )
+
+    max_cap = len(CALL_STAGE_ORDER) - 1
+
+    if policy_no:
+        max_cap = min(max_cap, idx_pom - 1)
+
+    if app is not None and not _checklist_yes(app):
+        if _checklist_yes(client):
+            max_cap = min(max_cap, idx_close)
+        elif _checklist_partial_or_yes(three):
+            max_cap = min(max_cap, idx_quotes)
+        else:
+            if fs_idx is not None and fs_idx < idx_app:
+                max_cap = min(max_cap, fs_idx)
+            else:
+                max_cap = min(max_cap, idx_quotes)
+
+    if pay_nr and bank_nr:
+        max_cap = min(max_cap, idx_app - 1)
+
+    if bank_nr:
+        max_cap = min(max_cap, idx_bank - 1)
+
+    if pom is not None and not _checklist_yes(pom):
+        max_cap = min(max_cap, idx_pom - 1)
+
+    if cool is not None and not _checklist_yes(cool):
+        max_cap = min(max_cap, idx_cd - 1)
+
+    if has_tpu_nr:
+        max_cap = min(max_cap, CALL_STAGE_ORDER.index("Third Party Underwriting") - 1)
+
+    if has_disc_nr:
+        max_cap = min(max_cap, CALL_STAGE_ORDER.index("Disclosures") - 1)
+
+    if fs_raw and re.search(r"\bquotes\b", fs_raw, re.I) and not later_than_quotes:
+        max_cap = min(max_cap, idx_quotes)
+
+    new_idx = min(cur_idx, max_cap)
+
+    rule10 = (
+        _checklist_partial_or_yes(three)
+        and client is not None
+        and not _checklist_yes(client)
+        and app is not None
+        and not _checklist_yes(app)
+        and policy_no
+    )
+    if rule10:
+        new_idx = idx_quotes
+
+    austin_quotes_fix = (
+        fs_raw
+        and re.search(r"\bquotes\b", fs_raw, re.I)
+        and policy_no
+        and app is not None
+        and not _checklist_yes(app)
+        and bank_nr
+    )
+    if austin_quotes_fix:
+        new_idx = idx_quotes
+
+    new_idx = max(0, min(new_idx, len(CALL_STAGE_ORDER) - 1))
+
+    if new_idx == cur_idx:
+        return report_text
+    return _replace_call_stage_block(report_text, new_idx)
 
 
 def enforce_final_audit_consistency(report, transcript=None):
@@ -3034,6 +3435,8 @@ def enforce_final_audit_consistency(report, transcript=None):
                     report,
                     count=1,
                 )
+
+    report = _enforce_peace_of_mind_call_stage_consistency(report, transcript)
 
     cov_yes = bool(
         re.search(
@@ -3134,6 +3537,7 @@ def enforce_final_audit_consistency(report, transcript=None):
             count=1,
         )
 
+    report = enforce_report_stage_consistency(report)
     return report
 
 
