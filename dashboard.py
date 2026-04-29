@@ -959,76 +959,79 @@ def build_clean_report(report_text):
 
 
 def build_report_summary(report_text):
-    """
-    Extract headline fields from a saved audit report for the dashboard summary card.
-    Returns a dict with keys: score, risk, result, stage_reached, summary_text,
-    biggest_miss, main_coaching, autofail_reason (reason only when automatic fail is YES).
-    Values are strings or None when missing.
-    """
-    out = {
-        "score": None,
-        "risk": None,
-        "result": None,
-        "stage_reached": None,
-        "summary_text": None,
-        "biggest_miss": None,
-        "main_coaching": None,
-        "autofail_reason": None,
+    """Build a short manager-friendly summary without leaking transcript text into the card."""
+    report_text = report_text or ""
+
+    stop_markers = [
+        "SCORE", "RISK", "PASS", "CALL STAGE REACHED", "EARLY END", "NOT REACHED",
+        "COMPLIANCE FAILURES", "SCRIPT / FLOW MISSES", "PQ / HANDOFF", "TASK CHECKLIST",
+        "SEARCHABLE ANSWERS", "AUTOMATIC FAIL CHECKS", "SALE OUTCOME", "SCORING BREAKDOWN",
+        "TONE & DELIVERY", "COMMUNICATION ANALYSIS", "COACHING", "TOP 3 COACHING PRIORITIES",
+        "BIGGEST MISS", "SUMMARY", "TRANSCRIPT NOTE", "TRANSCRIPT", "OPENAI COST ESTIMATE",
+        "DETAILED REPORT",
+    ]
+
+    def clean_value(value):
+        value = (value or "").strip()
+        hard_stops = [
+            "TRANSCRIPT NOTE", "TRANSCRIPT:", "Agent:", "Prospect:", "Unknown:",
+            "OPENAI COST ESTIMATE", "DETAILED REPORT",
+        ]
+        for marker in hard_stops:
+            idx = value.find(marker)
+            if idx != -1:
+                value = value[:idx].strip()
+        return value.strip()
+
+    def first_line_value(label):
+        match = re.search(rf"(?im)^\s*{re.escape(label)}\s*:\s*(.+?)\s*$", report_text)
+        return clean_value(match.group(1)) if match else ""
+
+    def block_value(label):
+        other_markers = [m for m in stop_markers if m != label]
+        stop_re = "|".join(re.escape(m) for m in sorted(other_markers, key=len, reverse=True))
+        pattern = rf"(?ims)^\s*{re.escape(label)}\s*:?\s*(.*?)(?=^\s*(?:{stop_re})\s*:?\s*$|\Z)"
+        match = re.search(pattern, report_text)
+        return clean_value(match.group(1)) if match else ""
+
+    def first_bullet_from_block(label):
+        block = block_value(label)
+        for line in block.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("-"):
+                return clean_value(stripped.lstrip("-").strip())
+        for line in block.splitlines():
+            stripped = line.strip()
+            if stripped:
+                return clean_value(stripped)
+        return ""
+
+    score = first_line_value("SCORE") or block_value("SCORE")
+    risk = first_line_value("RISK") or block_value("RISK")
+    result = first_line_value("PASS") or block_value("PASS")
+    stage_reached = first_line_value("CALL STAGE REACHED") or block_value("CALL STAGE REACHED")
+    audit_summary = block_value("SUMMARY")
+    biggest_miss = first_bullet_from_block("BIGGEST MISS")
+    main_coaching_priority = first_bullet_from_block("TOP 3 COACHING PRIORITIES")
+
+    automatic_fail_reason = ""
+    auto_block = block_value("AUTOMATIC FAIL CHECKS")
+    for line in auto_block.splitlines():
+        stripped = line.strip()
+        if stripped.lower().startswith("- reason:") or stripped.lower().startswith("reason:"):
+            automatic_fail_reason = clean_value(stripped.split(":", 1)[1].strip())
+            break
+
+    return {
+        "score": clean_value(score) or "Unknown",
+        "risk": clean_value(risk) or "Unknown",
+        "result": clean_value(result) or "Unknown",
+        "stage_reached": clean_value(stage_reached) or "Unknown",
+        "audit_summary": clean_value(audit_summary),
+        "biggest_miss": clean_value(biggest_miss),
+        "main_coaching_priority": clean_value(main_coaching_priority),
+        "automatic_fail_reason": clean_value(automatic_fail_reason),
     }
-    if not report_text or not report_text.strip():
-        return out
-
-    def grab_line(key):
-        m = re.search(rf"(?im)^{re.escape(key)}:\s*(.+)$", report_text)
-        return m.group(1).strip() if m else None
-
-    out["score"] = grab_line("SCORE")
-    out["risk"] = grab_line("RISK")
-    out["result"] = grab_line("PASS")
-
-    stage_m = re.search(
-        r"(?is)^CALL STAGE REACHED:\s*(.*?)(?=^EARLY END\s*:)",
-        report_text,
-        re.MULTILINE,
-    )
-    if stage_m:
-        st = re.sub(r"\s+", " ", stage_m.group(1).strip())
-        out["stage_reached"] = st if st else None
-    else:
-        out["stage_reached"] = parse_stage_from_report(report_text)
-
-    sum_m = re.search(
-        r"(?is)^SUMMARY:\s*(.*?)(?=^(?:OPENAI COST ESTIMATE|TRANSCRIPT NOTE)\s*:|\Z)",
-        report_text,
-        re.MULTILINE,
-    )
-    if sum_m:
-        st = sum_m.group(1).strip()
-        if st:
-            out["summary_text"] = st
-
-    miss_body = extract_biggest_miss(report_text).strip()
-    if miss_body:
-        out["biggest_miss"] = miss_body
-
-    top3_block = extract_top3_coaching(report_text)
-    first_coach = None
-    if top3_block.strip():
-        for line in top3_block.splitlines():
-            line = line.strip()
-            bm = re.match(r"^-\s*(.+)$", line)
-            if bm:
-                first_coach = bm.group(1).strip()
-                break
-    out["main_coaching"] = first_coach
-
-    if re.search(r"(?im)^-\s*Automatic fail triggered:\s*YES\b", report_text):
-        rm = re.search(r"(?im)^-\s*Reason:\s*(.+)$", report_text)
-        out["autofail_reason"] = (
-            rm.group(1).strip() if rm else "Unknown"
-        )
-
-    return out
 
 
 def _format_report_summary_plain(summary):
