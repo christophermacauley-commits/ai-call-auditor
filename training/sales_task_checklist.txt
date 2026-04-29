@@ -154,3 +154,51 @@ TELL, DON'T ASK (process tone — audit prompt)
 - Lead required next steps with confident **directive** language, not **permission-seeking** questions — especially close, option selection, application, payment date, banking, checkbook/bank statement, account/routing verification. Strong: go ahead / grab / circle / let's get this knocked out / read that back. Weak: can you / would you be able / could we / do you want to / is it okay if — see audit prompt.
 - **Not** an automatic fail; **not** sole **PASS** / **RISK** driver; modest **Communication Quality** / **Sales Process** impact when **repeated** in clear agent moments. If it plausibly contributed to loss of control or callback, mention in coaching with those drivers — do **not** override callback, coverage, payment date, banking, sold/not-sold, or stage logic.
 - **Speaker clarity:** evaluate only when the **agent** is reasonably identifiable from context; if unclear, omit SCRIPT / FLOW miss; do not penalize — see audit prompt
+
+
+EARLY EXISTING-COVERAGE / NOT-INTERESTED CALL CONTROL RULE
+
+When a prospect says early in the call that they already have final expenses taken care of, already have coverage, are not interested, or are not looking to add more coverage, the agent should attempt calm call control if the prospect has not fully ended the call.
+
+This is especially relevant during:
+- PQ handoff
+- Who I Am / What I Do
+- early objection before warm-up
+
+Strong call control examples:
+- "That's okay, this is just an informational call."
+- "That's okay, you're like a lot of people I help every day."
+- "I'm not asking you to cancel anything."
+- "Let's just see what you may qualify for."
+- "A lot of people I help already have something in place; my job is just to see if this could help or improve what you have."
+- "I completely understand. I'm just going to give you the information and then you can tell me what you want to do from there."
+
+Weak handling:
+- Agent gives up immediately without attempting call control.
+- Agent argues with the prospect.
+- Agent becomes frustrated or disrespectful.
+- Agent uses profanity or insults.
+- Agent fails to redirect the conversation when there was still a reasonable opportunity.
+
+Scoring / reporting:
+- This is not an automatic fail by itself.
+- Do not mark automatic fail solely because the agent missed this call-control opportunity.
+- If the prospect clearly hangs up or refuses to continue, do not over-penalize future stages.
+- If the agent had a reasonable opportunity and did not attempt call control, mention it in COACHING or SCRIPT / FLOW MISSES.
+- If the agent responds disrespectfully or uses profanity, the professionalism rule still applies and can be the automatic fail / biggest miss.
+- Lower Communication Quality and Sales Process if lack of call control contributed to the early end.
+
+For early refusal calls:
+- Callback should remain NO unless the agent clearly offered, agreed to, or scheduled a later call.
+- Existing coverage mentioned but not confirmed should remain NO / not applicable when the prospect refused and ended early.
+- 3 and 1 should remain NOT REACHED if Fact Finding / Warm-up was not reached.
+- Do not coach on future stages that were never reached.
+
+Example:
+If the prospect says they already have final expenses taken care of and is not interested, the agent should attempt calm call control such as:
+"That's okay, this is just an informational call"
+or
+"That's okay, you're like a lot of people I help every day."
+
+If unprofessional language occurred, that remains the biggest miss over missed call control.
+

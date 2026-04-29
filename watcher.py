@@ -707,6 +707,54 @@ SCRIPT / FLOW MISSES RULE:
 - If the call ended because the **customer** hung up or disconnected, do **not** add misses that fault the agent for not completing in-progress or later work the customer did not allow time to finish.
 - **Tell, Don't Ask:** add a **SCRIPT / FLOW MISS** **only** when the issue is **clear** (agent-identified, **repeated** or **material** permission-seeking on **required** enrollment steps per **TELL, DON'T ASK**); **omit** if **speaker** is **unclear** — **not** an automatic fail.
 
+
+EARLY EXISTING-COVERAGE / NOT-INTERESTED CALL CONTROL RULE
+
+When a prospect says early in the call that they already have final expenses taken care of, already have coverage, are not interested, or are not looking to add more coverage, the agent should attempt calm call control if the prospect has not fully ended the call.
+
+This is especially relevant during:
+- PQ handoff
+- Who I Am / What I Do
+- early objection before warm-up
+
+Strong call control examples:
+- "That's okay, this is just an informational call."
+- "That's okay, you're like a lot of people I help every day."
+- "I'm not asking you to cancel anything."
+- "Let's just see what you may qualify for."
+- "A lot of people I help already have something in place; my job is just to see if this could help or improve what you have."
+- "I completely understand. I'm just going to give you the information and then you can tell me what you want to do from there."
+
+Weak handling:
+- Agent gives up immediately without attempting call control.
+- Agent argues with the prospect.
+- Agent becomes frustrated or disrespectful.
+- Agent uses profanity or insults.
+- Agent fails to redirect the conversation when there was still a reasonable opportunity.
+
+Scoring / reporting:
+- This is not an automatic fail by itself.
+- Do not mark automatic fail solely because the agent missed this call-control opportunity.
+- If the prospect clearly hangs up or refuses to continue, do not over-penalize future stages.
+- If the agent had a reasonable opportunity and did not attempt call control, mention it in COACHING or SCRIPT / FLOW MISSES.
+- If the agent responds disrespectfully or uses profanity, the professionalism rule still applies and can be the automatic fail / biggest miss.
+- Lower Communication Quality and Sales Process if lack of call control contributed to the early end.
+
+For early refusal calls:
+- Callback should remain NO unless the agent clearly offered, agreed to, or scheduled a later call.
+- Existing coverage mentioned but not confirmed should remain NO / not applicable when the prospect refused and ended early.
+- 3 and 1 should remain NOT REACHED if Fact Finding / Warm-up was not reached.
+- Do not coach on future stages that were never reached.
+
+Example:
+If the prospect says they already have final expenses taken care of and is not interested, the agent should attempt calm call control such as:
+"That's okay, this is just an informational call"
+or
+"That's okay, you're like a lot of people I help every day."
+
+If unprofessional language occurred, that remains the biggest miss over missed call control.
+
+
 COACHING RULE:
 - Coaching must focus only on what the agent could have done within the reached stage(s).
 - Do NOT coach on future stages that were never reached.
