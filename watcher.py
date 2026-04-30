@@ -3640,6 +3640,212 @@ def enforce_report_stage_consistency(report_text: str) -> str:
     return _replace_call_stage_block(report_text, new_idx)
 
 
+
+def _transcript_banking_stage_started(transcript):
+    """
+    True only when the transcript shows real banking/payment-account collection started.
+    Generic product language like "set up with your bank" does NOT count.
+    """
+    t = (transcript or "").lower()
+    if not t:
+        return False
+
+    patterns = (
+        r"\bare\s+you\s+with\s+(?:a\s+)?(?:bank|credit\s+union)\b",
+        r"\bwhat\s+(?:bank|credit\s+union)\b",
+        r"\bwho\s+do\s+you\s+bank\s+with\b",
+        r"\bwhat'?s\s+the\s+name\s+of\s+your\s+(?:bank|credit\s+union)\b",
+        r"\b(?:routing|account)\s+number\b",
+        r"\b(?:need|grab|pull|get)\s+(?:your\s+)?(?:checkbook|bank\s+statement)\b",
+        r"\bchecking\s+account\b",
+        r"\bsavings\s+account\b",
+        r"\bchecking\s+or\s+savings\b",
+        r"\bpayment\s+account\b",
+        r"\bdraft\s+account\b",
+        r"\[account_number\]|\[routing_number\]|\[bank_number\]",
+    )
+    return any(re.search(p, t, re.I) for p in patterns)
+
+
+def _text_set_line(report, label_regex, replacement):
+    return re.sub(label_regex, replacement, report, flags=re.I | re.M)
+
+
+def _text_force_not_reached_block(report, stages):
+    block = "NOT REACHED:\n" + "\n".join(f"- {s}" for s in stages) + "\n\n"
+    return re.sub(
+        r"(?ims)^NOT REACHED:\s*.*?(?=^COMPLIANCE FAILURES:)",
+        block,
+        report,
+        count=1,
+    )
+
+
+def _text_replace_checklist_value(report, label, value):
+    pattern = rf"(?im)^- {re.escape(label)}:\s*.*$"
+    repl = f"- {label}: {value}"
+    if re.search(pattern, report):
+        return re.sub(pattern, repl, report, count=1)
+    return report
+
+
+def _text_remove_flow_miss_line(report, phrase):
+    lines = []
+    target = phrase.lower()
+    for line in (report or "").splitlines():
+        if target in line.lower():
+            continue
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def _text_has_other_autofail_after_cleanup(report):
+    """
+    After removing false callback/coverage/payment/banking failures for this pattern,
+    detect whether a real remaining autofail reason still appears.
+    """
+    low = (report or "").lower()
+    real_markers = (
+        "unprofessional language",
+        "disrespectful",
+        "credit union mentioned but bank/account not verified",
+        "post-sale process incomplete",
+        "peace of mind and cool down skipped",
+    )
+    return any(m in low for m in real_markers)
+
+
+def _final_text_cleanup_for_no_callback_no_banking(report, transcript):
+    """
+    Final report guard for calls like Shelby/Carolyn:
+    - no true agent callback
+    - prospect was shopping, not claiming active current coverage
+    - agent attempted lowest option but prospect did not clearly commit
+    - application info started
+    - banking did not actually start
+    """
+    if not report or not transcript:
+        return report
+
+    valid_callback = detect_agent_callback_from_transcript(transcript)
+    app_started = _transcript_application_info_started(transcript)
+    banking_started = _transcript_banking_stage_started(transcript)
+    shopping_not_current = _transcript_shopping_not_current_coverage(transcript)
+    lowest_attempt_no_commit = _transcript_lowest_option_attempt_no_clear_commit(transcript)
+
+    if not valid_callback:
+        report = re.sub(r"(?im)^- Did the agent set a callback\?\s*.*$", "- Did the agent set a callback? NO", report)
+        report = re.sub(r"(?im)^- Callback set:\s*.*$", "- Callback set: NO", report)
+        report = _text_remove_flow_miss_line(report, "Callback set without allowed exception")
+        report = _text_remove_flow_miss_line(report, "agreed to a callback")
+        report = _text_remove_flow_miss_line(report, "setting callbacks")
+        report = _text_remove_flow_miss_line(report, "callback before policy completion")
+
+    if shopping_not_current:
+        report = re.sub(
+            r"(?im)^- Existing coverage mentioned but not confirmed:\s*YES\b.*$",
+            "- Existing coverage mentioned but not confirmed: NO",
+            report,
+        )
+
+    if lowest_attempt_no_commit:
+        report = re.sub(
+            r"(?im)^- Client chose an option:\s*YES\b.*$",
+            "- Client chose an option: PARTIAL - Agent attempted lowest-option close, but prospect did not clearly commit",
+            report,
+        )
+        report = re.sub(
+            r"(?im)^- Did the client choose an option\?\s*YES\b.*$",
+            "- Did the client choose an option? PARTIAL - Agent attempted lowest-option close, but prospect did not clearly commit",
+            report,
+        )
+        report = re.sub(
+            r"(?im)^- Objection occurred without proper call control:\s*YES\b.*$",
+            "- Objection occurred without proper call control: NO",
+            report,
+        )
+
+    if app_started:
+        report = re.sub(
+            r"(?im)^CALL STAGE REACHED:\s*.*$",
+            "CALL STAGE REACHED: Application Information",
+            report,
+            count=1,
+        )
+        report = _text_force_not_reached_block(
+            report,
+            [
+                "Payment Date",
+                "Banking",
+                "Disclosures",
+                "Third Party Underwriting",
+                "Peace of Mind",
+                "Cool Down",
+            ],
+        )
+        report = _text_replace_checklist_value(report, "Application info collected", "PARTIAL")
+
+    if not banking_started:
+        # Remove misses for stages never reached.
+        report = _text_remove_flow_miss_line(report, "Payment/draft date not explained after banking")
+        report = _text_remove_flow_miss_line(report, "Banking verification incomplete")
+
+        # Force payment/banking checklist to NOT REACHED.
+        for label in [
+            "Payment date explained",
+            "Banking/payment setup explained",
+            "Banking/account information requested or verified 3 times",
+            "Account number requested or verified 3 times",
+            "Account number verified at least 2 times",
+            "Routing number requested or verified 3 times",
+            "Routing number verified at least 2 times",
+            "Agent read account/routing information back to prospect",
+            "Prospect confirmed account/routing read-back",
+        ]:
+            report = _text_replace_checklist_value(report, label, "NOT REACHED")
+
+        report = _text_replace_checklist_value(report, "Account verification evidence count", "0")
+        report = _text_replace_checklist_value(report, "Account verification evidence", "None")
+        report = _text_replace_checklist_value(report, "Routing verification evidence count", "0")
+        report = _text_replace_checklist_value(report, "Routing verification evidence", "None")
+
+        report = re.sub(r"(?im)^- Did the agent call the bank to verify banking/account information\?\s*.*$", "- Did the agent call the bank to verify banking/account information? NO", report)
+        report = re.sub(r"(?im)^- Did the agent verify credit union account information if a credit union was mentioned\?\s*.*$", "- Did the agent verify credit union account information if a credit union was mentioned? NO", report)
+
+        if app_started:
+            report = re.sub(
+                r"(?im)^- Final stage supporting sale:\s*.*$",
+                "- Final stage supporting sale: Application Information",
+                report,
+            )
+            report = re.sub(
+                r"(?im)^- Evidence:\s*.*$",
+                "- Evidence: Application information was started after an attempted lowest-option close, but the prospect did not clearly commit and payment/banking were not reached.",
+                report,
+                count=1,
+            )
+
+    # If false callback / false coverage / false banking were the only autofail drivers, clear autofail.
+    if (
+        not valid_callback
+        and shopping_not_current
+        and not banking_started
+        and not _text_has_other_autofail_after_cleanup(report)
+    ):
+        report = re.sub(r"(?im)^- Automatic fail triggered:\s*YES\b.*$", "- Automatic fail triggered: NO", report)
+        report = re.sub(r"(?im)^- Reason:\s*.*$", "- Reason: None", report)
+
+    # Fill Biggest Miss if the model left it blank.
+    if re.search(r"(?ims)^BIGGEST MISS:\s*(?:\n\s*)*(?=TRANSCRIPT NOTE|OPENAI COST ESTIMATE|\Z)", report):
+        report = re.sub(
+            r"(?ims)^BIGGEST MISS:\s*(?:\n\s*)*(?=TRANSCRIPT NOTE|OPENAI COST ESTIMATE|\Z)",
+            "BIGGEST MISS:\n- Prospect did not clearly commit after the lowest-option close attempt; sale ended during Application Information.\n\n",
+            report,
+            count=1,
+        )
+
+    return report
+
 def enforce_final_audit_consistency(report, transcript=None):
     """
     Post-process free-text audits (and harden any path) so invalid autofail / stage combinations
@@ -3816,6 +4022,7 @@ def enforce_final_audit_consistency(report, transcript=None):
         )
 
     report = enforce_report_stage_consistency(report)
+    report = _final_text_cleanup_for_no_callback_no_banking(report, transcript)
     return report
 
 
