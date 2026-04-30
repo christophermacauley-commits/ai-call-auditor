@@ -4290,6 +4290,143 @@ def _final_cleanup_credit_union_and_sold_summary(report, transcript):
 
     return report
 
+
+def _transcript_existing_coverage_bank_lookup_context(transcript):
+    """
+    True when bank/bank-statement language is about identifying who drafts
+    an EXISTING insurance policy, not setting up banking for the new policy.
+    """
+    t = (transcript or "").lower()
+    if not t:
+        return False
+
+    return bool(re.search(
+        r"\bi\s+have\s+insurance\b.*?"
+        r"(?:who'?s\s+taking\s+that\s+money\s+out|bank\s+statement|who'?s\s+that\s+through)|"
+        r"\bdo\s+you\s+(?:happen\s+to\s+have|have).*?(?:final\s+expense|life\s+insurance|plan).*?"
+        r"(?:who'?s\s+that\s+through|who'?s\s+taking\s+that\s+money\s+out|bank\s+statement)|"
+        r"\bwho'?s\s+taking\s+that\s+money\s+out\s+every\s+month\b|"
+        r"\bbank\s+statement\b.{0,180}\bwho'?s\s+taking\s+that\s+money\s+out\b",
+        t,
+        re.I | re.S,
+    ))
+
+
+def _transcript_only_good_standing_account_question(transcript):
+    """
+    The good-standing checking/savings / Direct Express question is before Needs.
+    It is NOT the Banking stage by itself.
+    """
+    t = (transcript or "").lower()
+    if not t:
+        return False
+
+    good_standing = bool(re.search(
+        r"\bchecking(?:s)?\s+or\s+(?:your\s+)?savings\s+account\s+(?:good[-\s]?standing|in\s+good\s+standing)\b|"
+        r"\bchecking\s+or\s+savings\s+account\b.{0,140}\bgood\s+standing\b|"
+        r"\bis\s+that\s+an\s+account\s+that\s+you\s+set\s+up\b|"
+        r"\bgovernment[-\s]?issued\s+direct\s+express\s+card\b|"
+        r"\bdirect\s+express\s+card\b",
+        t,
+        re.I,
+    ))
+
+    real_new_policy_banking = bool(re.search(
+        r"\bnow,\s+since\s+we\s+work\s+with\s+all\s+the\s+banks\s+directly\b|"
+        r"\bare\s+you\s+with\s+(?:a\s+)?(?:bank|credit\s+union)\b|"
+        r"\bwhat\s+is\s+the\s+name\s+of\s+that\s+(?:bank|credit\s+union)\b|"
+        r"\bwho\s+do\s+you\s+bank\s+with\b|"
+        r"\brouting\s+number\b|"
+        r"\baccount\s+number\b|"
+        r"\bplease\s+grab\s+(?:your\s+)?(?:checkbook|check\s*book|bank\s+statement)\b|"
+        r"\bslowly\s+read\s+me\s+all\s+the\s+numbers\b|"
+        r"\[account_number\]|\[routing_number\]|\[bank_number\]",
+        t,
+        re.I,
+    ))
+
+    return good_standing and not real_new_policy_banking
+
+
+def _final_cleanup_false_banking_from_existing_coverage_lookup(report, transcript):
+    """
+    Correct calls where early good-standing/bank-statement language was used before Needs
+    or to identify an existing carrier, not to set up new policy banking.
+    """
+    if not report or not transcript:
+        return report
+
+    false_banking_context = (
+        _transcript_only_good_standing_account_question(transcript)
+        or _transcript_existing_coverage_bank_lookup_context(transcript)
+    )
+    real_banking = _transcript_banking_stage_started(transcript)
+
+    if not false_banking_context or real_banking:
+        return report
+
+    report = re.sub(
+        r"(?im)^CALL STAGE REACHED:\s*Banking\s*$",
+        "CALL STAGE REACHED: Need",
+        report,
+        count=1,
+    )
+
+    report = re.sub(
+        r"(?ims)^NOT REACHED:\s*.*?(?=^COMPLIANCE FAILURES:)",
+        "NOT REACHED:\n- Features / Benefits\n- Change Up\n- Pre-Close\n- Quotes\n- Close\n- Application Information\n- Payment Date\n- Banking\n- Disclosures\n- Third Party Underwriting\n- Peace of Mind\n- Cool Down\n\n",
+        report,
+        count=1,
+    )
+
+    for label in [
+        "Payment date explained",
+        "Banking/payment setup explained",
+        "Banking/account information requested or verified 3 times",
+        "Account number requested or verified 3 times",
+        "Account number verified at least 2 times",
+        "Routing number requested or verified 3 times",
+        "Routing number verified at least 2 times",
+        "Agent read account/routing information back to prospect",
+        "Prospect confirmed account/routing read-back",
+    ]:
+        report = _text_replace_checklist_value(report, label, "NOT REACHED")
+
+    report = _text_replace_checklist_value(report, "Account verification evidence count", "0")
+    report = _text_replace_checklist_value(report, "Account verification evidence", "None")
+    report = _text_replace_checklist_value(report, "Routing verification evidence count", "0")
+    report = _text_replace_checklist_value(report, "Routing verification evidence", "None")
+
+    report = re.sub(
+        r"(?im)^- Credit union mentioned but bank/account not verified:\s*YES\b.*$",
+        "- Credit union mentioned but bank/account not verified: NO",
+        report,
+    )
+
+    if re.search(r"(?im)^- Existing coverage mentioned but not confirmed:\s*YES\b", report):
+        report = re.sub(
+            r"(?im)^- Automatic fail triggered:\s*(?:NO|YES)\b.*$",
+            "- Automatic fail triggered: YES",
+            report,
+        )
+        if re.search(r"(?im)^- Reason:\s*.*$", report):
+            report = re.sub(
+                r"(?im)^- Reason:\s*.*$",
+                "- Reason: Existing coverage mentioned but not confirmed",
+                report,
+            )
+        else:
+            report = re.sub(
+                r"(?im)^- Automatic fail triggered:\s*YES\b.*$",
+                "- Automatic fail triggered: YES\n- Reason: Existing coverage mentioned but not confirmed",
+                report,
+                count=1,
+            )
+        report = re.sub(r"(?im)^PASS:\s*(?:YES|AT RISK)\s*$", "PASS: NO", report, count=1)
+        report = re.sub(r"(?im)^RISK:\s*(?:LOW|MEDIUM|HIGH)\s*$", "RISK: HIGH", report, count=1)
+
+    return report
+
 def enforce_final_audit_consistency(report, transcript=None):
     """
     Post-process free-text audits (and harden any path) so invalid autofail / stage combinations
@@ -4472,6 +4609,7 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _final_cleanup_pass_and_bottom_paragraph_wording(report, transcript)
     report = _final_cleanup_sold_post_app_stage(report, transcript)
     report = _final_cleanup_credit_union_and_sold_summary(report, transcript)
+    report = _final_cleanup_false_banking_from_existing_coverage_lookup(report, transcript)
     return report
 
 
