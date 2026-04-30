@@ -255,6 +255,72 @@ def get_call(call_id):
     return row
 
 
+
+def load_agent_map():
+    """Load Vicidial agent number -> agent name mappings from training/agent_map.txt."""
+    mapping = {}
+    map_path = os.path.join("training", "agent_map.txt")
+    if not os.path.exists(map_path):
+        return mapping
+
+    try:
+        with open(map_path, "r", encoding="utf-8") as f:
+            for raw in f:
+                line = raw.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                number, name = line.split("=", 1)
+                number = number.strip()
+                name = name.strip()
+                if number and name:
+                    mapping[number] = name
+    except Exception as e:
+        print(f"Could not load agent map: {e}", flush=True)
+
+    return mapping
+
+
+def detect_agent_number_from_call_name(call_name):
+    """
+    Detect Vicidial agent number from filenames like:
+    PJEK_AZ_20260428-120331_175_4802331452-all.mp3
+
+    The agent number is the numeric field immediately after the timestamp.
+    """
+    name = os.path.basename(str(call_name or ""))
+
+    match = re.search(r"\d{8}-\d{6}_(\d{2,6})(?:_|-|$)", name)
+    if match:
+        return match.group(1)
+
+    # Fallback: split on underscores and look for the token after a timestamp token.
+    parts = name.split("_")
+    for idx, part in enumerate(parts[:-1]):
+        if re.fullmatch(r"\d{8}-\d{6}", part):
+            nxt = parts[idx + 1]
+            if re.fullmatch(r"\d{2,6}", nxt):
+                return nxt
+
+    return ""
+
+
+def detect_agent_name_from_call_name(call_name):
+    agent_number = detect_agent_number_from_call_name(call_name)
+    if not agent_number:
+        return "Unknown"
+
+    agent_map = load_agent_map()
+    return agent_map.get(agent_number, f"Unknown {agent_number}")
+
+
+def build_agent_filter_options_html(calls):
+    names = sorted({detect_agent_name_from_call_name(c[1]) for c in calls})
+    options = ['<option value="all">All agents</option>']
+    for name in names:
+        safe = escape(name)
+        options.append(f'<option value="{safe}">{safe}</option>')
+    return "\n".join(options)
+
 def get_saved_transcript(call_name):
     transcript_path = os.path.join(TRANSCRIPTS_FOLDER, f"{call_name}.txt")
     if not os.path.exists(transcript_path):
@@ -1215,6 +1281,9 @@ def build_completed_calls_table_rows_html(calls):
         stage_raw = parse_stage_from_report(report_src)
         stage_cell = escape(stage_raw) if stage_raw else "—"
         name_esc = escape(c[1])
+        agent_name = detect_agent_name_from_call_name(c[1])
+        agent_cell = escape(agent_name)
+        agent_attr = escape(agent_name)
         ts_cell = escape(str(c[6])) if c[6] else "—"
         score_val = c[4] if c[4] is not None else "—"
         score_attr = "" if c[4] is None else str(int(c[4]))
@@ -1223,8 +1292,9 @@ def build_completed_calls_table_rows_html(calls):
         audit_badge = format_audit_badge_html(report_src)
         rows.append(
             f"""
-            <tr class="call-filter-row" data-sale="{sale_data}" data-pass="{pass_data}" data-audit="{audit_attr}" data-audit-rank="{audit_rank}" data-score="{score_attr}" data-sort-date="{sort_date}" data-call-id="{cid}">
+            <tr class="call-filter-row" data-agent="{agent_attr}" data-sale="{sale_data}" data-pass="{pass_data}" data-audit="{audit_attr}" data-audit-rank="{audit_rank}" data-score="{score_attr}" data-sort-date="{sort_date}" data-call-id="{cid}">
                 <td class="call-name"><a href="/call/{cid}">{name_esc}</a></td>
+                <td>{agent_cell}</td>
                 <td class="score-cell"><span class="badge badge-score">{score_val}</span></td>
                 <td>{status_html}</td>
                 <td>{audit_badge}</td>
@@ -2286,10 +2356,16 @@ def dashboard():
         """
     else:
         rows_html = build_completed_calls_table_rows_html(calls)
+        agent_filter_options_html = build_agent_filter_options_html(calls)
         n_calls = len(calls)
         content += f"""
         <p class="filter-count" id="filter-count" aria-live="polite"></p>
         <div class="card filter-bar" id="completed-filters">
+            <label>Agent
+                <select id="filter-agent" aria-label="Filter by agent">
+                    {agent_filter_options_html}
+                </select>
+            </label>
             <label>Sold status
                 <select id="filter-sold-status" aria-label="Filter by sold status or audit pass fail">
                     <option value="all">All</option>
@@ -2333,6 +2409,7 @@ def dashboard():
                 <thead>
                     <tr>
                         <th>Call</th>
+                        <th>Agent</th>
                         <th>Score</th>
                         <th>Sold status</th>
                         <th>Audit</th>
@@ -2401,11 +2478,13 @@ def dashboard():
                 rows.forEach(function(tr) {{ tbody.appendChild(tr); }});
             }}
             function applyFilters() {{
+                var agentF = document.getElementById("filter-agent");
                 var statusF = document.getElementById("filter-sold-status");
                 var auditF = document.getElementById("filter-audit");
                 var scoreF = document.getElementById("filter-score");
                 var countEl = document.getElementById("filter-count");
-                if (!statusF || !auditF || !scoreF) return;
+                if (!agentF || !statusF || !auditF || !scoreF) return;
+                var agentV = agentF.value;
                 var pv = statusF.value;
                 var av = auditF.value;
                 var sv = scoreF.value;
@@ -2413,8 +2492,10 @@ def dashboard():
                 var visible = 0;
                 document.querySelectorAll(".call-filter-row").forEach(function(tr) {{
                     var ok = true;
+                    var agent = tr.getAttribute("data-agent") || "Unknown";
                     var sale = tr.getAttribute("data-sale") || "none";
                     var au = tr.getAttribute("data-audit") || "unknown";
+                    if (agentV !== "all" && agent !== agentV) ok = false;
                     if (pv === "sold" && sale !== "yes") ok = false;
                     if (pv === "notsold" && sale !== "no") ok = false;
                     if (pv === "unclear" && sale !== "unclear") ok = false;
@@ -2451,7 +2532,7 @@ def dashboard():
                 sortRows();
                 applyFilters();
             }}
-            ["filter-sold-status", "filter-audit", "filter-score", "sort-by"].forEach(function(id) {{
+            ["filter-agent", "filter-sold-status", "filter-audit", "filter-score", "sort-by"].forEach(function(id) {{
                 var el = document.getElementById(id);
                 if (el) el.addEventListener("change", refresh);
             }});
