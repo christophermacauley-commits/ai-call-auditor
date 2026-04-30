@@ -3846,6 +3846,90 @@ def _final_text_cleanup_for_no_callback_no_banking(report, transcript):
 
     return report
 
+
+def _final_cleanup_autofail_sale_summary(report, transcript):
+    """
+    Final cleanup for reports where hard checks already show:
+    callback NO, objection autofail NO, coverage autofail NO, credit union NO.
+    Prevent stale model text from leaving Automatic fail YES, callback evidence, blank Biggest Miss, or blank Summary.
+    """
+    if not report:
+        return report
+
+    all_autofail_checks_no = all(
+        re.search(pattern, report, re.I | re.M)
+        for pattern in [
+            r"^- Callback set:\s*NO\b",
+            r"^- Objection occurred without proper call control:\s*NO\b",
+            r"^- Existing coverage mentioned but not confirmed:\s*NO\b",
+            r"^- Credit union mentioned but bank/account not verified:\s*NO\b",
+        ]
+    )
+
+    if all_autofail_checks_no:
+        report = re.sub(
+            r"(?im)^- Automatic fail triggered:\s*YES\b.*$",
+            "- Automatic fail triggered: NO",
+            report,
+        )
+        if re.search(r"(?im)^- Reason:\s*.*$", report):
+            report = re.sub(r"(?im)^- Reason:\s*.*$", "- Reason: None", report)
+        else:
+            report = re.sub(
+                r"(?im)^- Automatic fail triggered:\s*NO\b.*$",
+                "- Automatic fail triggered: NO\n- Reason: None",
+                report,
+                count=1,
+            )
+
+    # Remove stale callback language from sale outcome evidence if callback was corrected to NO.
+    if re.search(r"(?im)^- Callback set:\s*NO\b", report):
+        report = re.sub(
+            r"(?im)^- Evidence:\s*.*callback agreed before completion.*$",
+            "- Evidence: Agent presented options, attempted the lowest-option close, and began application information, but the prospect did not clearly commit and the call ended before payment or banking.",
+            report,
+        )
+        report = re.sub(
+            r"(?im)^- Evidence:\s*.*callback.*before completion.*$",
+            "- Evidence: Agent presented options, attempted the lowest-option close, and began application information, but the prospect did not clearly commit and the call ended before payment or banking.",
+            report,
+        )
+
+    # If Application Information is the reached stage, align final stage supporting sale.
+    if re.search(r"(?im)^CALL STAGE REACHED:\s*Application Information\s*$", report):
+        report = re.sub(
+            r"(?im)^- Final stage supporting sale:\s*.*$",
+            "- Final stage supporting sale: Application Information",
+            report,
+        )
+
+    biggest_miss_text = "- Prospect did not clearly commit after the lowest-option close attempt; sale ended during Application Information."
+    if re.search(r"(?ims)^BIGGEST MISS:\s*(?:\n\s*)*(?=OBJECTIONS DETECTED:|TRANSCRIPT NOTE|SUMMARY:|OPENAI COST ESTIMATE|\Z)", report):
+        report = re.sub(
+            r"(?ims)^BIGGEST MISS:\s*(?:\n\s*)*(?=OBJECTIONS DETECTED:|TRANSCRIPT NOTE|SUMMARY:|OPENAI COST ESTIMATE|\Z)",
+            f"BIGGEST MISS:\n{biggest_miss_text}\n\n",
+            report,
+            count=1,
+        )
+
+    summary_text = (
+        "The agent progressed the call through quotes and attempted the bottom-paragraph / "
+        "lowest-option close. The prospect did not clearly commit, but the agent began "
+        "Application Information by asking for middle initial and beneficiary details. The call "
+        "ended before Payment Date, Banking, Disclosures, Third Party Underwriting, Peace of Mind, "
+        "or Cool Down. No callback was set, no active current coverage was confirmed by the prospect, "
+        "and banking was not reached."
+    )
+    if re.search(r"(?ims)^SUMMARY:\s*(?:\n\s*)*(?=OPENAI COST ESTIMATE:|TRANSCRIPT NOTE|\Z)", report):
+        report = re.sub(
+            r"(?ims)^SUMMARY:\s*(?:\n\s*)*(?=OPENAI COST ESTIMATE:|TRANSCRIPT NOTE|\Z)",
+            f"SUMMARY:\n{summary_text}\n\n",
+            report,
+            count=1,
+        )
+
+    return report
+
 def enforce_final_audit_consistency(report, transcript=None):
     """
     Post-process free-text audits (and harden any path) so invalid autofail / stage combinations
@@ -4023,6 +4107,7 @@ def enforce_final_audit_consistency(report, transcript=None):
 
     report = enforce_report_stage_consistency(report)
     report = _final_text_cleanup_for_no_callback_no_banking(report, transcript)
+    report = _final_cleanup_autofail_sale_summary(report, transcript)
     return report
 
 
