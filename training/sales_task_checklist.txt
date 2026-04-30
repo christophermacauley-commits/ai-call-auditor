@@ -202,3 +202,39 @@ or
 
 If unprofessional language occurred, that remains the biggest miss over missed call control.
 
+
+LOWEST-OPTION / BOTTOM-PARAGRAPH CLOSE RULE
+
+When a prospect resists, wants to think about it, wants to talk to family, is busy, or does not clearly choose an option, the agent may use the bottom-paragraph / lowest-option close.
+
+This means the agent can recommend or attempt to move forward with the lowest option:
+- "Let's go with the lowest option."
+- "Let's make it simple and go with the most affordable one."
+- "Go ahead and circle the smallest amount."
+- "You're not paying anything today."
+- "The most important thing is getting the protection in place."
+
+Important:
+- This is valid call control and should not be penalized just because it is firm or persistent.
+- Agent attempted to select the lowest option does NOT automatically mean the client chose an option.
+- Mark Client chose an option: YES only when the prospect clearly agrees, chooses, accepts, or proceeds without continued refusal.
+- If the agent picks/recommends the lowest option but the prospect keeps saying they are not ready, need to talk to others, do not want to commit, or need to go, then mark Client chose an option: NO or PARTIAL if available, and explain that the agent attempted the lowest-option close but the prospect did not clearly commit.
+- Do not call prospect-only "talk later / maybe next month / I need to go / I need to talk to people" a callback unless the agent clearly agrees, schedules, or commits to a later call.
+
+AGGRESSIVE CALL CONTROL VS IMPROPER OBJECTION HANDLING
+
+Agents are expected to keep pushing toward a buying decision unless a valid release condition applies.
+
+Do not mark objection handling failed merely because the agent is firm, persistent, challenges delay, asks what will change later, recommends the lowest option, or ties back to family/final expenses.
+
+Only mark objection handling failed when:
+- the agent gives up without attempting call control,
+- the agent clearly agrees to callback without an allowed exception,
+- the agent becomes disrespectful, insulting, hostile, or unprofessional,
+- the agent loses control by arguing instead of guiding,
+- affordability is truly the only factor preventing the sale,
+- or current coverage cannot be beaten in price/value and the prospect does not want to add more coverage.
+
+Release conditions:
+The agent should only let the prospect off the phone when affordability is truly the only factor keeping them from buying, or when the prospect has current coverage, the agent cannot beat it in price/value, and the prospect does not want to add more coverage.
+

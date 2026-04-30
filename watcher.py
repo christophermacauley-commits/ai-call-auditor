@@ -1912,24 +1912,26 @@ def detect_agent_callback_from_transcript(transcript):
     tl = str(transcript).lower()
     tl = tl.replace("\u2019", "'").replace("\u2018", "'")
 
+    # Conservative: only agent-owned callback / follow-up commitments.
+    # Do NOT match loose prospect-only phrases like "we can talk in a month",
+    # "I need to call someone", "I have calls coming in", or bare "call you back"
+    # unless the wording clearly shows the agent is offering/agrees/schedules.
     patterns = (
-        r"i'?ll\s+call\s+(?:you\s+)?back\b",
-        r"i\s+will\s+call\s+(?:you\s+)?back\b",
-        r"i'?ll\s+call\s+back\b",
-        r"\bcall\s+you\s+back\b",
-        r"\bgive\s+you\s+a\s+call\s+back\b",
-        r"\bcall\s+you\s+later\b",
-        r"i\s+can\s+call\s+(?:you\s+)?later\b",
-        r"we\s+can\s+finish\s+this\s+later\b",
-        r"let'?s\s+schedule\s+another\s+time\b",
-        r"when\s+would\s+be\s+(?:a\s+)?better\s+time\b",
-        r"we'?ll\s+call\s+(?:you\s+)?back\b",
-        r"let\s+me\s+call\s+(?:you\s+)?(?:back|later)\b",
-        r"let\s+me\s+give\s+you\s+a\s+call\s+back\b",
-        r"ring\s+you\s+(?:back|later|at)\b",
-        r"schedule\s+(?:a\s+)?(?:time|call)\s+to\s+(?:call|connect|finish)\b",
-        r"pick\s+up\s+(?:where\s+we\s+left\s+off\s+)?(?:tomorrow|later|another\s+day)\b",
-        r"continue\s+(?:this\s+)?(?:tomorrow|later|another\s+time)\b",
+        r"\bi'?ll\s+call\s+(?:you\s+)?back\b",
+        r"\bi\s+will\s+call\s+(?:you\s+)?back\b",
+        r"\bi'?ll\s+give\s+you\s+a\s+call\s+back\b",
+        r"\bi\s+will\s+give\s+you\s+a\s+call\s+back\b",
+        r"\bi\s+can\s+call\s+(?:you\s+)?(?:back|later)\b",
+        r"\blet\s+me\s+call\s+(?:you\s+)?(?:back|later)\b",
+        r"\blet\s+me\s+give\s+you\s+a\s+call\s+back\b",
+        r"\bwe'?ll\s+call\s+(?:you\s+)?back\b",
+        r"\bwe\s+will\s+call\s+(?:you\s+)?back\b",
+        r"\bwe\s+can\s+finish\s+this\s+later\b",
+        r"\blet'?s\s+schedule\s+(?:another\s+)?(?:time|call)\b",
+        r"\bwhen\s+would\s+be\s+(?:a\s+)?better\s+time\s+for\s+(?:me|us)\s+to\s+call\b",
+        r"\bschedule\s+(?:a\s+)?(?:time|call)\s+to\s+(?:call|connect|finish)\b",
+        r"\bwe\s+can\s+pick\s+up\s+(?:where\s+we\s+left\s+off\s+)?(?:tomorrow|later|another\s+day)\b",
+        r"\bwe\s+can\s+continue\s+(?:this\s+)?(?:tomorrow|later|another\s+time)\b",
     )
 
     neg_before = re.compile(
