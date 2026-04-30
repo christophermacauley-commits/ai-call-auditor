@@ -1610,6 +1610,8 @@ body {
 
 .data-table .actions {
     white-space: nowrap;
+    min-width: 170px;
+    width: 170px;
     text-align: right;
 }
 
