@@ -4174,6 +4174,122 @@ def _final_cleanup_sold_post_app_stage(report, transcript):
 
     return report
 
+
+def _transcript_credit_union_mentioned(transcript):
+    t = (transcript or "").lower()
+    return bool(re.search(r"\bcredit\s+union\b|\blandmark\s+credit\s+union\b", t, re.I))
+
+
+def _transcript_credit_union_verified_for_ach(transcript):
+    """
+    True only when credit union ACH/account details were clearly verified beyond the prospect
+    reading numbers. Credit unions may require suffixes/extra digits/member-number conversion.
+    """
+    t = (transcript or "").lower()
+    if not t:
+        return False
+
+    return bool(re.search(
+        r"\b(?:called|call|contacted|verified\s+with|confirmed\s+with|checked\s+with)\s+(?:the\s+)?credit\s+union\b|"
+        r"\bcredit\s+union\s+(?:confirmed|verified)\b|"
+        r"\bach[-\s]?compatible\s+account\b|"
+        r"\bach\s+(?:account|draft)\s+(?:number|format)\s+(?:confirmed|verified)\b|"
+        r"\bmember\s+number\b.{0,120}\b(?:suffix|extra\s+digits|ach)\b",
+        t,
+        re.I,
+    ))
+
+
+def _final_cleanup_credit_union_and_sold_summary(report, transcript):
+    """
+    If credit union is mentioned and banking was reached, require clear ACH/account verification.
+    If missing on a sold policy, mark AT RISK with a clear reason.
+    Also replace stale non-sold/no-banking summary text on sold calls.
+    """
+    if not report or not transcript:
+        return report
+
+    credit_union = _transcript_credit_union_mentioned(transcript)
+    banking_started = _transcript_banking_stage_started(transcript)
+    cu_verified = _transcript_credit_union_verified_for_ach(transcript)
+    sold_yes = bool(re.search(r"(?im)^- Policy sold:\s*YES\b", report)) or bool(
+        re.search(r"(?im)^- Was the policy sold\?\s*YES\b", report)
+    )
+    pom_reached = bool(re.search(r"(?im)^CALL STAGE REACHED:\s*Peace of Mind\s*$", report))
+
+    if credit_union and banking_started and not cu_verified:
+        report = re.sub(
+            r"(?im)^- Credit union mentioned but bank/account not verified:\s*(?:NO|UNCLEAR|YES)\b.*$",
+            "- Credit union mentioned but bank/account not verified: YES",
+            report,
+        )
+        report = re.sub(
+            r"(?im)^- Did the agent verify credit union account information if a credit union was mentioned\?\s*(?:NO|UNCLEAR|YES)\b.*$",
+            "- Did the agent verify credit union account information if a credit union was mentioned? NO",
+            report,
+        )
+        report = re.sub(
+            r"(?im)^- Automatic fail triggered:\s*(?:NO|YES)\b.*$",
+            "- Automatic fail triggered: YES",
+            report,
+        )
+
+        reason = "Credit union account information not verified for ACH draft accuracy"
+        if re.search(r"(?im)^- Reason:\s*.*$", report):
+            report = re.sub(r"(?im)^- Reason:\s*.*$", f"- Reason: {reason}", report)
+        else:
+            report = re.sub(
+                r"(?im)^- Automatic fail triggered:\s*YES\b.*$",
+                f"- Automatic fail triggered: YES\n- Reason: {reason}",
+                report,
+                count=1,
+            )
+
+        if sold_yes:
+            report = re.sub(r"(?im)^PASS:\s*YES\s*$", "PASS: AT RISK", report, count=1)
+            report = re.sub(r"(?im)^PASS:\s*NO\s*$", "PASS: AT RISK", report, count=1)
+            report = re.sub(r"(?im)^PASS:\s*AT RISK\s*$", "PASS: AT RISK", report, count=1)
+        else:
+            report = re.sub(r"(?im)^PASS:\s*YES\s*$", "PASS: NO", report, count=1)
+            report = re.sub(r"(?im)^PASS:\s*AT RISK\s*$", "PASS: NO", report, count=1)
+
+        report = re.sub(r"(?im)^RISK:\s*(?:LOW|MEDIUM|HIGH)\s*$", "RISK: HIGH", report, count=1)
+
+    if sold_yes and pom_reached:
+        if credit_union and banking_started and not cu_verified:
+            summary = (
+                "The agent progressed the call through the full sale process, including quotes, "
+                "bottom-paragraph / lowest-option close, Application Information, Payment Date, "
+                "Banking, required disclosures, voice signature, and Peace of Mind. The policy was "
+                "sold and no callback was set. The sale is AT RISK because the prospect used a credit "
+                "union and the ACH-compatible account information was not clearly verified with the "
+                "credit union; credit unions can require extra digits, suffixes, or ACH-specific account "
+                "formatting, and failing to verify this can prevent the policy from placing."
+            )
+        else:
+            summary = (
+                "The agent progressed the call through the full sale process, including quotes, "
+                "Application Information, Payment Date, Banking, required disclosures, voice signature, "
+                "and Peace of Mind. The policy was sold and no callback was set."
+            )
+
+        report = re.sub(
+            r"(?ims)^SUMMARY:\s*.*?(?=^OPENAI COST ESTIMATE:|\Z)",
+            f"SUMMARY:\n{summary}\n\n",
+            report,
+            count=1,
+        )
+
+    if credit_union and banking_started and not cu_verified:
+        report = re.sub(
+            r"(?ims)^BIGGEST MISS:\s*.*?(?=^OBJECTIONS DETECTED:|^TRANSCRIPT NOTE|^SUMMARY:|^OPENAI COST ESTIMATE:|\Z)",
+            "BIGGEST MISS:\n- Credit union account information was not clearly verified for ACH draft accuracy after the sale was completed.\n\n",
+            report,
+            count=1,
+        )
+
+    return report
+
 def enforce_final_audit_consistency(report, transcript=None):
     """
     Post-process free-text audits (and harden any path) so invalid autofail / stage combinations
@@ -4355,6 +4471,7 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _final_cleanup_no_callback_coaching_and_option(report, transcript)
     report = _final_cleanup_pass_and_bottom_paragraph_wording(report, transcript)
     report = _final_cleanup_sold_post_app_stage(report, transcript)
+    report = _final_cleanup_credit_union_and_sold_summary(report, transcript)
     return report
 
 
