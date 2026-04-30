@@ -3652,16 +3652,21 @@ def _transcript_banking_stage_started(transcript):
 
     patterns = (
         r"\bare\s+you\s+with\s+(?:a\s+)?(?:bank|credit\s+union)\b",
+        r"\bwith\s+(?:a\s+)?credit\s+union\b",
         r"\bwhat\s+(?:bank|credit\s+union)\b",
         r"\bwho\s+do\s+you\s+bank\s+with\b",
         r"\bwhat'?s\s+the\s+name\s+of\s+your\s+(?:bank|credit\s+union)\b",
-        r"\b(?:routing|account)\s+number\b",
-        r"\b(?:need|grab|pull|get)\s+(?:your\s+)?(?:checkbook|bank\s+statement)\b",
+        r"\bwhat\s+is\s+the\s+name\s+of\s+that\s+credit\s+union\b",
+        r"\b(?:routing|account|bank)\s+number\b",
+        r"\b(?:need|grab|pull|get|please\s+grab)\s+(?:your\s+)?(?:checkbook|check\s*book|bank\s+statement|textbook)\b",
+        r"\bbottom\s+of\s+your\s+(?:check|checkbook|text)\b",
+        r"\bslowly\s+read\s+me\s+all\s+the\s+numbers\b",
         r"\bchecking\s+account\b",
         r"\bsavings\s+account\b",
         r"\bchecking\s+or\s+savings\b",
         r"\bpayment\s+account\b",
         r"\bdraft\s+account\b",
+        r"\blandmark\s+credit\s+union\b",
         r"\[account_number\]|\[routing_number\]|\[bank_number\]",
     )
     return any(re.search(p, t, re.I) for p in patterns)
@@ -4031,6 +4036,144 @@ def _final_cleanup_pass_and_bottom_paragraph_wording(report, transcript):
 
     return report
 
+
+def _transcript_disclosures_started(transcript):
+    t = (transcript or "").lower()
+    return bool(re.search(
+        r"\bi\s+have\s+(?:a\s+)?few\s+disclosures\b|"
+        r"\bfair\s+credit\s+reporting\s+act\b|"
+        r"\bstatement\s+of\s+understanding\b|"
+        r"\bmib\s+and\s+the\s+pharmacy\b|"
+        r"\brequired\s+disclosures\b",
+        t,
+        re.I,
+    ))
+
+
+def _transcript_voice_signature_started(transcript):
+    t = (transcript or "").lower()
+    return bool(re.search(
+        r"\bvoice\s+(?:recording|signature)\b|"
+        r"\bthis\s+call\s+is\s+now\s+being\s+recorded\b|"
+        r"\bfinal\s+step\s+to\s+completing\s+your\s+application\b|"
+        r"\bplease\s+state\s+your\s+full\s+name\s+and\s+today'?s\s+date\b|"
+        r"\bdo\s+you\s+understand\s+that\s+you'?ve\s+applied\b|"
+        r"\bdo\s+you\s+agree\s+.*accepting\s+your\s+signature\s+electronically\b|"
+        r"\bsubmitting\s+your\s+application\s+to\s+the\s+home\s+office\b",
+        t,
+        re.I,
+    ))
+
+
+def _transcript_peace_of_mind_after_sale(transcript):
+    t = (transcript or "").lower()
+    if not _transcript_voice_signature_started(transcript):
+        return False
+    return bool(re.search(
+        r"\bwelcome\s+letter\b|"
+        r"\bpolicy\s+(?:comes|will\\s+come|in\\s+about|within)\b|"
+        r"\bwhen\\s+you\\s+get\\s+that\\s+policy\b|"
+        r"\bwalk\\s+through\\s+every\\s+page\b|"
+        r"\bfeel\\s+good\\s+about\\s+the\\s+decision\b|"
+        r"\bglad\\s+about\\s+the\\s+decision\\s+today\b|"
+        r"\bput\\s+that\\s+coverage\\s+in\\s+place\b|"
+        r"\bcoverage\\s+in\\s+place\\s+for\\s+your\\s+daughter\b",
+        t,
+        re.I,
+    ))
+
+
+def _final_cleanup_sold_post_app_stage(report, transcript):
+    """
+    Sold-call guard:
+    If transcript clearly reached payment/banking/disclosures/voice signature,
+    do not let the no-banking/Application-only cleanup from short non-sold calls overcorrect the report.
+    """
+    if not report or not transcript:
+        return report
+
+    banking_started = _transcript_banking_stage_started(transcript)
+    disclosures_started = _transcript_disclosures_started(transcript)
+    voice_started = _transcript_voice_signature_started(transcript)
+    pom_started = _transcript_peace_of_mind_after_sale(transcript)
+
+    if not (banking_started or disclosures_started or voice_started):
+        return report
+
+    if voice_started:
+        final_stage = "Peace of Mind" if pom_started else "Third Party Underwriting"
+    elif disclosures_started:
+        final_stage = "Disclosures"
+    elif banking_started:
+        final_stage = "Banking"
+    else:
+        final_stage = "Application Information"
+
+    report = re.sub(
+        r"(?im)^CALL STAGE REACHED:\s*.*$",
+        f"CALL STAGE REACHED: {final_stage}",
+        report,
+        count=1,
+    )
+
+    if final_stage == "Peace of Mind":
+        not_reached = "NOT REACHED:\n- Cool Down\n\n"
+    elif final_stage == "Third Party Underwriting":
+        not_reached = "NOT REACHED:\n- Peace of Mind\n- Cool Down\n\n"
+    elif final_stage == "Disclosures":
+        not_reached = "NOT REACHED:\n- Third Party Underwriting\n- Peace of Mind\n- Cool Down\n\n"
+    else:
+        not_reached = "NOT REACHED:\n- Disclosures\n- Third Party Underwriting\n- Peace of Mind\n- Cool Down\n\n"
+
+    report = re.sub(
+        r"(?ims)^NOT REACHED:\s*.*?(?=^COMPLIANCE FAILURES:)",
+        not_reached,
+        report,
+        count=1,
+    )
+
+    # Align stage checklist items that clearly happened.
+    if banking_started:
+        report = _text_replace_checklist_value(report, "Payment date explained", "YES")
+        report = _text_replace_checklist_value(report, "Banking/payment setup explained", "PARTIAL")
+    if disclosures_started:
+        report = _text_replace_checklist_value(report, "Disclosures completed", "YES")
+    if voice_started:
+        report = _text_replace_checklist_value(report, "Third Party Underwriting completed", "YES")
+    if pom_started:
+        report = _text_replace_checklist_value(report, "Peace of mind completed", "YES")
+
+    # Sold-call option close should not say sale did not complete.
+    if re.search(r"(?im)^- Was the policy sold\?\s*YES\b", report) or re.search(r"(?im)^- Policy sold:\s*YES\b", report):
+        report = re.sub(
+            r"(?im)^- Client chose an option:\s*PARTIAL - Agent used the bottom-paragraph close to move forward with the lowest option, but the sale did not complete\s*$",
+            "- Client chose an option: YES - Agent used the bottom-paragraph close to move forward with the lowest option and completed the sale process.",
+            report,
+        )
+        report = re.sub(
+            r"(?im)^- Did the client choose an option\?\s*PARTIAL - Agent used the bottom-paragraph close to move forward with the lowest option, but the sale did not complete\s*$",
+            "- Did the client choose an option? YES - Agent used the bottom-paragraph close to move forward with the lowest option and completed the sale process.",
+            report,
+        )
+        report = re.sub(
+            r"(?im)^- Final stage supporting sale:\s*.*$",
+            f"- Final stage supporting sale: {final_stage}",
+            report,
+        )
+
+    # Remove the stale short-call biggest miss if this sold call went past banking.
+    report = re.sub(
+        r"(?ims)^BIGGEST MISS:\s*\n-\s*Sale ended during Application Information after the bottom-paragraph close; payment and banking were not reached\.\s*(?=TRANSCRIPT NOTE|OBJECTIONS DETECTED:|SUMMARY:|OPENAI COST ESTIMATE:|\Z)",
+        "BIGGEST MISS:\n- Credit union / banking verification and post-sale accuracy need review after the sale was completed.\n\n",
+        report,
+        count=1,
+    )
+
+    # Remove short-call coaching from sold post-app calls.
+    report = _text_remove_flow_miss_line(report, "move quickly and confidently through Application Information into Payment Date and Banking")
+
+    return report
+
 def enforce_final_audit_consistency(report, transcript=None):
     """
     Post-process free-text audits (and harden any path) so invalid autofail / stage combinations
@@ -4211,6 +4354,7 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _final_cleanup_autofail_sale_summary(report, transcript)
     report = _final_cleanup_no_callback_coaching_and_option(report, transcript)
     report = _final_cleanup_pass_and_bottom_paragraph_wording(report, transcript)
+    report = _final_cleanup_sold_post_app_stage(report, transcript)
     return report
 
 
