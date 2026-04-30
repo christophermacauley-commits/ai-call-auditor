@@ -3930,6 +3930,74 @@ def _final_cleanup_autofail_sale_summary(report, transcript):
 
     return report
 
+
+def _final_cleanup_no_callback_coaching_and_option(report, transcript):
+    """
+    Final polish:
+    - If callback was corrected to NO, remove stale callback coaching.
+    - If lowest-option close was attempted without clear commitment, keep client choice as PARTIAL, not plain NO.
+    """
+    if not report:
+        return report
+
+    callback_no = bool(re.search(r"(?im)^- Callback set:\s*NO\b", report)) or bool(
+        re.search(r"(?im)^- Did the agent set a callback\?\s*NO\b", report)
+    )
+    lowest_attempt_no_commit = bool(
+        transcript and _transcript_lowest_option_attempt_no_clear_commit(transcript)
+    )
+
+    if lowest_attempt_no_commit:
+        partial_line = "PARTIAL - Agent attempted lowest-option close, but prospect did not clearly commit"
+        report = re.sub(
+            r"(?im)^- Client chose an option:\s*(?:YES|NO|PARTIAL)\b.*$",
+            f"- Client chose an option: {partial_line}",
+            report,
+        )
+        report = re.sub(
+            r"(?im)^- Did the client choose an option\?\s*(?:YES|NO|PARTIAL)\b.*$",
+            f"- Did the client choose an option? {partial_line}",
+            report,
+        )
+
+    if callback_no:
+        cleaned = []
+        for line in report.splitlines():
+            low = line.lower()
+            if (
+                "callback" in low
+                and (
+                    "avoid agreeing to callbacks" in low
+                    or "do not set callbacks" in low
+                    or "callbacks before completing" in low
+                    or "callback before completing" in low
+                    or "complete the call in one sitting" in low
+                )
+            ):
+                continue
+            cleaned.append(line)
+        report = "\n".join(cleaned)
+
+    # If TOP 3 coaching now has fewer bullets because callback coaching was removed,
+    # add a stage-appropriate coaching point for this pattern.
+    if callback_no and lowest_attempt_no_commit:
+        coaching_match = re.search(
+            r"(?ims)^TOP 3 COACHING PRIORITIES:\s*(.*?)(?=^BIGGEST MISS:)",
+            report,
+        )
+        if coaching_match:
+            block = coaching_match.group(1)
+            bullets = re.findall(r"(?m)^\s*-\s+.+$", block)
+            replacement_bullet = (
+                "- Continue using strong call control through the lowest-option close, "
+                "but secure clearer client commitment before moving deeper into application information."
+            )
+            if len(bullets) < 3 and replacement_bullet not in block:
+                new_block = block.rstrip() + "\n" + replacement_bullet + "\n\n"
+                report = report[:coaching_match.start(1)] + new_block + report[coaching_match.end(1):]
+
+    return report
+
 def enforce_final_audit_consistency(report, transcript=None):
     """
     Post-process free-text audits (and harden any path) so invalid autofail / stage combinations
@@ -4108,6 +4176,7 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = enforce_report_stage_consistency(report)
     report = _final_text_cleanup_for_no_callback_no_banking(report, transcript)
     report = _final_cleanup_autofail_sale_summary(report, transcript)
+    report = _final_cleanup_no_callback_coaching_and_option(report, transcript)
     return report
 
 
