@@ -1620,6 +1620,39 @@ body {
     margin-left: 8px;
 }
 
+
+/* Keep dashboard table actions from being clipped */
+.table-scroll,
+.table-wrap,
+.completed-calls-wrap {
+    width: 100%;
+    overflow-x: auto;
+}
+
+.data-table {
+    width: 100%;
+    min-width: 1050px;
+}
+
+.data-table th.actions,
+.data-table td.actions {
+    white-space: nowrap;
+    min-width: 220px;
+    width: 220px;
+    text-align: right;
+}
+
+.data-table .actions a,
+.data-table .actions form,
+.data-table .actions button {
+    display: inline-block;
+    vertical-align: middle;
+}
+
+.data-table .actions form {
+    margin-left: 10px;
+}
+
 .data-table .score-cell {
     font-weight: 800;
     font-variant-numeric: tabular-nums;
@@ -2296,7 +2329,7 @@ def dashboard():
             </label>
         </div>
         <div class="data-table-wrap">
-            <table class="data-table" id="completed-calls-table">
+            <div class="completed-calls-wrap"><table class="data-table" id="completed-calls-table">
                 <thead>
                     <tr>
                         <th>Call</th>
@@ -2311,7 +2344,7 @@ def dashboard():
                 <tbody id="completed-calls-tbody">
                     {rows_html}
                 </tbody>
-            </table>
+            </table></div>
         </div>
         <script>
         (function() {{
