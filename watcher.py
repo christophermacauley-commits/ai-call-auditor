@@ -1949,6 +1949,130 @@ def detect_agent_callback_from_transcript(transcript):
     return False
 
 
+
+def _transcript_no_valid_agent_callback(transcript):
+    """True when no clear agent-owned callback/follow-up commitment is present."""
+    return not detect_agent_callback_from_transcript(transcript)
+
+
+def _transcript_shopping_not_current_coverage(transcript):
+    """
+    Current coverage correction:
+    Prospect says no current final expense/life policy but is shopping/checking options.
+    This is not current active coverage that requires carrier verification.
+    """
+    t = (transcript or "").lower()
+    if not t:
+        return False
+
+    asked = (
+        "final expense plan in place" in t
+        or "life insurance" in t
+        or "coverage" in t
+    )
+    no_current_shopping = (
+        "no, but i'm in the process" in t
+        or "no, but i am in the process" in t
+        or "i'm checking a lot of things out" in t
+        or "i am checking a lot of things out" in t
+        or "i've already had quotes" in t
+        or "i have already had quotes" in t
+    )
+    return asked and no_current_shopping
+
+
+def _transcript_application_info_started(transcript):
+    """Application Information reached when the agent begins application data collection."""
+    t = (transcript or "").lower()
+    return bool(
+        re.search(
+            r"\bwhat'?s\s+your\s+middle\s+initial\b|"
+            r"\bwhat\s+is\s+your\s+middle\s+initial\b|"
+            r"\bplease\s+verify\s+the\s+spelling\b|"
+            r"\bwhat\s+are\s+their\s+names\b|"
+            r"\bdo\s+you\s+want\s+all\s+.*\s+on\s+(?:the|your)\s+policy\b",
+            t,
+            re.I,
+        )
+    )
+
+
+def _transcript_lowest_option_attempt_no_clear_commit(transcript):
+    """
+    Detect bottom-paragraph / lowest-option close attempt where the agent attempts to move
+    forward, but the prospect keeps resisting or does not clearly commit.
+    """
+    t = (transcript or "").lower()
+    if not t:
+        return False
+
+    attempted = bool(
+        re.search(
+            r"let'?s\s+(?:just\s+)?go\s+with\s+the\s+lowest\s+option|"
+            r"make\s+it\s+really\s+simple\s+and\s+go\s+with\s+the\s+lowest|"
+            r"go\s+with\s+the\s+most\s+affordable|"
+            r"circle\s+that\s+(?:smallest|lowest)|"
+            r"the\s+lowest\s+option",
+            t,
+            re.I,
+        )
+    )
+    continued_resistance = bool(
+        re.search(
+            r"i\s+don'?t\s+know\s+yet|"
+            r"i\s+need\s+to\s+talk\s+to\s+people|"
+            r"i\s+have\s+other\s+people\s+i\s+need\s+to\s+talk\s+to|"
+            r"i'?m\s+not\s+ready|"
+            r"i\s+don'?t\s+want\s+to\s+do\s+anything\s+today|"
+            r"i\s+don'?t\s+want\s+to\s+commit|"
+            r"i'?m\s+not\s+going\s+to\s+commit|"
+            r"i\s+need\s+to\s+go|"
+            r"i\s+have\s+to\s+go|"
+            r"i\s+gotta\s+go|"
+            r"i\s+need\s+to\s+hang\s+up",
+            t,
+            re.I,
+        )
+    )
+    return attempted and continued_resistance
+
+
+def _replace_or_add_checklist_line(lines, label, value):
+    """Replace a checklist line by label; append if missing."""
+    out = []
+    replaced = False
+    pat = re.compile(rf"^\s*-\s*{re.escape(label)}\s*:", re.I)
+    for raw in lines or []:
+        line = str(raw)
+        if pat.search(line):
+            out.append(f"{label}: {value}")
+            replaced = True
+        else:
+            out.append(line)
+    if not replaced:
+        out.append(f"{label}: {value}")
+    return out
+
+
+def _remove_reason_fragment(reason, fragment):
+    reason = str(reason or "").strip()
+    if not reason:
+        return "None"
+    parts = [p.strip() for p in re.split(r";+", reason) if p.strip()]
+    frag_low = fragment.lower()
+    kept = [p for p in parts if frag_low not in p.lower()]
+    return "; ".join(kept) if kept else "None"
+
+
+def _text_remove_lines_containing(report, phrase):
+    lines = []
+    p = phrase.lower()
+    for line in (report or "").splitlines():
+        if p in line.lower():
+            continue
+        lines.append(line)
+    return "\n".join(lines)
+
 def normalize_objections(raw):
     """Parse optional structured objections; drop incomplete entries."""
     if not raw or not isinstance(raw, list):
@@ -2593,8 +2717,12 @@ def validate_structured_audit(data, transcript=None):
     agent_set_callback = str(data.get("agent_set_callback", "")).strip().upper()
     if agent_set_callback not in {"YES", "NO", "UNCLEAR"}:
         agent_set_callback = "UNCLEAR"
-    if detect_agent_callback_from_transcript(transcript):
+    valid_agent_callback = detect_agent_callback_from_transcript(transcript)
+    if valid_agent_callback:
         agent_set_callback = "YES"
+    elif transcript:
+        # Do not allow prospect-only deferral/refusal to become agent callback.
+        agent_set_callback = "NO"
 
     autofail_objection_no_call_control = _normalize_yes_no_unclear(
         data.get("autofail_objection_no_call_control")
@@ -2645,6 +2773,12 @@ def validate_structured_audit(data, transcript=None):
     if transcript and _transcript_ash_only_policy_then_past_only_no_current(transcript):
         autofail_coverage_not_confirmed = "NO"
 
+    if transcript and _transcript_shopping_not_current_coverage(transcript):
+        # "No, but I'm in the process / checking options" means no active current coverage claimed.
+        autofail_coverage_not_confirmed = "NO"
+        searchable_confirm_current_coverage = "NO"
+        searchable_call_insurer_coverage = "NO"
+
     # Coverage autofail YES implies no carrier confirmation and overall automatic fail.
     if autofail_coverage_not_confirmed == "YES":
         searchable_confirm_current_coverage = "NO"
@@ -2653,6 +2787,14 @@ def validate_structured_audit(data, transcript=None):
 
     if autofail_credit_union_not_verified == "YES":
         automatic_fail_triggered = "YES"
+
+    if transcript and _transcript_lowest_option_attempt_no_clear_commit(transcript):
+        # Agent attempted bottom-paragraph / lowest-option close, but prospect did not clearly commit.
+        checklist_results = _replace_or_add_checklist_line(
+            checklist_results,
+            "Client chose an option",
+            "PARTIAL - Agent attempted lowest-option close, but prospect did not clearly commit",
+        )
 
     post_sale_skip = _post_sale_incomplete_autofail(
         policy_sold, stage_reached, checklist_results
@@ -2666,6 +2808,22 @@ def validate_structured_audit(data, transcript=None):
         automatic_fail_triggered = "YES"
     if pay_autofail:
         automatic_fail_triggered = "YES"
+
+    if transcript and not valid_agent_callback and "callback" in automatic_fail_reason.lower():
+        automatic_fail_reason = _remove_reason_fragment(
+            automatic_fail_reason, "Callback set"
+        )
+        automatic_fail_reason = _remove_reason_fragment(
+            automatic_fail_reason, "callback"
+        )
+        if (
+            autofail_coverage_not_confirmed != "YES"
+            and autofail_credit_union_not_verified != "YES"
+            and not post_sale_skip
+            and not pay_autofail
+        ):
+            automatic_fail_triggered = "NO"
+            automatic_fail_reason = "None"
 
     if automatic_fail_triggered == "YES":
         reason_parts = []
@@ -2740,6 +2898,24 @@ def validate_structured_audit(data, transcript=None):
         sale_outcome_evidence = sale_outcome_evidence[:597] + "..."
     sale_final_stage = _normalize_sale_final_stage(data.get("sale_final_stage"))
 
+    if transcript and _transcript_application_info_started(transcript):
+        stage_reached = "Application Information"
+        sale_final_stage = "Application Information"
+        checklist_results = _replace_or_add_checklist_line(
+            checklist_results,
+            "Application info collected",
+            "PARTIAL",
+        )
+        later_not_reached = [
+            "Payment Date",
+            "Banking",
+            "Disclosures",
+            "Third Party Underwriting",
+            "Peace of Mind",
+            "Cool Down",
+        ]
+        not_reached = [x for x in later_not_reached if x not in {"Application Information"}]
+
     # Final invariant (coverage autofail line YES can never coexist with aggregate NO / None reason / wrong pass-risk).
     if autofail_coverage_not_confirmed == "YES":
         automatic_fail_triggered = "YES"
@@ -2799,6 +2975,10 @@ def validate_structured_audit(data, transcript=None):
             if len(summary) > 4500:
                 summary = summary[:4497] + "..."
 
+    if transcript and _transcript_lowest_option_attempt_no_clear_commit(transcript):
+        # Keep the report from claiming the prospect chose an option when only the agent chose/recommended it.
+        policy_sold = "NO"
+
     result = {
         "score": score,
         "risk": risk,
@@ -2833,6 +3013,22 @@ def validate_structured_audit(data, transcript=None):
         "sale_final_stage": sale_final_stage,
     }
     apply_refined_call_stage(result, transcript)
+    if transcript and _transcript_application_info_started(transcript):
+        result["stage_reached"] = "Application Information"
+        result["sale_final_stage"] = "Application Information"
+        result["not_reached"] = [
+            "Payment Date",
+            "Banking",
+            "Disclosures",
+            "Third Party Underwriting",
+            "Peace of Mind",
+            "Cool Down",
+        ]
+        result["checklist_results"] = _replace_or_add_checklist_line(
+            result.get("checklist_results", []),
+            "Application info collected",
+            "PARTIAL",
+        )
     return result
 
 
@@ -3453,6 +3649,38 @@ def enforce_final_audit_consistency(report, transcript=None):
         return report
     if transcript:
         report = _text_enforce_tpu_stage_report(report, transcript)
+
+        if not detect_agent_callback_from_transcript(transcript):
+            report = re.sub(r"(?im)^- Did the agent set a callback\?\s*YES\b.*$", "- Did the agent set a callback? NO", report)
+            report = re.sub(r"(?im)^- Callback set:\s*YES\b.*$", "- Callback set: NO", report)
+            report = _text_remove_lines_containing(report, "Callback set without allowed exception")
+            report = _text_remove_lines_containing(report, "agreed to a callback")
+            report = re.sub(r"(?im)^- Reason:\s*.*callback.*$", "- Reason: None", report)
+
+        if _transcript_shopping_not_current_coverage(transcript):
+            report = re.sub(r"(?im)^- Existing coverage mentioned but not confirmed:\s*YES\b.*$", "- Existing coverage mentioned but not confirmed: NO", report)
+
+        if _transcript_lowest_option_attempt_no_clear_commit(transcript):
+            report = re.sub(
+                r"(?im)^- Client chose an option:\s*YES\b.*$",
+                "- Client chose an option: PARTIAL - Agent attempted lowest-option close, but prospect did not clearly commit",
+                report,
+            )
+            report = re.sub(
+                r"(?im)^- Did the client choose an option\?\s*YES\b.*$",
+                "- Did the client choose an option? PARTIAL - Agent attempted lowest-option close, but prospect did not clearly commit",
+                report,
+            )
+            report = re.sub(r"(?im)^- Objection occurred without proper call control:\s*YES\b.*$", "- Objection occurred without proper call control: NO", report)
+
+        if _transcript_application_info_started(transcript):
+            report = re.sub(r"(?im)^CALL STAGE REACHED:\s*.*$", "CALL STAGE REACHED: Application Information", report, count=1)
+            report = re.sub(
+                r"(?im)^- Application info collected:\s*(?:NO|NOT REACHED)\b.*$",
+                "- Application info collected: PARTIAL",
+                report,
+            )
+            report = re.sub(r"(?im)^- Application Information\s*$", "", report)
         if _transcript_only_one_coverage_ambiguity(transcript):
             ask_yes = bool(
                 re.search(
