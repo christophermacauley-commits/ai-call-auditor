@@ -2793,7 +2793,7 @@ def validate_structured_audit(data, transcript=None):
         checklist_results = _replace_or_add_checklist_line(
             checklist_results,
             "Client chose an option",
-            "PARTIAL - Agent attempted lowest-option close, but prospect did not clearly commit",
+            "PARTIAL - Agent used the bottom-paragraph close to move forward with the lowest option, but the sale did not complete",
         )
 
     post_sale_skip = _post_sale_incomplete_autofail(
@@ -3751,12 +3751,12 @@ def _final_text_cleanup_for_no_callback_no_banking(report, transcript):
     if lowest_attempt_no_commit:
         report = re.sub(
             r"(?im)^- Client chose an option:\s*YES\b.*$",
-            "- Client chose an option: PARTIAL - Agent attempted lowest-option close, but prospect did not clearly commit",
+            "- Client chose an option: PARTIAL - Agent used the bottom-paragraph close to move forward with the lowest option, but the sale did not complete",
             report,
         )
         report = re.sub(
             r"(?im)^- Did the client choose an option\?\s*YES\b.*$",
-            "- Did the client choose an option? PARTIAL - Agent attempted lowest-option close, but prospect did not clearly commit",
+            "- Did the client choose an option? PARTIAL - Agent used the bottom-paragraph close to move forward with the lowest option, but the sale did not complete",
             report,
         )
         report = re.sub(
@@ -3839,7 +3839,7 @@ def _final_text_cleanup_for_no_callback_no_banking(report, transcript):
     if re.search(r"(?ims)^BIGGEST MISS:\s*(?:\n\s*)*(?=TRANSCRIPT NOTE|OPENAI COST ESTIMATE|\Z)", report):
         report = re.sub(
             r"(?ims)^BIGGEST MISS:\s*(?:\n\s*)*(?=TRANSCRIPT NOTE|OPENAI COST ESTIMATE|\Z)",
-            "BIGGEST MISS:\n- Prospect did not clearly commit after the lowest-option close attempt; sale ended during Application Information.\n\n",
+            "BIGGEST MISS:\n- Sale ended during Application Information after the bottom-paragraph close; payment and banking were not reached.\n\n",
             report,
             count=1,
         )
@@ -3903,7 +3903,7 @@ def _final_cleanup_autofail_sale_summary(report, transcript):
             report,
         )
 
-    biggest_miss_text = "- Prospect did not clearly commit after the lowest-option close attempt; sale ended during Application Information."
+    biggest_miss_text = "- Sale ended during Application Information after the bottom-paragraph close; payment and banking were not reached."
     if re.search(r"(?ims)^BIGGEST MISS:\s*(?:\n\s*)*(?=OBJECTIONS DETECTED:|TRANSCRIPT NOTE|SUMMARY:|OPENAI COST ESTIMATE|\Z)", report):
         report = re.sub(
             r"(?ims)^BIGGEST MISS:\s*(?:\n\s*)*(?=OBJECTIONS DETECTED:|TRANSCRIPT NOTE|SUMMARY:|OPENAI COST ESTIMATE|\Z)",
@@ -3948,7 +3948,7 @@ def _final_cleanup_no_callback_coaching_and_option(report, transcript):
     )
 
     if lowest_attempt_no_commit:
-        partial_line = "PARTIAL - Agent attempted lowest-option close, but prospect did not clearly commit"
+        partial_line = "PARTIAL - Agent used the bottom-paragraph close to move forward with the lowest option, but the sale did not complete"
         report = re.sub(
             r"(?im)^- Client chose an option:\s*(?:YES|NO|PARTIAL)\b.*$",
             f"- Client chose an option: {partial_line}",
@@ -4021,12 +4021,12 @@ def enforce_final_audit_consistency(report, transcript=None):
         if _transcript_lowest_option_attempt_no_clear_commit(transcript):
             report = re.sub(
                 r"(?im)^- Client chose an option:\s*YES\b.*$",
-                "- Client chose an option: PARTIAL - Agent attempted lowest-option close, but prospect did not clearly commit",
+                "- Client chose an option: PARTIAL - Agent used the bottom-paragraph close to move forward with the lowest option, but the sale did not complete",
                 report,
             )
             report = re.sub(
                 r"(?im)^- Did the client choose an option\?\s*YES\b.*$",
-                "- Did the client choose an option? PARTIAL - Agent attempted lowest-option close, but prospect did not clearly commit",
+                "- Did the client choose an option? PARTIAL - Agent used the bottom-paragraph close to move forward with the lowest option, but the sale did not complete",
                 report,
             )
             report = re.sub(r"(?im)^- Objection occurred without proper call control:\s*YES\b.*$", "- Objection occurred without proper call control: NO", report)
