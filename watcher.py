@@ -3998,6 +3998,39 @@ def _final_cleanup_no_callback_coaching_and_option(report, transcript):
 
     return report
 
+
+def _final_cleanup_pass_and_bottom_paragraph_wording(report, transcript):
+    """
+    Final polish:
+    - PASS should be YES when no automatic fail triggered, even if policy was not sold.
+    - AT RISK is only for sold policies with an automatic fail.
+    - Bottom-paragraph close should not be coached as needing perfect client commitment.
+    """
+    if not report:
+        return report
+
+    policy_sold_no = bool(re.search(r"(?im)^- Policy sold:\s*NO\b", report)) or bool(
+        re.search(r"(?im)^- Was the policy sold\?\s*NO\b", report)
+    )
+    autofail_no = bool(re.search(r"(?im)^- Automatic fail triggered:\s*NO\b", report))
+    reason_none = bool(re.search(r"(?im)^- Reason:\s*None\b", report))
+
+    if policy_sold_no and autofail_no and reason_none:
+        report = re.sub(r"(?im)^PASS:\s*AT RISK\s*$", "PASS: YES", report, count=1)
+        report = re.sub(r"(?im)^PASS:\s*NO\s*$", "PASS: YES", report, count=1)
+
+    report = report.replace(
+        "Continue using strong call control through the lowest-option close, but secure clearer client commitment before moving deeper into application information.",
+        "Continue using the bottom-paragraph close to maintain momentum, then move quickly and confidently through Application Information into Payment Date and Banking."
+    )
+
+    report = report.replace(
+        "secure clearer client commitment before moving deeper into application information",
+        "move quickly and confidently through Application Information into Payment Date and Banking"
+    )
+
+    return report
+
 def enforce_final_audit_consistency(report, transcript=None):
     """
     Post-process free-text audits (and harden any path) so invalid autofail / stage combinations
@@ -4177,6 +4210,7 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _final_text_cleanup_for_no_callback_no_banking(report, transcript)
     report = _final_cleanup_autofail_sale_summary(report, transcript)
     report = _final_cleanup_no_callback_coaching_and_option(report, transcript)
+    report = _final_cleanup_pass_and_bottom_paragraph_wording(report, transcript)
     return report
 
 
