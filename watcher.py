@@ -4514,6 +4514,19 @@ def _final_cleanup_shelby_sold_short_false_fails(report, transcript):
             report = re.sub(r"(?im)^PASS:\s*(?:YES|NO|AT RISK)\s*$", "PASS: AT RISK", report, count=1)
             report = re.sub(r"(?im)^RISK:\s*(?:LOW|MEDIUM|HIGH)\s*$", "RISK: HIGH", report, count=1)
 
+        # Keep option-selection checklist aligned with searchable/sale evidence.
+        if sold_yes and _transcript_client_chose_option(transcript):
+            report = re.sub(
+                r"(?im)^- Client chose an option:\s*(?:YES|NO|PARTIAL|NOT REACHED)\b.*$",
+                "- Client chose an option: YES",
+                report,
+            )
+            report = re.sub(
+                r"(?im)^- Did the client choose an option\?\s*(?:YES|NO|PARTIAL|NOT REACHED)\b.*$",
+                "- Did the client choose an option? YES",
+                report,
+            )
+
         report = re.sub(
             r"(?ims)^COMPLIANCE FAILURES:\s*None\s*(?=^SCRIPT / FLOW MISSES:)",
             "COMPLIANCE FAILURES:\n- Existing coverage mentioned but not confirmed\n\n",
@@ -4529,6 +4542,21 @@ def _final_cleanup_shelby_sold_short_false_fails(report, transcript):
         report = re.sub(
             r"(?ims)^BIGGEST MISS:\s*.*?(?=^OBJECTIONS DETECTED:|^TRANSCRIPT NOTE|^SUMMARY:|^OPENAI COST ESTIMATE:|\Z)",
             "BIGGEST MISS:\n- Existing coverage mentioned but not confirmed: the prospect gave an ambiguous answer to the current-coverage question and the agent did not verify carrier/provider information before completing the sale.\n\n",
+            report,
+            count=1,
+        )
+
+        at_risk_summary = (
+            "The agent completed a sold call through Cool Down: options were presented, the client chose an option, "
+            "application information and payment date were collected, banking setup was handled with a bank, required "
+            "disclosures and voice signature were completed, Peace of Mind was delivered, and the agent continued into "
+            "Cool Down conversation. The sale is AT RISK because the prospect gave an ambiguous answer to the current "
+            "coverage question and the agent did not clearly resolve active current coverage or verify carrier/provider "
+            "information before completing the sale. No callback or credit-union ACH verification issue was detected."
+        )
+        report = re.sub(
+            r"(?ims)^SUMMARY:\s*.*?(?=^OPENAI COST ESTIMATE:|\Z)",
+            f"SUMMARY:\n{at_risk_summary}\n\n",
             report,
             count=1,
         )
@@ -4598,6 +4626,28 @@ def _final_cleanup_shelby_sold_short_false_fails(report, transcript):
             f"SUMMARY:\n{summary}\n\n",
             report,
             count=1,
+        )
+
+    # Final safety: prevent stale model text from contradicting corrected outcomes.
+    if re.search(r"(?im)^CALL STAGE REACHED:\s*Cool Down\s*$", report):
+        report = _text_replace_checklist_value(report, "Cool down completed", "YES")
+        report = re.sub(
+            r"(?ims)^NOT REACHED:\s*.*?(?=^COMPLIANCE FAILURES:)",
+            "NOT REACHED:\n- None\n\n",
+            report,
+            count=1,
+        )
+
+    if re.search(r"(?im)^- Existing coverage mentioned but not confirmed:\s*YES\b", report):
+        report = re.sub(
+            r"(?i)No callback or coverage confirmation issues were present\.",
+            "No callback issue was present; however, current coverage was not clearly confirmed.",
+            report,
+        )
+        report = re.sub(
+            r"(?i)Post-sale stages Peace of Mind and Cool Down were not reached[^.]*\.",
+            "Peace of Mind and Cool Down were reached.",
+            report,
         )
 
     return report
