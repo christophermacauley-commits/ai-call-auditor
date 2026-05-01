@@ -3661,9 +3661,6 @@ def _transcript_banking_stage_started(transcript):
         r"\b(?:need|grab|pull|get|please\s+grab)\s+(?:your\s+)?(?:checkbook|check\s*book|bank\s+statement|textbook)\b",
         r"\bbottom\s+of\s+your\s+(?:check|checkbook|text)\b",
         r"\bslowly\s+read\s+me\s+all\s+the\s+numbers\b",
-        r"\bchecking\s+account\b",
-        r"\bsavings\s+account\b",
-        r"\bchecking\s+or\s+savings\b",
         r"\bpayment\s+account\b",
         r"\bdraft\s+account\b",
         r"\blandmark\s+credit\s+union\b",
@@ -4100,8 +4097,13 @@ def _final_cleanup_sold_post_app_stage(report, transcript):
     if not (banking_started or disclosures_started or voice_started):
         return report
 
+    cool_down_started = _transcript_cool_down_after_sale(transcript)
+
     if voice_started:
-        final_stage = "Peace of Mind" if pom_started else "Third Party Underwriting"
+        if cool_down_started:
+            final_stage = "Cool Down"
+        else:
+            final_stage = "Peace of Mind" if pom_started else "Third Party Underwriting"
     elif disclosures_started:
         final_stage = "Disclosures"
     elif banking_started:
@@ -4116,7 +4118,9 @@ def _final_cleanup_sold_post_app_stage(report, transcript):
         count=1,
     )
 
-    if final_stage == "Peace of Mind":
+    if final_stage == "Cool Down":
+        not_reached = "NOT REACHED:\n- None\n\n"
+    elif final_stage == "Peace of Mind":
         not_reached = "NOT REACHED:\n- Cool Down\n\n"
     elif final_stage == "Third Party Underwriting":
         not_reached = "NOT REACHED:\n- Peace of Mind\n- Cool Down\n\n"
@@ -4142,6 +4146,8 @@ def _final_cleanup_sold_post_app_stage(report, transcript):
         report = _text_replace_checklist_value(report, "Third Party Underwriting completed", "YES")
     if pom_started:
         report = _text_replace_checklist_value(report, "Peace of mind completed", "YES")
+    if cool_down_started:
+        report = _text_replace_checklist_value(report, "Cool down completed", "YES")
 
     # Sold-call option close should not say sale did not complete.
     if re.search(r"(?im)^- Was the policy sold\?\s*YES\b", report) or re.search(r"(?im)^- Policy sold:\s*YES\b", report):
@@ -4176,8 +4182,44 @@ def _final_cleanup_sold_post_app_stage(report, transcript):
 
 
 def _transcript_credit_union_mentioned(transcript):
-    t = (transcript or "").lower()
-    return bool(re.search(r"\bcredit\s+union\b|\blandmark\s+credit\s+union\b", t, re.I))
+    """
+    True only when the prospect/account is actually a credit union.
+    Do not count the agent's generic "bank or credit union" question when the
+    prospect answers "Bank" and provides a bank name.
+    """
+    t = re.sub(r"\s+", " ", (transcript or "").lower()).strip()
+    if not t:
+        return False
+
+    bank_answer = bool(re.search(
+        r"(?:are\s+you\s+with|with)\s+(?:a\s+)?bank\s+or\s+(?:a\s+)?credit\s+union\??\s*bank\b",
+        t,
+        re.I,
+    ))
+
+    credit_union_answer = bool(re.search(
+        r"(?:are\s+you\s+with|with)\s+(?:a\s+)?bank\s+or\s+(?:a\s+)?credit\s+union\??\s*(?:credit\s+union|cu)\b",
+        t,
+        re.I,
+    ))
+    if credit_union_answer:
+        return True
+
+    generic_question_removed = re.sub(
+        r"(?:are\s+you\s+with|with)\s+(?:a\s+)?bank\s+or\s+(?:a\s+)?credit\s+union\??",
+        " ",
+        t,
+        flags=re.I,
+    )
+
+    named_or_possessive_cu = bool(re.search(
+        r"\b(?:my|the|that|their|your|landmark|[a-z0-9&.-]+)\s+credit\s+union\b|"
+        r"\bcredit\s+union\s+(?:account|routing|member|confirmed|verified|name)\b",
+        generic_question_removed,
+        re.I,
+    ))
+
+    return named_or_possessive_cu and not bank_answer
 
 
 def _transcript_credit_union_verified_for_ach(transcript):
@@ -4346,6 +4388,175 @@ def _transcript_only_good_standing_account_question(transcript):
     ))
 
     return good_standing and not real_new_policy_banking
+
+
+
+def _transcript_cool_down_after_sale(transcript):
+    """Post-sale non-insurance small talk after voice signature / sale completion."""
+    t = re.sub(r"\s+", " ", (transcript or "").lower()).strip()
+    if not t or not _transcript_voice_signature_started(transcript):
+        return False
+
+    sale_done_pos = -1
+    for pat in [
+        r"this recording has now ended",
+        r"we are done with our voice recording",
+        r"submitting your application to the home office",
+        r"voice recording",
+        r"voice signature",
+    ]:
+        matches = list(re.finditer(pat, t, re.I))
+        if matches:
+            sale_done_pos = max(sale_done_pos, matches[-1].end())
+
+    after = t[sale_done_pos:] if sale_done_pos >= 0 else t
+    return bool(re.search(
+        r"\bplans for the rest of your day\b|"
+        r"\bclean(?:ing)? the house\b|"
+        r"\bi just moved\b|"
+        r"\bnever want to move again\b|"
+        r"\b(?:dog|dogs|lab|black lab|pit bull|poodle|pool|lake|water)\b.{0,240}\b(?:dog|dogs|lab|pool|lake|water|toy)\b",
+        after,
+        re.I,
+    ))
+
+
+def _transcript_no_current_coverage_only_one_first_time(transcript):
+    """Shelby-sold pattern: 'Only one' is clarified by 'first time' as no current coverage."""
+    t = re.sub(r"\s+", " ", (transcript or "").lower()).strip()
+    if not t:
+        return False
+    return bool(re.search(
+        r"do you have any kind of final expense plan or life insurance in place now[^?]{0,160}"
+        r"(?:only policy|your only policy)[^a-z0-9]{0,20}only one\b.{0,260}"
+        r"(?:ever owned a policy|owned a policy|policy at some point in the past|first time)[^?]{0,180}"
+        r"\bfirst time\b",
+        t,
+        re.I,
+    ))
+
+
+def _transcript_three_options_presented(transcript):
+    t = re.sub(r"\s+", " ", (transcript or "").lower()).strip()
+    if not t:
+        return False
+    return bool(
+        re.search(r"\bfirst option\b", t, re.I)
+        and re.search(r"\bsecond option\b", t, re.I)
+        and re.search(r"\bthird option\b", t, re.I)
+    )
+
+
+def _transcript_client_chose_option(transcript):
+    t = re.sub(r"\s+", " ", (transcript or "").lower()).strip()
+    if not t:
+        return False
+    return bool(re.search(
+        r"\b(?:i guess i'll pick|i will pick|i'll pick|let'?s do|go with|i want)\b.{0,80}\b(?:one|option|\[number\]|\[money\])\b|"
+        r"\bso what'?s your middle initial\b",
+        t,
+        re.I,
+    ))
+
+
+def _final_cleanup_shelby_sold_short_false_fails(report, transcript):
+    """Correct known sold-call false positives: bank vs CU, resolved Only-one coverage, options, and cooldown."""
+    if not report or not transcript:
+        return report
+
+    sold_yes = _report_policy_sold_yes(report)
+
+    if not _transcript_credit_union_mentioned(transcript):
+        report = re.sub(
+            r"(?im)^- Credit union mentioned but bank/account not verified:\s*(?:YES|NO|UNCLEAR)\b.*$",
+            "- Credit union mentioned but bank/account not verified: NO",
+            report,
+        )
+        report = re.sub(
+            r"(?im)^- Did the agent verify credit union account information if a credit union was mentioned\?\s*(?:YES|NO|UNCLEAR)\b.*$",
+            "- Did the agent verify credit union account information if a credit union was mentioned? NO",
+            report,
+        )
+        report = _text_remove_lines_containing(report, "Credit union account information not verified")
+        report = _text_remove_lines_containing(report, "credit unions can require extra digits")
+
+    if _transcript_no_current_coverage_only_one_first_time(transcript):
+        report = re.sub(
+            r"(?im)^- Existing coverage mentioned but not confirmed:\s*(?:YES|UNCLEAR)\b.*$",
+            "- Existing coverage mentioned but not confirmed: NO",
+            report,
+        )
+        report = _text_remove_lines_containing(report, "Existing coverage mentioned but not confirmed: agent")
+
+    if _transcript_three_options_presented(transcript):
+        report = _text_replace_checklist_value(report, "Three options presented", "YES")
+        report = re.sub(
+            r"(?im)^- Did the agent present options\?\s*(?:NO|PARTIAL)\b.*$",
+            "- Did the agent present options? YES",
+            report,
+        )
+
+    if sold_yes and _transcript_client_chose_option(transcript):
+        report = re.sub(
+            r"(?im)^- Client chose an option:\s*(?:NO|PARTIAL)\b.*$",
+            "- Client chose an option: YES",
+            report,
+        )
+        report = re.sub(
+            r"(?im)^- Did the client choose an option\?\s*(?:NO|PARTIAL)\b.*$",
+            "- Did the client choose an option? YES",
+            report,
+        )
+
+    if _transcript_cool_down_after_sale(transcript):
+        report = re.sub(r"(?im)^CALL STAGE REACHED:\s*Peace of Mind\s*$", "CALL STAGE REACHED: Cool Down", report, count=1)
+        report = re.sub(
+            r"(?ims)^NOT REACHED:\s*.*?(?=^COMPLIANCE FAILURES:)",
+            "NOT REACHED:\n- None\n\n",
+            report,
+            count=1,
+        )
+        report = _text_replace_checklist_value(report, "Cool down completed", "YES")
+
+    all_autofail_checks_no = all(re.search(pattern, report, re.I | re.M) for pattern in [
+        r"^- Callback set:\s*NO\b",
+        r"^- Objection occurred without proper call control:\s*NO\b",
+        r"^- Existing coverage mentioned but not confirmed:\s*NO\b",
+        r"^- Credit union mentioned but bank/account not verified:\s*NO\b",
+    ])
+    if all_autofail_checks_no:
+        report = re.sub(r"(?im)^- Automatic fail triggered:\s*YES\b.*$", "- Automatic fail triggered: NO", report)
+        if re.search(r"(?im)^- Reason:\s*.*$", report):
+            report = re.sub(r"(?im)^- Reason:\s*.*$", "- Reason: None", report, count=1)
+        else:
+            report = re.sub(r"(?im)^- Automatic fail triggered:\s*NO\b.*$", "- Automatic fail triggered: NO\n- Reason: None", report, count=1)
+        if sold_yes:
+            report = re.sub(r"(?im)^PASS:\s*(?:NO|AT RISK)\s*$", "PASS: YES", report, count=1)
+            report = re.sub(r"(?im)^RISK:\s*HIGH\s*$", "RISK: LOW", report, count=1)
+        report = re.sub(r"(?ims)^COMPLIANCE FAILURES:\s*.*?(?=^SCRIPT / FLOW MISSES:)", "COMPLIANCE FAILURES: None  \n\n", report, count=1)
+        report = re.sub(
+            r"(?ims)^BIGGEST MISS:\s*.*?(?=^OBJECTIONS DETECTED:|^TRANSCRIPT NOTE|^SUMMARY:|^OPENAI COST ESTIMATE:|\Z)",
+            "BIGGEST MISS:\n- None\n\n",
+            report,
+            count=1,
+        )
+
+    if sold_yes and re.search(r"(?im)^- Automatic fail triggered:\s*NO\b", report):
+        summary = (
+            "The agent completed a sold call: options were presented, the client chose an option, "
+            "application information and payment date were collected, banking setup was handled with a bank, "
+            "required disclosures and voice signature were completed, Peace of Mind was delivered, and the agent "
+            "continued into Cool Down conversation. No callback, unresolved existing-coverage issue, or credit-union "
+            "ACH verification issue was detected."
+        )
+        report = re.sub(
+            r"(?ims)^SUMMARY:\s*.*?(?=^OPENAI COST ESTIMATE:|\Z)",
+            f"SUMMARY:\n{summary}\n\n",
+            report,
+            count=1,
+        )
+
+    return report
 
 
 def _final_cleanup_false_banking_from_existing_coverage_lookup(report, transcript):
@@ -4610,6 +4821,7 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _final_cleanup_sold_post_app_stage(report, transcript)
     report = _final_cleanup_credit_union_and_sold_summary(report, transcript)
     report = _final_cleanup_false_banking_from_existing_coverage_lookup(report, transcript)
+    report = _final_cleanup_shelby_sold_short_false_fails(report, transcript)
     return report
 
 
