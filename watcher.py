@@ -60,6 +60,114 @@ def clean_text(text):
     return ansi_escape.sub("", text)
 
 
+def final_transcript_privacy_cleanup(text):
+    """
+    Last transcript-only privacy cleanup.
+    Goal: no leaked names in common role-labeled transcript patterns.
+    This is stricter than report cleanup and is safe for transcript text.
+    """
+    if not text:
+        return text
+
+    t = text
+
+    # Fix role-label model artifacts like:
+    # Prospect: Yes, sir. [NAME]: Do you...
+    # This is almost always the selling agent name becoming a fake role label.
+    t = re.sub(r"\s+\[NAME\]\s*:\s*", "\nAgent: ", t)
+
+    # PQ numbers inside text.
+    t = re.sub(r"\bPQ\s*\d+\b", "PQ[NUMBER]", t, flags=re.I)
+
+    # Greeting / thanks patterns that can leak a first name.
+    # Examples: "PQ: Hi, John." / "Agent: Thank you, John."
+    t = re.sub(
+        r"(?im)^(\s*(?:PQ|Agent|Prospect|Unknown)\s*:\s*(?:hi|hello|hey|good morning|good afternoon|thank you|thanks|okay|perfect|gotcha|all right|alright)[,\s]+)([A-Z][a-z]+)\b",
+        r"\1[NAME]",
+        t,
+    )
+
+    # "Thank you [NAME], John" -> "Thank you [NAME]"
+    t = re.sub(
+        r"(?i)\b(thank you|thanks)\s+\[NAME\],?\s+[A-Z][a-z]+\b",
+        r"\1 [NAME]",
+        t,
+    )
+
+    # "Hi, John." / "Hello John" not necessarily at start of role line.
+    t = re.sub(
+        r"(?i)\b(hi|hello|hey|good morning|good afternoon),?\s+([A-Z][a-z]+)\b",
+        r"\1, [NAME]",
+        t,
+    )
+
+    # "Who do I have the pleasure..." answer on same line.
+    t = re.sub(
+        r"(?i)(who do i have the pleasure of (?:speaking with|helping)(?: today)?\??\s+)([A-Z][a-z]+)\b",
+        r"\1[NAME]",
+        t,
+    )
+
+    # Handoff: "I have John here / with me / on the line"
+    t = re.sub(
+        r"(?i)\b(i have\s+)([A-Z][a-z]+)(\s+(?:here|with me|on the line)\b)",
+        r"\1[NAME]\3",
+        t,
+    )
+
+    # Mr./Mrs./Ms./Miss + name
+    t = re.sub(
+        r"(?i)\b(Mr|Mrs|Ms|Miss)\.?\s+[A-Z][a-z]+\b",
+        r"\1. [NAME]",
+        t,
+    )
+
+    # Clean bad spacing after placeholders and role labels.
+    t = re.sub(r"(\[NUMBER\])(?=(?:PQ|Agent|Prospect|Unknown)\s*:)", r"\1\n", t)
+    t = re.sub(r"(\[DOB\])(?=(?:PQ|Agent|Prospect|Unknown)\s*:)", r"\1\n", t)
+    t = re.sub(r"(\[MONEY\])(?=(?:PQ|Agent|Prospect|Unknown)\s*:)", r"\1\n", t)
+
+    return t
+
+
+def redact_report_text(report):
+    """
+    Report-safe privacy cleanup.
+    Do NOT run full transcript redaction on reports because it breaks audit structure:
+    SCORE: 80, TOP 3, 3 and 1 Method, token counts, cost estimates, etc.
+
+    This only fixes known sensitive leaks and preserves audit/report numbers.
+    """
+    if not report:
+        return report
+
+    r = report
+
+    # Preserve / restore audit structure phrases if a previous redaction over-hit them.
+    r = re.sub(r"(?im)^SCORE:\s*\[NUMBER\]\s*$", "SCORE: 0", r)
+    r = re.sub(r"(?i)\bTOP\s+\[NUMBER\]\s+COACHING PRIORITIES\b", "TOP 3 COACHING PRIORITIES", r)
+    r = re.sub(r"(?i)\b\[NUMBER\]\s+and\s+\[NUMBER\]\s+Method\b", "3 and 1 Method", r)
+    r = re.sub(r"(?i)\b\[NUMBER\]\s*&\s+\[NUMBER\]\s+Method\b", "3 and 1 Method", r)
+
+    # Remove person-name leaks without touching carrier names / states too broadly.
+    r = final_transcript_privacy_cleanup(r)
+
+    # Redact obvious sensitive values if they somehow appear in report prose.
+    r = re.sub(r"\b\d{3}-\d{2}-\d{4}\b", "[SSN]", r)
+    r = re.sub(r"\b(?:\+?1[\s\-.]?)?(?:\(?\d{3}\)?[\s\-.]?)\d{3}[\s\-.]?\d{4}\b", "[PHONE]", r)
+    r = re.sub(r"\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b", "[DATE]", r)
+    r = re.sub(r"\$\s*\d+(?:[,.]\d+)*(?:\.\d+)?\b", "[MONEY]", r)
+    r = re.sub(r"(?i)\b((?:account|routing|card|debit|credit)\s*(?:number)?\s*(?:is|#|:)?\s*)\d[\d\s\-]{4,}\b", r"\1[BANK_NUMBER]", r)
+
+    # Re-restore report structure after cleanup.
+    r = re.sub(r"(?i)\bTOP\s+\[NUMBER\]\s+COACHING PRIORITIES\b", "TOP 3 COACHING PRIORITIES", r)
+    r = re.sub(r"(?i)\b\[NUMBER\]\s+and\s+\[NUMBER\]\s+Method\b", "3 and 1 Method", r)
+    r = re.sub(r"(?i)\b3\s+and\s+1\s+Method\b", "3 and 1 Method", r)
+
+    return r
+
+
+
 def get_model():
     global model
     if model is None:
@@ -144,6 +252,10 @@ def set_processing_state(call_name, filename, status, progress=0, message=None, 
 
 def save_to_db(call_name, transcript, report, score, risk):
     ensure_db()
+
+    # Privacy safety at the database boundary.
+    transcript = redact_sensitive_transcript(transcript or "")
+    report = redact_report_text(report or "")
 
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
@@ -1704,6 +1816,7 @@ def redact_sensitive_transcript(transcript):
     redacted = _redact_numeric_tokens(redacted)
     redacted = _transcript_restore_phrases(redacted, vault)
     redacted = hard_privacy_redact_transcript(redacted)
+    redacted = final_transcript_privacy_cleanup(redacted)
     return redacted
 
 
@@ -5428,6 +5541,7 @@ def process_file(file_path):
             call_name=call_name,
         )
 
+        report = redact_report_text(report)
         write_text(report_path, report)
 
         score, risk = parse_report(report)
@@ -5479,6 +5593,7 @@ TRANSCRIPT:
 {transcript}
 """
 
+        failure_report = redact_report_text(failure_report)
         write_text(report_path, failure_report)
         save_to_db(call_name, transcript, failure_report, 0, "HIGH")
         set_processing_state(call_name, filename, "failed", 100, "Processing failed", error)
@@ -5528,6 +5643,7 @@ def process_transcript_upload(file_path):
             call_name=call_name,
         )
 
+        report = redact_report_text(report)
         write_text(report_path, report)
 
         score, risk = parse_report(report)
@@ -5579,6 +5695,7 @@ TRANSCRIPT:
 {transcript}
 """
 
+        failure_report = redact_report_text(failure_report)
         write_text(report_path, failure_report)
         save_to_db(call_name, transcript, failure_report, 0, "HIGH")
         set_processing_state(call_name, filename, "failed", 100, "Processing failed", error)
