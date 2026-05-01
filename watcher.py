@@ -1703,7 +1703,246 @@ def redact_sensitive_transcript(transcript):
     redacted = _redact_spoken_phone_numbers(redacted)
     redacted = _redact_numeric_tokens(redacted)
     redacted = _transcript_restore_phrases(redacted, vault)
+    redacted = hard_privacy_redact_transcript(redacted)
     return redacted
+
+
+# ---------------------------------------------------------------------------
+# HARD PRIVACY REDACTION LAYER
+# ---------------------------------------------------------------------------
+# This is intentionally redundant with the earlier redaction rules. It is the
+# final safety pass before transcripts are saved, role-labeled, audited, or put
+# into calls.db. Goal: no real person names and no real numbers survive.
+# ---------------------------------------------------------------------------
+
+_SPOKEN_NUMBER_WORDS = (
+    r"zero|oh|o|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|"
+    r"thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|"
+    r"thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|"
+    r"first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|"
+    r"eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|"
+    r"eighteenth|nineteenth|twentieth"
+)
+
+_SPOKEN_NUMBER_CHAIN = (
+    rf"\b(?:{_SPOKEN_NUMBER_WORDS})\b"
+    rf"(?:[\s,\-]+(?:and\s+)?\b(?:{_SPOKEN_NUMBER_WORDS})\b){{1,12}}"
+)
+
+_SINGLE_SPOKEN_NUMBER = rf"\b(?:{_SPOKEN_NUMBER_WORDS})\b"
+
+_MONTH_WORDS = (
+    r"jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|"
+    r"aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?"
+)
+
+_ROLE_PREFIX = r"(?:(?:PQ|Agent|Prospect|Unknown)\s*:\s*)?"
+_NAME_WORD = r"[A-Z][a-z]+(?:'[A-Z][a-z]+)?"
+_NAME_PHRASE = rf"{_NAME_WORD}(?:\s+{_NAME_WORD}){{0,3}}"
+
+
+def _hard_redact_names(text):
+    """Cue-based person-name redaction. Keeps role labels but removes person names."""
+    if not text:
+        return text
+
+    t = text
+
+    # Handoff / introduction patterns.
+    cue_patterns = [
+        # "Who do I have the pleasure of speaking with? James"
+        (
+            rf"(?is)(who\s+do\s+i\s+have\s+the\s+pleasure\s+of\s+(?:speaking\s+with|helping)\s*(?:today)?\??\s*)({_NAME_PHRASE})\b",
+            r"\1[NAME]",
+        ),
+        # "This is Shelby", "Hi James", "Hello Jerome"
+        (
+            rf"(?im)^(\s*{_ROLE_PREFIX}(?:hi|hello|hey|good\s+morning|good\s+afternoon|this\s+is)\s+)(?!American\b|North\b|Premier\b|Kinzel\b)({_NAME_PHRASE})\b",
+            r"\1[NAME]",
+        ),
+        # "I have James here", "I have Jerome"
+        (
+            rf"(?i)\b(i\s+have\s+)({_NAME_PHRASE})(\s+(?:here|with\s+me|on\s+the\s+line)\b)",
+            r"\1[NAME]\3",
+        ),
+        # "Mr. James", "Ms. Frances", "Mrs. Smith"
+        (
+            rf"(?i)\b(mr|mrs|ms|miss|sir|ma'am)\.?\s+({_NAME_PHRASE})\b",
+            r"\1. [NAME]",
+        ),
+        # "my name is Shelby", "agent name is Shelby", "beneficiary is Misty Mullins"
+        (
+            rf"(?i)\b((?:my|your|his|her|their|beneficiary|primary\s+beneficiary|agent)\s+name\s+(?:is|as)\s+)({_NAME_PHRASE})\b",
+            r"\1[NAME]",
+        ),
+        (
+            rf"(?i)\b((?:beneficiary|primary\s+beneficiary)\s+(?:is|would\s+be|will\s+be|on\s+the\s+policy\s+is)\s+)({_NAME_PHRASE})\b",
+            r"\1[NAME]",
+        ),
+        # "leaving this money behind to Misty Mullins"
+        (
+            rf"(?i)\b((?:leaving|leave|send|go)\s+(?:this\s+)?(?:money|benefit|check|policy)?\s*(?:behind\s+)?(?:to|for)\s+)({_NAME_PHRASE})\b",
+            r"\1[NAME]",
+        ),
+        # "Do you spell her name M-I-S-T-Y"
+        (
+            r"(?i)\b((?:spell|spelled|spelling|verify\s+the\s+spelling\s+of)\s+(?:his|her|their|your)?\s*(?:name)?\s*)(?:[A-Z](?:[\s\-.]+|$)){2,}",
+            r"\1[NAME]",
+        ),
+    ]
+
+    for pattern, repl in cue_patterns:
+        t = re.sub(pattern, repl, t)
+
+    # Names embedded in common line starts after role labels.
+    t = re.sub(
+        rf"(?im)^(\s*(?:PQ|Agent|Prospect|Unknown)\s*:\s*(?:okay|perfect|thank\s+you|thanks|gotcha|all\s+right|alright),?\s+)(?!American\b|North\b|Premier\b|Kinzel\b)({_NAME_PHRASE})(\b)",
+        r"\1[NAME]\3",
+        t,
+    )
+
+    # Full-name style answers after name questions.
+    lines = t.split("\n")
+    out = []
+    name_context = 0
+    for line in lines:
+        current = line
+        if name_context > 0:
+            current = re.sub(
+                rf"^(\s*{_ROLE_PREFIX}){_NAME_PHRASE}\s*$",
+                r"\1[NAME]",
+                current,
+            )
+            name_context -= 1
+        out.append(current)
+        if re.search(r"\b(full\s+legal\s+name|what(?:'s| is)\s+your\s+name|who\s+do\s+i\s+have|beneficiary.*name|spell.*name|verify.*name)\b", current, re.I):
+            name_context = 2
+
+    return "\n".join(out)
+
+
+def _hard_redact_number_context_lines(text):
+    """
+    Redact short spoken/digit answers after sensitive number cues.
+    This catches:
+    Agent: What's your social?
+    Prospect: one two three...
+    Agent: What is your date of birth?
+    Prospect: nineteen sixty-six
+    """
+    if not text:
+        return text
+
+    cue_to_placeholder = [
+        (re.compile(r"\b(date\s+of\s+birth|d\.?\s*o\.?\s*b\.?|birth\s+date|birthday|born)\b", re.I), "[DOB]"),
+        (re.compile(r"\b(social|social\s+security|ssn)\b", re.I), "[SSN]"),
+        (re.compile(r"\b(phone|telephone|cell|number\s+to\s+reach|best\s+number)\b", re.I), "[PHONE]"),
+        (re.compile(r"\b(routing)\b", re.I), "[ROUTING_NUMBER]"),
+        (re.compile(r"\b(account\s+number|account)\b", re.I), "[ACCOUNT_NUMBER]"),
+        (re.compile(r"\b(card|debit|credit)\b", re.I), "[BANK_NUMBER]"),
+        (re.compile(r"\b(address|street|road|drive|lane|avenue|zip|city|state)\b", re.I), "[ADDRESS]"),
+    ]
+
+    short_numberish = re.compile(
+        rf"^(\s*{_ROLE_PREFIX})(?:"
+        rf"(?:\d[\d\s,\-/.#]*)|"
+        rf"(?:{_SPOKEN_NUMBER_WORDS})(?:[\s,\-]+(?:and\s+)?(?:{_SPOKEN_NUMBER_WORDS}))*|"
+        rf"(?:{_MONTH_WORDS})\s+\d{{1,2}}(?:st|nd|rd|th)?(?:,?\s+\d{{2,4}})?|"
+        rf"\[NUMBER\](?:[\s,\-/.]+\[NUMBER\])*"
+        rf")(\s*(?:,?\s*(?:you\s+said|correct|right)\??|[.!?])?\s*)$",
+        re.I,
+    )
+
+    lines = text.split("\n")
+    out = []
+    active_placeholder = None
+    remaining = 0
+
+    for line in lines:
+        current = line
+
+        if active_placeholder and remaining > 0:
+            m = short_numberish.match(current.strip())
+            if m:
+                prefix = re.match(rf"^(\s*{_ROLE_PREFIX})", current, re.I)
+                role = prefix.group(1) if prefix else ""
+                suffix = ""
+                if re.search(r"\byou\s+said\??", current, re.I):
+                    suffix = ", you said?"
+                elif current.rstrip().endswith("?"):
+                    suffix = "?"
+                elif current.rstrip().endswith("."):
+                    suffix = "."
+                current = f"{role}{active_placeholder}{suffix}"
+                remaining = 2
+            else:
+                remaining -= 1
+
+        out.append(current)
+
+        for cue, placeholder in cue_to_placeholder:
+            if cue.search(current):
+                active_placeholder = placeholder
+                remaining = 2
+                break
+
+    return "\n".join(out)
+
+
+def _hard_redact_numbers(text):
+    """Aggressive typed and spoken number cleanup with typed placeholders where context allows."""
+    if not text:
+        return text
+
+    t = text
+
+    # Typed structured values first.
+    t = re.sub(r"\b\d{3}-\d{2}-\d{4}\b", "[SSN]", t)
+    t = re.sub(r"(?i)\b((?:social|social security|ssn)\s*(?:is|number|#|:)?\s*)\d{4,9}\b", r"\1[SSN]", t)
+    t = re.sub(r"\b(?:\+?1[\s\-.]?)?(?:\(?\d{3}\)?[\s\-.]?)\d{3}[\s\-.]?\d{4}\b", "[PHONE]", t)
+    t = re.sub(r"\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b", "[DOB]", t)
+    t = re.sub(rf"\b(?:{_MONTH_WORDS})\s+\d{{1,2}}(?:st|nd|rd|th)?(?:,?\s+\d{{2,4}})?\b", "[DATE]", t, flags=re.I)
+    t = re.sub(r"\$\s*\d+(?:[,.]\d+)*(?:\.\d+)?\b", "[MONEY]", t)
+    t = re.sub(r"(?i)\b((?:routing|routing number)\s*(?:is|#|:)?\s*)\d[\d\s\-]{5,}\b", r"\1[ROUTING_NUMBER]", t)
+    t = re.sub(r"(?i)\b((?:account|account number)\s*(?:is|#|:)?\s*)\d[\d\s\-]{4,}\b", r"\1[ACCOUNT_NUMBER]", t)
+    t = re.sub(r"(?i)\b((?:card|debit|credit)\s*(?:number)?\s*(?:is|#|:)?\s*)\d[\d\s\-]{4,}\b", r"\1[BANK_NUMBER]", t)
+    t = re.sub(r"\b(?:\d[\s\-]*){12,19}\b", "[BANK_NUMBER]", t)
+
+    # Spoken contextual values.
+    t = re.sub(rf"(?i)\b((?:date of birth|dob|d\.o\.b\.|birthday|born)\s*(?:is|:)?\s*){_SPOKEN_NUMBER_CHAIN}\b", r"\1[DOB]", t)
+    t = re.sub(rf"(?i)\b((?:social|social security|ssn)\s*(?:is|number|:)?\s*){_SPOKEN_NUMBER_CHAIN}\b", r"\1[SSN]", t)
+    t = re.sub(rf"(?i)\b((?:phone|telephone|cell|number)\s*(?:is|:)?\s*){_SPOKEN_NUMBER_CHAIN}\b", r"\1[PHONE]", t)
+    t = re.sub(rf"(?i)\b((?:routing|routing number)\s*(?:is|:)?\s*){_SPOKEN_NUMBER_CHAIN}\b", r"\1[ROUTING_NUMBER]", t)
+    t = re.sub(rf"(?i)\b((?:account|account number)\s*(?:is|:)?\s*){_SPOKEN_NUMBER_CHAIN}\b", r"\1[ACCOUNT_NUMBER]", t)
+
+    # Any remaining long spoken digit/number chains are sensitive by default.
+    t = re.sub(_SPOKEN_NUMBER_CHAIN, "[NUMBER]", t, flags=re.I)
+
+    # Any remaining digits become generic [NUMBER], unless already inside a placeholder.
+    t = re.sub(r"(?<!\[)\b\d+(?:\.\d+)?\b(?!\])", "[NUMBER]", t)
+
+    # Clean accidental repeated placeholders.
+    t = re.sub(r"(?:\[NUMBER\][\s,\-/.]*){2,}", "[NUMBER]", t)
+    t = re.sub(r"(?:\[DOB\][\s,\-/.]*){2,}", "[DOB]", t)
+    t = re.sub(r"(?:\[PHONE\][\s,\-/.]*){2,}", "[PHONE]", t)
+
+    return t
+
+
+def hard_privacy_redact_transcript(text):
+    """Final privacy pass. No names or numbers should survive this."""
+    if not text:
+        return text
+
+    t = text
+    t = _hard_redact_number_context_lines(t)
+    t = _hard_redact_names(t)
+    t = _hard_redact_numbers(t)
+    t = _hard_redact_number_context_lines(t)
+    t = _hard_redact_names(t)
+
+    return t
+
 
 
 ROLE_LABEL_TRANSCRIPT_NOTE = (
@@ -1773,7 +2012,7 @@ General rules:
     out = (response.output_text or "").strip()
     if not out:
         raise RuntimeError("Empty model output for role labeling")
-    return out
+    return redact_sensitive_transcript(out)
 
 
 def try_save_role_labeled_transcript(call_name, redacted_transcript_text):
