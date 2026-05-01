@@ -39,6 +39,7 @@ DASHBOARD_PASSWORD = os.getenv("AI_AUDITOR_PASSWORD", "change-me")
 UPLOAD_FOLDER = "calls"
 TRANSCRIPT_UPLOAD_FOLDER = "transcript_uploads"
 TRANSCRIPTS_FOLDER = "transcripts"
+TRANSCRIPTS_ROLE_LABELED_FOLDER = "transcripts_role_labeled"
 REPORTS_FOLDER = "reports"
 DB_FILE = "calls.db"
 PORT = 5050
@@ -59,6 +60,7 @@ STATUS_LABELS = {
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(TRANSCRIPT_UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(TRANSCRIPTS_FOLDER, exist_ok=True)
+os.makedirs(TRANSCRIPTS_ROLE_LABELED_FOLDER, exist_ok=True)
 os.makedirs(REPORTS_FOLDER, exist_ok=True)
 
 
@@ -321,9 +323,32 @@ def build_agent_filter_options_html(calls):
         options.append(f'<option value="{safe}">{safe}</option>')
     return "\n".join(options)
 
+def get_saved_transcript_path(call_name):
+    """Prefer role-labeled transcript when available; fall back to raw redacted transcript."""
+    role_labeled_path = os.path.join(TRANSCRIPTS_ROLE_LABELED_FOLDER, f"{call_name}.txt")
+    raw_path = os.path.join(TRANSCRIPTS_FOLDER, f"{call_name}.txt")
+
+    if os.path.isfile(role_labeled_path):
+        return role_labeled_path
+
+    if os.path.isfile(raw_path):
+        return raw_path
+
+    return None
+
+
+def get_saved_transcript_kind(call_name):
+    path = get_saved_transcript_path(call_name)
+    if not path:
+        return "missing"
+    if os.path.basename(os.path.dirname(path)) == TRANSCRIPTS_ROLE_LABELED_FOLDER:
+        return "role-labeled"
+    return "raw"
+
+
 def get_saved_transcript(call_name):
-    transcript_path = os.path.join(TRANSCRIPTS_FOLDER, f"{call_name}.txt")
-    if not os.path.exists(transcript_path):
+    transcript_path = get_saved_transcript_path(call_name)
+    if not transcript_path:
         return None
     try:
         with open(transcript_path, "r", encoding="utf-8") as f:
@@ -2903,8 +2928,15 @@ def view_transcript(call_id):
     transcript = get_saved_transcript(call[1])
     transcript_content = transcript if transcript else "Transcript not available."
     cid = call[0]
-    transcript_path = os.path.join(TRANSCRIPTS_FOLDER, f"{call[1]}.txt")
-    transcript_file_ok = os.path.isfile(transcript_path)
+    transcript_path = get_saved_transcript_path(call[1])
+    transcript_kind = get_saved_transcript_kind(call[1])
+    transcript_file_ok = bool(transcript_path and os.path.isfile(transcript_path))
+    transcript_heading = "Role-Labeled Transcript" if transcript_kind == "role-labeled" else "Saved Redacted Transcript"
+    transcript_note = (
+        "Showing the PQ / Agent / Prospect / Unknown role-labeled transcript."
+        if transcript_kind == "role-labeled"
+        else "Showing the raw redacted transcript because no role-labeled transcript is available yet."
+    )
     transcript_save_nav = (
         f'''<form method="post" action="/transcript/{cid}/save" style="display:inline;">
             <button type="submit" style="padding:10px 14px; background:#2563eb; color:white; border:none; border-radius:8px; cursor:pointer; font-size:14px;">Save Transcript to Downloads</button>
@@ -2930,7 +2962,8 @@ def view_transcript(call_id):
     </div>
 
     <div class="card">
-        <h2>Saved Redacted Transcript</h2>
+        <h2>{transcript_heading}</h2>
+        <p class="muted" style="margin-top:0;margin-bottom:12px;">{transcript_note}</p>
         <textarea id="transcript-raw" class="hidden" readonly>{escape(transcript_content)}</textarea>
         <pre id="transcriptText" class="transcript-viewer" data-call-id="{cid}">{escape(transcript_content)}</pre>
     </div>
@@ -2949,8 +2982,8 @@ def download_transcript(call_id):
         return "Call not found.", 404
 
     call_name = call[1]
-    transcript_path = os.path.join(TRANSCRIPTS_FOLDER, f"{call_name}.txt")
-    if not os.path.isfile(transcript_path):
+    transcript_path = get_saved_transcript_path(call_name)
+    if not transcript_path or not os.path.isfile(transcript_path):
         return "Saved transcript file not found.", 404
 
     with open(transcript_path, "r", encoding="utf-8") as f:
@@ -2979,8 +3012,8 @@ def save_transcript_to_downloads(call_id):
         )
 
     call_name = call[1]
-    transcript_path = os.path.join(TRANSCRIPTS_FOLDER, f"{call_name}.txt")
-    if not os.path.isfile(transcript_path):
+    transcript_path = get_saved_transcript_path(call_name)
+    if not transcript_path or not os.path.isfile(transcript_path):
         return render_template_string(
             BASE,
             content="""
