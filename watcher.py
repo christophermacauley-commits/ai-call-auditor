@@ -4481,12 +4481,57 @@ def _final_cleanup_shelby_sold_short_false_fails(report, transcript):
         report = _text_remove_lines_containing(report, "credit unions can require extra digits")
 
     if _transcript_no_current_coverage_only_one_first_time(transcript):
+        # Shelby-sold style compound-question pattern:
+        # "Do you have coverage now, or will this be your only policy?" -> "Only one"
+        # followed by "first time" is still not enough carrier/provider confirmation
+        # on a sold call. Keep/force this as an existing-coverage at-risk condition.
         report = re.sub(
-            r"(?im)^- Existing coverage mentioned but not confirmed:\s*(?:YES|UNCLEAR)\b.*$",
-            "- Existing coverage mentioned but not confirmed: NO",
+            r"(?im)^- Existing coverage mentioned but not confirmed:\s*(?:YES|NO|UNCLEAR)\b.*$",
+            "- Existing coverage mentioned but not confirmed: YES",
             report,
         )
-        report = _text_remove_lines_containing(report, "Existing coverage mentioned but not confirmed: agent")
+        report = re.sub(
+            r"(?im)^- Automatic fail triggered:\s*(?:YES|NO)\b.*$",
+            "- Automatic fail triggered: YES",
+            report,
+        )
+        if re.search(r"(?im)^- Reason:\s*.*$", report):
+            report = re.sub(
+                r"(?im)^- Reason:\s*.*$",
+                "- Reason: Existing coverage mentioned but not confirmed",
+                report,
+                count=1,
+            )
+        else:
+            report = re.sub(
+                r"(?im)^- Automatic fail triggered:\s*YES\b.*$",
+                "- Automatic fail triggered: YES\n- Reason: Existing coverage mentioned but not confirmed",
+                report,
+                count=1,
+            )
+
+        if sold_yes:
+            report = re.sub(r"(?im)^PASS:\s*(?:YES|NO|AT RISK)\s*$", "PASS: AT RISK", report, count=1)
+            report = re.sub(r"(?im)^RISK:\s*(?:LOW|MEDIUM|HIGH)\s*$", "RISK: HIGH", report, count=1)
+
+        report = re.sub(
+            r"(?ims)^COMPLIANCE FAILURES:\s*None\s*(?=^SCRIPT / FLOW MISSES:)",
+            "COMPLIANCE FAILURES:\n- Existing coverage mentioned but not confirmed\n\n",
+            report,
+            count=1,
+        )
+        report = re.sub(
+            r"(?ims)^SCRIPT / FLOW MISSES:\s*None\s*(?=^PQ / HANDOFF:)",
+            "SCRIPT / FLOW MISSES:\n- Existing coverage mentioned but not confirmed: agent did not clearly resolve whether the prospect had active current coverage or verify carrier/provider information\n\n",
+            report,
+            count=1,
+        )
+        report = re.sub(
+            r"(?ims)^BIGGEST MISS:\s*.*?(?=^OBJECTIONS DETECTED:|^TRANSCRIPT NOTE|^SUMMARY:|^OPENAI COST ESTIMATE:|\Z)",
+            "BIGGEST MISS:\n- Existing coverage mentioned but not confirmed: the prospect gave an ambiguous answer to the current-coverage question and the agent did not verify carrier/provider information before completing the sale.\n\n",
+            report,
+            count=1,
+        )
 
     if _transcript_three_options_presented(transcript):
         report = _text_replace_checklist_value(report, "Three options presented", "YES")
@@ -4546,8 +4591,7 @@ def _final_cleanup_shelby_sold_short_false_fails(report, transcript):
             "The agent completed a sold call: options were presented, the client chose an option, "
             "application information and payment date were collected, banking setup was handled with a bank, "
             "required disclosures and voice signature were completed, Peace of Mind was delivered, and the agent "
-            "continued into Cool Down conversation. No callback, unresolved existing-coverage issue, or credit-union "
-            "ACH verification issue was detected."
+            "continued into Cool Down conversation. No callback or credit-union ACH verification issue was detected."
         )
         report = re.sub(
             r"(?ims)^SUMMARY:\s*.*?(?=^OPENAI COST ESTIMATE:|\Z)",
