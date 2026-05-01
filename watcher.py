@@ -23,7 +23,7 @@ DB_FILE = "calls.db"
 
 # "medium" balances WER vs speed; int8 on CPU is the usual faster-whisper sweet spot (much faster
 # than float32/float16 with modest accuracy loss vs full precision).
-WHISPER_MODEL = "large-v3-turbo"
+WHISPER_MODEL = "small"
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
 SCAN_INTERVAL_SECONDS = 5
 OLLAMA_TIMEOUT_SECONDS = 300
