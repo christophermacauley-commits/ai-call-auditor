@@ -1707,10 +1707,11 @@ def redact_sensitive_transcript(transcript):
 
 
 ROLE_LABEL_TRANSCRIPT_NOTE = (
-    "TRANSCRIPT NOTE (MANDATORY): The following transcript may include Agent:, Prospect:, or Unknown: "
-    "role labels generated only from the redacted transcript. Use labeled turns to follow the conversation; "
-    "they are an aid and are not absolute proof of who spoke if the source text was ambiguous. "
-    "Do not auto-fail based solely on callback wording when speaker role is uncertain — explain uncertainty."
+    "TRANSCRIPT NOTE (MANDATORY): The following transcript may include PQ:, Agent:, Prospect:, or Unknown: "
+    "role labels generated only from the redacted transcript. PQ means the pre-qualification / transfer rep, "
+    "not the selling agent. Use labeled turns to follow the conversation; they are an aid and are not absolute "
+    "proof of who spoke if the source text was ambiguous. Do not auto-fail based solely on callback wording when "
+    "speaker role is uncertain — explain uncertainty."
 )
 
 
@@ -1728,21 +1729,38 @@ def create_role_labeled_transcript(transcript_text):
     instructions = """You are preparing a redacted transcript for sales compliance auditing.
 
 Rewrite the transcript into clear speaker-role turns using only:
+PQ:
 Agent:
 Prospect:
 Unknown:
 
-Rules:
+Definitions:
+- PQ = the pre-qualification / transfer rep before the selling agent takes over.
+- Agent = the licensed field underwriter / selling agent who audits eligibility, builds rapport, quotes, closes, collects application/payment/banking, reads disclosures, or completes voice signature.
+- Prospect = the customer / consumer / lead.
+- Unknown = use only when the speaker cannot be identified from context.
+
+PQ labeling rules:
+- Use PQ for the opening transfer rep who answers first, asks who they have the pleasure of speaking with, references PQ or a PQ number, introduces the prospect to the agent, says the agent is one of the best, says the agent will walk the prospect through step-by-step, or says goodbye / have a blessed day during the handoff.
+- Do not label the selling agent as PQ after the handoff.
+- If the PQ identifies the prospect before handoff, keep that under PQ so the audit can tell the agent did not need to re-confirm the name.
+- If the handoff speaker is unclear, use Unknown rather than guessing.
+
+Agent labeling rules:
+- Prefer Agent for sales script, recording disclosure, license number, rapport / 3 and 1, health questions, existing coverage, need, product benefits, quotes, close, application information, payment date, banking, disclosures, voice signature, Peace of Mind, Cool Down, and call-control language.
+
+Prospect labeling rules:
+- Prefer Prospect for answers, objections, personal details, hesitations, hangup language, refusal, banking/account answers, coverage answers, medical answers, beneficiary answers, and option choices.
+
+General rules:
 - Do not add facts.
 - Do not remove compliance-relevant details.
 - Do not unredact or guess redacted information.
 - If speaker identity is unclear, use Unknown.
-- Prefer Agent for sales rep/script/control/payment/banking/close language.
-- Prefer Prospect for answers, objections, personal details, hesitations, hangup language, or refusal.
 - Keep callback language exact enough to determine who initiated the callback.
 - Keep banking/account-number/payment-date language exact enough to audit.
 - Keep current coverage/provider/carrier language exact enough to audit.
-- Keep important phrases related to: coverage; provider/carrier; Social Security deposit timing; payment/draft date; banking/account/routing/payment info; objections; callbacks; hangups; sale/close; account number; call control; medical questions; warm-up/fact finding.
+- Keep important phrases related to: coverage; provider/carrier; Social Security deposit timing; payment/draft date; banking/account/routing/payment info; objections; callbacks; hangups; sale/close; account number; call control; medical questions; warm-up/fact finding; PQ handoff; prospect identification.
 - Keep the text concise but complete enough for audit.
 - Output only the role-labeled transcript."""
 
