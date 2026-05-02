@@ -6104,20 +6104,43 @@ def _final_cleanup_callback_autofail_consistency(report, transcript):
 
     combined = (report or "") + "\n" + (transcript or "")
 
+    # Callback autofail needs clear callback / delay evidence.
+    # Do not trigger from casual rapport language containing words like "call",
+    # "later", "live", "work", or family stories.
     callback_requested = bool(re.search(
         r"(?is)"
-        r"(prospect requested callback|requested callback|asked for (?:a )?callback|"
-        r"call back later|callback due to being busy|prospect.*busy|"
-        r"busy.*call back|do this later|talk later|not a good time)",
+        r"("
+        r"prospect requested (?:a )?callback|"
+        r"requested (?:a )?callback|"
+        r"asked (?:for )?(?:a )?callback|"
+        r"call (?:me|you|him|her|them)?\s*back\s+later|"
+        r"call (?:me|you|him|her|them)?\s*back\s+(?:tomorrow|today|next week|on monday|on tuesday|on wednesday|on thursday|on friday)|"
+        r"callback due to being busy|"
+        r"too busy.*call back|"
+        r"busy.*call (?:me|you)?\s*back|"
+        r"not a good time.*call back|"
+        r"do this later|"
+        r"talk (?:about this )?later"
+        r")",
         combined,
     ))
 
     agent_accepted_without_control = bool(re.search(
         r"(?is)"
-        r"(agent agreed to call back later|agreed to call back|"
-        r"instead of attempting call control|instead of.*continuing the sale|"
-        r"accepted the callback|set a callback|scheduled a callback|"
-        r"resulting in an automatic fail)",
+        r"("
+        r"agent agreed to call back later|"
+        r"agreed to call back|"
+        r"accepted the callback|"
+        r"set a callback|"
+        r"scheduled a callback|"
+        r"i(?:'ll| will) call you back|"
+        r"i(?:'ll| will) give you a call back|"
+        r"we(?:'ll| will) call you back|"
+        r"we can do this later|"
+        r"instead of attempting call control|"
+        r"instead of.*continuing the sale|"
+        r"resulting in an automatic fail"
+        r")",
         combined,
     ))
 
