@@ -237,7 +237,7 @@ def redact_report_text(report):
     r = report
 
     # Preserve / restore audit structure phrases if a previous redaction over-hit them.
-    r = re.sub(r"(?im)^SCORE:\s*\[NUMBER\]\s*$", "SCORE: 0", r)
+    r = re.sub(r"(?im)^SCORE:\s*\[NUMBER\]\s*$", "SCORE: Unknown", r)
     r = re.sub(r"(?i)\bTOP\s+\[NUMBER\]\s+COACHING PRIORITIES\b", "TOP 3 COACHING PRIORITIES", r)
     r = re.sub(r"(?i)\b\[NUMBER\]\s+and\s+\[NUMBER\]\s+Method\b", "3 and 1 Method", r)
     r = re.sub(r"(?i)\b\[NUMBER\]\s*&\s+\[NUMBER\]\s+Method\b", "3 and 1 Method", r)
