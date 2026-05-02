@@ -315,6 +315,32 @@ def detect_agent_name_from_call_name(call_name):
     return agent_map.get(agent_number, f"Unknown {agent_number}")
 
 
+def build_agent_sidebar_html(calls):
+    """
+    Sidebar buttons for filtering completed audits by inferred agent.
+    """
+    counts = {}
+    for c in calls:
+        agent = detect_agent_name_from_call_name(c[1])
+        counts[agent] = counts.get(agent, 0) + 1
+
+    parts = [
+        '<button type="button" class="agent-filter-button active" data-agent="all">',
+        f'<span>All Calls</span><span class="agent-count">{len(calls)}</span>',
+        '</button>',
+    ]
+
+    for agent in sorted(counts):
+        agent_esc = escape(agent)
+        parts.append(
+            f'<button type="button" class="agent-filter-button" data-agent="{agent_esc}">'
+            f'<span>{agent_esc}</span><span class="agent-count">{counts[agent]}</span>'
+            f'</button>'
+        )
+
+    return "\n".join(parts)
+
+
 def build_agent_filter_options_html(calls):
     names = sorted({detect_agent_name_from_call_name(c[1]) for c in calls})
     options = ['<option value="all">All agents</option>']
@@ -2251,6 +2277,109 @@ form { margin: 0; }
             color: #d97706;
         }
 
+    
+        .global-back {
+            position: fixed;
+            top: 84px;
+            left: 18px;
+            z-index: 30;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 12px;
+            border-radius: 999px;
+            border: 1px solid #dbe3ef;
+            background: #ffffff;
+            color: #334155;
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 800;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+        }
+        .global-back:hover {
+            background: #f8fafc;
+            color: #1d4ed8;
+        }
+        .completed-audits-layout {
+            display: grid;
+            grid-template-columns: 240px minmax(0, 1fr);
+            gap: 16px;
+            align-items: start;
+        }
+        .agent-sidebar {
+            position: sticky;
+            top: 16px;
+            background: #ffffff;
+            border: 1px solid #e5e7eb;
+            border-radius: 14px;
+            padding: 14px;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+        }
+        .agent-sidebar-title {
+            font-size: 12px;
+            font-weight: 900;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #64748b;
+            margin: 0 0 10px;
+        }
+        .agent-filter-button {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            border: 1px solid transparent;
+            background: transparent;
+            color: #111827;
+            border-radius: 10px;
+            padding: 9px 10px;
+            margin: 3px 0;
+            cursor: pointer;
+            font: inherit;
+            font-size: 14px;
+            font-weight: 700;
+            text-align: left;
+        }
+        .agent-filter-button:hover {
+            background: #f8fafc;
+            border-color: #e5e7eb;
+        }
+        .agent-filter-button.active {
+            background: #eff6ff;
+            border-color: #bfdbfe;
+            color: #1d4ed8;
+        }
+        .agent-count {
+            min-width: 28px;
+            padding: 2px 7px;
+            border-radius: 999px;
+            background: #f1f5f9;
+            color: #475569;
+            font-size: 12px;
+            font-weight: 900;
+            text-align: center;
+        }
+        .agent-filter-button.active .agent-count {
+            background: #dbeafe;
+            color: #1d4ed8;
+        }
+        .completed-audits-main {
+            min-width: 0;
+        }
+        @media (max-width: 900px) {
+            .global-back {
+                position: static;
+                margin: 0 0 14px;
+            }
+            .completed-audits-layout {
+                grid-template-columns: 1fr;
+            }
+            .agent-sidebar {
+                position: static;
+            }
+        }
+
     </style>
 </head>
 <body>
@@ -2269,6 +2398,27 @@ form { margin: 0; }
 </header>
 
 <main class="main">
+<a id="globalBack" class="global-back" href="/">← Back</a>
+<script>
+(function() {
+    const btn = document.getElementById("globalBack");
+    const path = window.location.pathname;
+    if (btn) {
+        if (path === "/" || path === "/upload" || path === "/login") {
+            btn.style.display = "none";
+        } else {
+            btn.addEventListener("click", function(e) {
+                e.preventDefault();
+                if (window.history.length > 1) {
+                    window.history.back();
+                } else {
+                    window.location.href = "/";
+                }
+            });
+        }
+    }
+})();
+</script>
 {{content|safe}}
 </main>
 
@@ -2490,15 +2640,20 @@ def dashboard():
     else:
         rows_html = build_completed_calls_table_rows_html(calls)
         agent_filter_options_html = build_agent_filter_options_html(calls)
+        agent_sidebar_html = build_agent_sidebar_html(calls)
         n_calls = len(calls)
         content += f"""
+        <div class="completed-audits-layout">
+            <aside class="agent-sidebar" aria-label="Agent filters">
+                <div class="agent-sidebar-title">Agents</div>
+                {agent_sidebar_html}
+            </aside>
+            <div class="completed-audits-main">
         <p class="filter-count" id="filter-count" aria-live="polite"></p>
+        <select id="filter-agent" aria-label="Filter by agent" class="hidden">
+            {agent_filter_options_html}
+        </select>
         <div class="card filter-bar" id="completed-filters">
-            <label>Agent
-                <select id="filter-agent" aria-label="Filter by agent">
-                    {agent_filter_options_html}
-                </select>
-            </label>
             <label>Sold status
                 <select id="filter-sold-status" aria-label="Filter by sold status or audit pass fail">
                     <option value="all">All</option>
@@ -2555,6 +2710,8 @@ def dashboard():
                     {rows_html}
                 </tbody>
             </table></div>
+        </div>
+            </div>
         </div>
         <script>
         (function() {{
@@ -2616,6 +2773,7 @@ def dashboard():
                 var auditF = document.getElementById("filter-audit");
                 var scoreF = document.getElementById("filter-score");
                 var countEl = document.getElementById("filter-count");
+                var agentButtons = Array.prototype.slice.call(document.querySelectorAll(".agent-filter-button"));
                 if (!agentF || !statusF || !auditF || !scoreF) return;
                 var agentV = agentF.value;
                 var pv = statusF.value;
@@ -2660,7 +2818,21 @@ def dashboard():
                         countEl.textContent = "Showing " + visible + " of " + denom + " calls";
                     }}
                 }}
+
+                agentButtons.forEach(function(btn) {{
+                    btn.classList.toggle("active", btn.getAttribute("data-agent") === agentV);
+                }});
             }}
+
+            document.querySelectorAll(".agent-filter-button").forEach(function(btn) {{
+                btn.addEventListener("click", function() {{
+                    var agentF = document.getElementById("filter-agent");
+                    if (!agentF) return;
+                    agentF.value = btn.getAttribute("data-agent") || "all";
+                    applyFilters();
+                }});
+            }});
+
             function refresh() {{
                 sortRows();
                 applyFilters();
