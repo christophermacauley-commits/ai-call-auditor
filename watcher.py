@@ -2069,69 +2069,170 @@ ROLE_LABEL_TRANSCRIPT_NOTE = (
 )
 
 
-def create_role_labeled_transcript(transcript_text):
+def _split_transcript_for_exact_labeling(transcript_text):
     """
-    Ask the model to rewrite an already-redacted transcript into Agent:/Prospect:/Unknown: turns.
-    Raises on failure; caller handles logging and fallback.
+    Split redacted transcript into original non-empty lines for speaker labeling.
+    The line text is the source of truth. The model only labels each line.
     """
-    text = (transcript_text or "").strip()
-    if not text:
-        raise ValueError("Empty transcript for role labeling")
-    if not os.getenv("OPENAI_API_KEY"):
-        raise RuntimeError("OPENAI_API_KEY not set")
+    lines = []
+    for raw_line in (transcript_text or "").splitlines():
+        line = raw_line.rstrip()
+        if line.strip():
+            lines.append(line)
+    return lines
 
-    instructions = """You are preparing a redacted transcript for sales compliance auditing.
 
-Rewrite the transcript into clear speaker-role turns using only:
-PQ:
-Agent:
-Prospect:
-Unknown:
+def _parse_speaker_label_response(output_text, expected_numbers):
+    """
+    Parse label-only model output. Accept JSON first, then simple '1: Agent' lines.
+    Returns {line_number: speaker}.
+    """
+    labels = {}
+    raw = (output_text or "").strip()
+    if not raw:
+        return labels
 
-Definitions:
-- PQ = the pre-qualification / transfer rep before the selling agent takes over.
-- Agent = the licensed field underwriter / selling agent who audits eligibility, builds rapport, quotes, closes, collects application/payment/banking, reads disclosures, or completes voice signature.
-- Prospect = the customer / consumer / lead.
-- Unknown = use only when the speaker cannot be identified from context.
+    allowed = {"PQ", "Agent", "Prospect", "Unknown"}
 
-PQ labeling rules:
-- Use PQ for the opening transfer rep who answers first, asks who they have the pleasure of speaking with, references PQ or a PQ number, introduces the prospect to the agent, says the agent is one of the best, says the agent will walk the prospect through step-by-step, or says goodbye / have a blessed day during the handoff.
-- Do not label the selling agent as PQ after the handoff.
-- If the PQ identifies the prospect before handoff, keep that under PQ so the audit can tell the agent did not need to re-confirm the name.
-- If the handoff speaker is unclear, use Unknown rather than guessing.
+    # JSON path: {"labels":[{"n":1,"speaker":"Agent"}]}
+    try:
+        cleaned = raw
+        fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", cleaned, flags=re.DOTALL)
+        if fenced:
+            cleaned = fenced.group(1).strip()
+        obj = json.loads(cleaned)
+        items = obj.get("labels", []) if isinstance(obj, dict) else []
+        for item in items:
+            try:
+                n = int(item.get("n"))
+                speaker = str(item.get("speaker", "")).strip()
+            except Exception:
+                continue
+            if n in expected_numbers and speaker in allowed:
+                labels[n] = speaker
+        if labels:
+            return labels
+    except Exception:
+        pass
 
-Agent labeling rules:
-- Prefer Agent for sales script, recording disclosure, license number, rapport / 3 and 1, health questions, existing coverage, need, product benefits, quotes, close, application information, payment date, banking, disclosures, voice signature, Peace of Mind, Cool Down, and call-control language.
+    # Text fallback: 1: Agent
+    for m in re.finditer(r"(?im)^\s*(\d+)\s*[:\-]\s*(PQ|Agent|Prospect|Unknown)\s*$", raw):
+        n = int(m.group(1))
+        speaker = m.group(2)
+        if n in expected_numbers:
+            labels[n] = speaker
 
-Prospect labeling rules:
-- Prefer Prospect for answers, objections, personal details, hesitations, hangup language, refusal, banking/account answers, coverage answers, medical answers, beneficiary answers, and option choices.
+    return labels
 
-General rules:
-- Do not add facts.
-- Do not remove any spoken content.
-- Do not summarize, shorten, condense, paraphrase, or combine unrelated turns.
-- Preserve the transcript wording as closely as possible while only adding speaker labels.
-- Preserve every utterance in the same order it appears in the transcript.
-- If a long paragraph contains multiple speakers, split it into separate labeled turns instead of rewriting it.
-- Do not unredact or guess redacted information.
-- If speaker identity is unclear, use Unknown.
-- Keep callback language exact enough to determine who initiated the callback.
-- Keep banking/account-number/payment-date language exact enough to audit.
-- Keep current coverage/provider/carrier language exact enough to audit.
-- Keep important phrases related to: coverage; provider/carrier; Social Security deposit timing; payment/draft date; banking/account/routing/payment info; objections; callbacks; hangups; sale/close; account number; call control; medical questions; warm-up/fact finding; PQ handoff; prospect identification.
-- Output only the role-labeled transcript."""
 
-    user_block = f"{instructions}\n\n---\n\n{text}"
+def _label_transcript_line_batch(numbered_lines):
+    """
+    Ask OpenAI for speaker labels only. It must not rewrite transcript words.
+    numbered_lines = list[(n, exact_line)]
+    """
+    if not numbered_lines:
+        return {}
+
+    numbered_text = "\n".join(f"{n}. {line}" for n, line in numbered_lines)
+    expected_numbers = {n for n, _ in numbered_lines}
+
+    instructions = """You are labeling speakers in a redacted final-expense sales transcript.
+
+CRITICAL:
+- Return speaker labels ONLY.
+- Do NOT rewrite, paraphrase, summarize, correct, shorten, or repeat transcript text.
+- Do NOT include any transcript words in your response.
+- The original transcript text will be preserved exactly by software. Your only job is to choose a speaker label for each numbered line.
+
+Allowed speaker labels:
+- PQ = pre-qualification / transfer rep before the selling agent takes over. Use this for the opening rep who identifies themself as PQ, introduces the prospect, introduces the underwriter/agent, says the agent will walk them through the process, or ends the handoff.
+- Agent = licensed field underwriter / selling agent. Use for recording disclosure, license number, rapport, health questions, existing coverage, need, product explanation, quotes, closing, application, payment, banking, disclosures, voice signature, Peace of Mind, Cool Down, and call-control language.
+- Prospect = customer / consumer / lead. Use for answers, objections, refusals, medical answers, personal details, coverage answers, banking answers, option choices, or hangup language.
+- Unknown = only when the speaker cannot be identified from context.
+
+Return valid JSON only in this exact shape:
+{"labels":[{"n":1,"speaker":"PQ"},{"n":2,"speaker":"Prospect"}]}
+
+You must include exactly one label object for every numbered line.
+"""
+
+    user_block = f"{instructions}\n\nNUMBERED TRANSCRIPT LINES:\n{numbered_text}"
+
     response = openai_client.responses.create(
         model=OPENAI_MODEL,
         input=user_block,
         temperature=0,
     )
     out = (response.output_text or "").strip()
-    if not out:
-        raise RuntimeError("Empty model output for role labeling")
-    return redact_sensitive_transcript(out)
+    return _parse_speaker_label_response(out, expected_numbers)
 
+
+def create_role_labeled_transcript(transcript_text):
+    """
+    Create an exact speaker-labeled transcript.
+
+    IMPORTANT: This does NOT let the model rewrite the transcript.
+    The model returns labels only, and we attach those labels to the exact
+    redacted transcript lines.
+    """
+    text = redact_sensitive_transcript((transcript_text or "").strip())
+    if not text:
+        raise ValueError("Empty transcript for role labeling")
+    if not os.getenv("OPENAI_API_KEY"):
+        raise RuntimeError("OPENAI_API_KEY not set")
+
+    lines = _split_transcript_for_exact_labeling(text)
+    if not lines:
+        raise ValueError("No transcript lines for role labeling")
+
+    all_labels = {}
+
+    # Keep batches modest so the model reliably returns one label per line.
+    batch_size = 80
+    for start_idx in range(0, len(lines), batch_size):
+        batch = [(i + 1, lines[i]) for i in range(start_idx, min(start_idx + batch_size, len(lines)))]
+        try:
+            labels = _label_transcript_line_batch(batch)
+            all_labels.update(labels)
+        except Exception as e:
+            print(f"Role label batch failed lines {batch[0][0]}-{batch[-1][0]}: {e}", flush=True)
+
+    labeled_lines = []
+    last_speaker = "Unknown"
+
+    for i, line in enumerate(lines, start=1):
+        # If the raw line is already labeled, keep its text exactly as-is after privacy redaction.
+        if re.match(r"^\s*(?:PQ|Agent|Prospect|Unknown)\s*:", line):
+            labeled_lines.append(line)
+            m = re.match(r"^\s*(PQ|Agent|Prospect|Unknown)\s*:", line)
+            if m:
+                last_speaker = m.group(1)
+            continue
+
+        speaker = all_labels.get(i)
+
+        # Conservative fallback if OpenAI omitted a label.
+        if speaker not in {"PQ", "Agent", "Prospect", "Unknown"}:
+            lower = line.lower()
+            if "pq" in lower and ("one of the best" in lower or "walk" in lower or "have " in lower):
+                speaker = "PQ"
+            elif re.search(r"\b(no|yes|yeah|okay|alright|all right|i'm|i am|i have|because|thank you|bye|hang up)\b", lower) and len(line.split()) <= 18:
+                speaker = "Prospect"
+            elif re.search(r"\b(recorded|licensed|underwriter|qualify|health questions|date of birth|coverage|policy|beneficiary|payment|bank|routing|account|disclosures|voice signature)\b", lower):
+                speaker = "Agent"
+            else:
+                speaker = last_speaker if last_speaker in {"PQ", "Agent", "Prospect"} else "Unknown"
+
+        last_speaker = speaker if speaker in {"PQ", "Agent", "Prospect"} else last_speaker
+        labeled_lines.append(f"{speaker}: {line}")
+
+    labeled = "\n".join(labeled_lines)
+    labeled = redact_sensitive_transcript(labeled)
+
+    # Safety: the exact-label approach should never create fake [NAME]: speaker labels.
+    labeled = re.sub(r"\s+\[NAME\]\s*:\s*", "\nAgent: ", labeled)
+
+    return labeled
 
 def try_save_role_labeled_transcript(call_name, redacted_transcript_text):
     """Role-label redacted text, save under transcripts_role_labeled/. Returns labeled text or None."""
