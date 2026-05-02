@@ -2264,6 +2264,138 @@ You must include exactly one label object for every numbered line.
     return _parse_speaker_label_response(out, expected_numbers)
 
 
+
+
+def _looks_like_agent_personal_self_disclosure(text):
+    """
+    Conservative detector for long agent rapport/self-disclosure blocks that were
+    mislabeled as Prospect. This does not rewrite transcript words; it only helps
+    repair the speaker label.
+    """
+    if not text:
+        return False
+
+    body = text.lower()
+    words = re.findall(r"\b\w+\b", body)
+
+    if len(words) < 45:
+        return False
+
+    markers = [
+        r"\bmy husband\b",
+        r"\bmy wife\b",
+        r"\bmy son\b",
+        r"\bmy daughter\b",
+        r"\bmy child\b",
+        r"\bmy kids?\b",
+        r"\bmy mom\b",
+        r"\bmy dad\b",
+        r"\bmy mom and dad\b",
+        r"\bmy mother\b",
+        r"\bmy father\b",
+        r"\bmy brother\b",
+        r"\bmy sister\b",
+        r"\bmy half[- ]brother\b",
+        r"\bmy half[- ]sister\b",
+        r"\bmy siblings?\b",
+        r"\bmy family\b",
+        r"\bwhen we left\b",
+        r"\bwhen i lived\b",
+        r"\bi actually live\b",
+        r"\bi live over\b",
+        r"\bi grew up\b",
+        r"\bi was raised\b",
+        r"\bwhere i am from\b",
+        r"\bme and my\b",
+    ]
+
+    marker_hits = sum(1 for p in markers if re.search(p, body))
+
+    agent_bridge_phrases = [
+        r"\bif you know what i mean\b",
+        r"\bthat makes a big difference\b",
+        r"\bonce you have your own family\b",
+        r"\bi can imagine\b",
+        r"\bthat's hilarious\b",
+        r"\bit's funny that you say\b",
+        r"\bi understand\b",
+        r"\bi get it\b",
+    ]
+
+    bridge_hits = sum(1 for p in agent_bridge_phrases if re.search(p, body))
+
+    # Avoid flipping normal prospect answers that simply mention one family member.
+    # Require several self-disclosure markers or marker + agent-style bridge phrases.
+    return marker_hits >= 3 or (marker_hits >= 2 and bridge_hits >= 1)
+
+
+def _repair_agent_self_disclosure_mislabeled_as_prospect(labeled_text):
+    """
+    Repair role-labeled transcript blocks where a long agent personal disclosure
+    was labeled as Prospect. This preserves exact transcript text and only changes
+    the speaker label.
+
+    Works on grouped speaker transcript text:
+        Prospect: line...
+        continuation...
+    """
+    if not labeled_text:
+        return labeled_text
+
+    lines = labeled_text.splitlines()
+    blocks = []
+    current_speaker = None
+    current_lines = []
+
+    speaker_re = re.compile(r"^\s*(PQ|Agent|Prospect|Unknown)\s*:\s*(.*)$")
+
+    for line in lines:
+        m = speaker_re.match(line)
+        if m:
+            if current_speaker is not None:
+                blocks.append([current_speaker, current_lines])
+            current_speaker = m.group(1)
+            current_lines = [m.group(2)]
+        else:
+            if current_speaker is None:
+                blocks.append([None, [line]])
+            else:
+                current_lines.append(line)
+
+    if current_speaker is not None:
+        blocks.append([current_speaker, current_lines])
+
+    repaired = []
+    for idx, (speaker, body_lines) in enumerate(blocks):
+        body = "\n".join(body_lines).strip()
+
+        if speaker == "Prospect" and _looks_like_agent_personal_self_disclosure(body):
+            # Extra safety: prefer repair when nearby previous context is Agent rapport.
+            prev_text = ""
+            if idx > 0:
+                prev_speaker, prev_lines = blocks[idx - 1]
+                prev_text = (prev_speaker or "") + ": " + "\n".join(prev_lines)
+
+            rapport_context = bool(re.search(
+                r"(?is)(family|brother|sister|children|kids|married|husband|wife|relationship|born|raised|live|work|retired|favorite part|tell me about)",
+                prev_text + "\n" + body,
+            ))
+
+            if rapport_context:
+                speaker = "Agent"
+
+        if speaker is None:
+            repaired.extend(body_lines)
+        else:
+            if body_lines:
+                repaired.append(f"{speaker}: {body_lines[0]}")
+                repaired.extend(body_lines[1:])
+            else:
+                repaired.append(f"{speaker}: ")
+
+    return "\n".join(repaired)
+
+
 def format_grouped_speaker_transcript(labeled_text):
     """
     Collapse repeated consecutive speaker labels for readability.
@@ -2555,6 +2687,10 @@ def create_role_labeled_transcript(transcript_text):
 
     # Show the speaker label only when the speaker changes.
     labeled = format_grouped_speaker_transcript(labeled)
+
+    # Conservative post-label repair: long agent rapport/self-disclosure sometimes
+    # gets mislabeled as Prospect. Preserve exact words; only repair speaker label.
+    labeled = _repair_agent_self_disclosure_mislabeled_as_prospect(labeled)
 
     return labeled
 

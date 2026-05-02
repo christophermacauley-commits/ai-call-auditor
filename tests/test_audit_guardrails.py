@@ -230,3 +230,32 @@ run_case(
         "Agent accepted a callback / delay",
     ],
 )
+
+self_disclosure_labeled_wrong = """Agent: Tell me about your family.
+
+Prospect: I can imagine.
+It's funny that you say that they have a good relationship because that's kind of how me and my half-brother are.
+The one that moved out here with me and my mom and dad when we left Chicago, we've always been kind of raised around each other.
+He's older than me by five years, so me and him have a good relationship.
+But me and my other four brothers, I think my oldest brother, I've never even met him but three times.
+Then I have another brother that I've probably never met before and I don't ever see or talk to him.
+Me and my other sister, we do not get along at all.
+But once you do have your own family, it's a lot easier to not focus on the negative things that you have in the relationship with your siblings.
+If you know what I mean, that makes a big difference.
+"""
+
+fixed_self_disclosure = watcher._repair_agent_self_disclosure_mislabeled_as_prospect(self_disclosure_labeled_wrong)
+
+check(
+    "agent self-disclosure relabeled",
+    "Agent: I can imagine." in fixed_self_disclosure,
+    fixed_self_disclosure,
+)
+
+check(
+    "agent self-disclosure no prospect label",
+    "Prospect: I can imagine." not in fixed_self_disclosure,
+    fixed_self_disclosure,
+)
+
+print("Speaker-label self-disclosure test passed.")
