@@ -5944,6 +5944,152 @@ def _final_cleanup_zero_score_guardrail(report, transcript):
     return report
 
 
+
+
+def _prospect_caused_early_end(report, transcript):
+    """
+    True when the call appears incomplete because the prospect stopped responding,
+    disconnected, was busy, or otherwise ended the call before the agent had a fair chance
+    to complete later stages.
+    """
+    combined = ((report or "") + "\n" + (transcript or "")).lower()
+
+    patterns = [
+        r"prospect stopped responding",
+        r"customer disconnected",
+        r"prospect disconnected",
+        r"client disconnected",
+        r"stopped responding",
+        r"can you hear me",
+        r"are you there",
+        r"hello\??\s*$",
+        r"prospect requested callback due to being busy",
+        r"prospect.*busy",
+        r"had to go",
+        r"could not continue",
+        r"call ended during",
+        r"disconnected before",
+    ]
+
+    return any(re.search(p, combined, re.I | re.M) for p in patterns)
+
+
+def _normalize_not_reached_due_to_prospect(report, transcript):
+    """
+    If the call stopped because of the prospect before later stages,
+    keep the not-reached list accurate but avoid treating those items as agent misses.
+    """
+    if not report:
+        return report
+
+    prospect_caused = _prospect_caused_early_end(report, transcript)
+    sold_no = bool(re.search(r"(?im)^- Policy sold:\s*NO\b|^- Was the policy sold\?\s*NO\b", report))
+    health_no_or_partial = bool(re.search(r"(?im)^- Health questions completed:\s*(NO|PARTIAL|NOT REACHED)\b", report))
+    product_no = bool(re.search(r"(?im)^- Product benefits explained:\s*(NO|NOT REACHED)\b", report))
+    options_no = bool(re.search(r"(?im)^- Three options presented:\s*(NO|NOT REACHED)\b", report))
+    app_no = bool(re.search(r"(?im)^- Application info collected:\s*(NO|NOT REACHED)\b", report))
+
+    incomplete_before_sale = sold_no and product_no and options_no and app_no
+
+    if prospect_caused and incomplete_before_sale:
+        # Accurate status, but not a hard agent penalty.
+        report = re.sub(r"(?im)^EARLY END:\s*NO\s*$", "EARLY END: YES", report, count=1)
+
+        if re.search(r"(?im)^RISK:\s*HIGH\b", report) and not re.search(r"(?im)^- Automatic fail triggered:\s*YES\b", report):
+            report = re.sub(r"(?im)^RISK:\s*HIGH\b", "RISK: MEDIUM", report, count=1)
+
+        # Do not leave very-low scores from missing stages if the prospect caused the stop.
+        m = re.search(r"(?im)^SCORE:\s*(\d+)\b", report)
+        if m:
+            try:
+                score = int(m.group(1))
+            except Exception:
+                score = None
+
+            if score is not None:
+                # Preserve good agent performance, but avoid making incomplete calls look like full successes.
+                if score > 85:
+                    report = re.sub(r"(?im)^SCORE:\s*\d+\b", "SCORE: 85", report, count=1)
+                elif score < 75:
+                    report = re.sub(r"(?im)^SCORE:\s*\d+\b", "SCORE: 75", report, count=1)
+
+        # Make later stages clearly not reached due to call ending, not agent skipping.
+        not_reached_items = [
+            "Existing coverage",
+            "Beneficiary",
+            "Need amount",
+            "Health questions" if health_no_or_partial else None,
+            "Product benefits",
+            "Three options",
+            "Client choice",
+            "Application information",
+            "Payment date",
+            "Banking/payment setup",
+            "Banking/account verification",
+            "Disclosures",
+            "Third Party Underwriting",
+            "Peace of Mind",
+            "Cool Down",
+        ]
+        not_reached_items = [x for x in not_reached_items if x]
+
+        replacement = (
+            "NOT REACHED:\n"
+            + "\n".join(f"- {item} — not reached because the prospect stopped responding / disconnected before the agent could continue" for item in not_reached_items)
+            + "\n\n"
+        )
+
+        report = re.sub(
+            r"(?ims)^NOT REACHED:\s*.*?(?=^COMPLIANCE FAILURES:)",
+            replacement,
+            report,
+            count=1,
+        )
+
+        # Remove unfair script/flow misses that are just later-stage incompletion.
+        unfair_miss_phrases = [
+            "Health questions not completed",
+            "Product benefits not explained",
+            "Three options not presented",
+            "Application info not collected",
+            "Payment/draft date not explained",
+            "Banking verification incomplete",
+        ]
+        for phrase in unfair_miss_phrases:
+            report = _text_remove_lines_containing(report, phrase)
+
+        # If the only misses are caused by the prospect ending, say so.
+        if re.search(r"(?ims)^SCRIPT / FLOW MISSES:\s*(?=^\s*(?:PQ / HANDOFF:|TASK CHECKLIST:))", report):
+            report = re.sub(
+                r"(?ims)^SCRIPT / FLOW MISSES:\s*(?=^PQ / HANDOFF:)",
+                "SCRIPT / FLOW MISSES:\n- None attributable to the agent before the prospect stopped responding / disconnected.\n\n",
+                report,
+                count=1,
+            )
+
+        # If there are still 3 and 1 coaching misses, keep them. But make the biggest miss clear.
+        biggest = (
+            "Prospect stopped responding / disconnected before the agent could complete the current section "
+            "and move into the remaining sales process."
+        )
+        report = re.sub(
+            r"(?ims)^BIGGEST MISS:\s*.*?(?=^SUMMARY:|^TRANSCRIPT NOTE|^OPENAI COST ESTIMATE:|\Z)",
+            f"BIGGEST MISS:\n- {biggest}\n\n",
+            report,
+            count=1,
+        )
+
+        # Sale outcome evidence wording.
+        report = re.sub(
+            r"(?im)^- Evidence:\s*Customer disconnected before medical questions could be completed\s*$",
+            "- Evidence: Prospect stopped responding / disconnected before the agent could continue the sales process",
+            report,
+            count=1,
+        )
+
+    return report
+
+
 def enforce_final_audit_consistency(report, transcript=None):
     """
     Post-process free-text audits (and harden any path) so invalid autofail / stage combinations
@@ -6135,6 +6281,7 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _final_cleanup_early_unsold_score_risk_guardrail(report, transcript)
     report = _final_cleanup_zero_score_guardrail(report, transcript)
     report = _restore_safe_business_terms(report)
+    report = _normalize_not_reached_due_to_prospect(report, transcript)
     return report
 
 
