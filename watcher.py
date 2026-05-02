@@ -74,7 +74,9 @@ def final_transcript_privacy_cleanup(text):
     # Fix role-label model artifacts like:
     # Prospect: Yes, sir. [NAME]: Do you...
     # This is almost always the selling agent name becoming a fake role label.
+    # Preserve the prospect response, but split the agent question onto its own line.
     t = re.sub(r"\s+\[NAME\]\s*:\s*", "\nAgent: ", t)
+    t = re.sub(r"(?im)^((?:PQ|Agent|Prospect|Unknown):.*?)(?:\s+)(?:\[NAME\]|[A-Z][a-z]+)\s*:\s*(?=(?:What|Do|Are|Is|Have|Can|Could|Would|Who|How|Why|When|Where|Now|And|Okay|All right)\b)", r"\1\nAgent: ", t)
 
     # PQ numbers inside text.
     t = re.sub(r"\bPQ\s*\d+\b", "PQ[NUMBER]", t, flags=re.I)
@@ -2106,14 +2108,17 @@ Prospect labeling rules:
 
 General rules:
 - Do not add facts.
-- Do not remove compliance-relevant details.
+- Do not remove any spoken content.
+- Do not summarize, shorten, condense, paraphrase, or combine unrelated turns.
+- Preserve the transcript wording as closely as possible while only adding speaker labels.
+- Preserve every utterance in the same order it appears in the transcript.
+- If a long paragraph contains multiple speakers, split it into separate labeled turns instead of rewriting it.
 - Do not unredact or guess redacted information.
 - If speaker identity is unclear, use Unknown.
 - Keep callback language exact enough to determine who initiated the callback.
 - Keep banking/account-number/payment-date language exact enough to audit.
 - Keep current coverage/provider/carrier language exact enough to audit.
 - Keep important phrases related to: coverage; provider/carrier; Social Security deposit timing; payment/draft date; banking/account/routing/payment info; objections; callbacks; hangups; sale/close; account number; call control; medical questions; warm-up/fact finding; PQ handoff; prospect identification.
-- Keep the text concise but complete enough for audit.
 - Output only the role-labeled transcript."""
 
     user_block = f"{instructions}\n\n---\n\n{text}"
