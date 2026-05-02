@@ -7137,6 +7137,39 @@ def _final_cleanup_peace_of_mind_after_sale(report, transcript):
     return report
 
 
+
+
+def _final_cleanup_summary_stage_contradictions(report):
+    """
+    Remove stale summary wording that contradicts corrected structured stage fields.
+    """
+    if not report:
+        return report
+
+    pom_stage = bool(re.search(r"(?im)^CALL STAGE REACHED:\s*Peace of Mind\b", report))
+    cooldown_not_reached = bool(re.search(r"(?ims)^NOT REACHED:\s*.*^- Cool Down\s*$", report))
+    cooldown_no = bool(re.search(r"(?im)^- Cool down completed:\s*(NO|NOT REACHED)\b", report))
+
+    if pom_stage and (cooldown_not_reached or cooldown_no):
+        report = re.sub(
+            r"(?i)completed a sold call through Cool Down",
+            "completed a sold call through Peace of Mind",
+            report,
+        )
+        report = re.sub(
+            r"(?i)Peace of Mind plus Cool Down were reached",
+            "Peace of Mind was reached; Cool Down was not reached",
+            report,
+        )
+        report = re.sub(
+            r"(?i)Peace of Mind and Cool Down were reached",
+            "Peace of Mind was reached; Cool Down was not reached",
+            report,
+        )
+
+    return report
+
+
 def enforce_final_audit_consistency(report, transcript=None):
     """
     Post-process free-text audits (and harden any path) so invalid autofail / stage combinations
@@ -7341,6 +7374,7 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = enforce_risk_for_automatic_fail(report)
     report = _strip_embedded_transcript_from_report(report)
     report = _decode_report_html_entities(report)
+    report = _final_cleanup_summary_stage_contradictions(report)
     report = _restore_safe_business_terms(report)
     return report
 
