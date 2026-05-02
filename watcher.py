@@ -23,7 +23,7 @@ DB_FILE = "calls.db"
 
 # "medium" balances WER vs speed; int8 on CPU is the usual faster-whisper sweet spot (much faster
 # than float32/float16 with modest accuracy loss vs full precision).
-WHISPER_MODEL = "small"
+WHISPER_MODEL = "medium"
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
 SCAN_INTERVAL_SECONDS = 5
 OLLAMA_TIMEOUT_SECONDS = 300
@@ -6705,8 +6705,28 @@ def _final_cleanup_false_banking_stage_guardrail(report, transcript):
 
     if no_late_sales_path:
         # Fall back to the latest supported completed stage.
-        if re.search(r"(?im)^- Health questions completed:\s*(YES|PARTIAL)\b", report):
+        # Use both report and transcript evidence so we do not downgrade too far.
+        evidence_text = (report or "") + "\n" + (transcript or "")
+
+        beneficiary_reached = bool(re.search(
+            r"(?is)(beneficiary|who would be your beneficiary|what(?:'s| is) his name|what(?:'s| is) her name)",
+            evidence_text,
+        ))
+        need_reached = bool(re.search(
+            r"(?is)(final expenses|burial|cremation|coverage for cremation|coverage for burial|how much coverage|recommend between)",
+            evidence_text,
+        ))
+        quote_reached = bool(re.search(
+            r"(?is)(pull those up|qualified for one of our preferred plans|preferred plans|quotes|options|monthly premium|cost right now)",
+            evidence_text,
+        ))
+
+        if quote_reached:
+            corrected_stage = "Quotes"
+        elif re.search(r"(?im)^- Health questions completed:\s*(YES|PARTIAL)\b", report):
             corrected_stage = "Medical / Health"
+        elif beneficiary_reached or need_reached:
+            corrected_stage = "Need / Beneficiary"
         elif re.search(r"(?im)^- Fact Finding / Warm-up:\s*YES\b", report):
             corrected_stage = "Fact Finding / Warm-up"
         elif re.search(r"(?im)^- Agent introduction:\s*YES\b", report):
@@ -6733,6 +6753,47 @@ def _final_cleanup_false_banking_stage_guardrail(report, transcript):
 
     return report
 
+
+
+
+def _strip_embedded_transcript_from_report(report):
+    """
+    Final reports should not include the full transcript inside the Detailed Report.
+    The dashboard already shows the transcript in its own section.
+    """
+    if not report:
+        return report
+
+    report = re.sub(
+        r"(?ims)\n*TRANSCRIPT NOTE \(MANDATORY\):.*?(?=^OPENAI COST ESTIMATE:|\Z)",
+        "\n",
+        report,
+        count=1,
+    )
+
+    report = re.sub(
+        r"(?ims)\n*TRANSCRIPT:\s*.*?(?=^OPENAI COST ESTIMATE:|\Z)",
+        "\n",
+        report,
+        count=1,
+    )
+
+    return report.strip() + "\n"
+
+
+def _decode_report_html_entities(report):
+    """
+    Decode accidental HTML entities in saved report text, such as:
+    &#x27; -> apostrophe, &quot; -> quote, &amp; -> &
+    """
+    if not report:
+        return report
+
+    try:
+        from html import unescape
+        return unescape(report)
+    except Exception:
+        return report
 
 def enforce_final_audit_consistency(report, transcript=None):
     """
@@ -6933,6 +6994,8 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _rewrite_not_reached_reason(report, transcript)
     report = _final_cleanup_protect_major_biggest_miss(report, transcript)
     report = enforce_risk_for_automatic_fail(report)
+    report = _strip_embedded_transcript_from_report(report)
+    report = _decode_report_html_entities(report)
     report = _restore_safe_business_terms(report)
     return report
 
