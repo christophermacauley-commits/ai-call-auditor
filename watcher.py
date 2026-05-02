@@ -6432,6 +6432,63 @@ def _final_cleanup_partial_health_unsold_guardrail(report, transcript):
     return report
 
 
+
+
+def _final_cleanup_false_banking_stage_guardrail(report, transcript):
+    """
+    Future-call guardrail:
+    Do not allow CALL STAGE REACHED: Banking when the call never reached product/options/application
+    and there is no real account/routing/payment collection evidence.
+    """
+    if not report:
+        return report
+
+    stage_banking = bool(re.search(r"(?im)^CALL STAGE REACHED:\s*Banking\b", report))
+    if not stage_banking:
+        return report
+
+    sold_no = bool(re.search(r"(?im)^- Policy sold:\s*NO\b|^- Was the policy sold\?\s*NO\b", report))
+    product_no = bool(re.search(r"(?im)^- Product benefits explained:\s*(NO|NOT REACHED)\b", report))
+    options_no = bool(re.search(r"(?im)^- Three options presented:\s*(NO|NOT REACHED)\b", report))
+    app_no = bool(re.search(r"(?im)^- Application info collected:\s*(NO|NOT REACHED)\b", report))
+
+    account_zero_or_not_reached = bool(re.search(r"(?im)^- Account verification evidence count:\s*0\b", report)) or bool(re.search(r"(?im)^- Banking/account information requested or verified 3 times:\s*NOT REACHED\b", report))
+    routing_zero_or_not_reached = bool(re.search(r"(?im)^- Routing verification evidence count:\s*0\b", report)) or bool(re.search(r"(?im)^- Routing number requested or verified 3 times:\s*NOT REACHED\b", report))
+
+    no_real_banking = account_zero_or_not_reached and routing_zero_or_not_reached
+
+    if sold_no and product_no and options_no and app_no and no_real_banking:
+        # Fall back to the latest supported completed stage.
+        if re.search(r"(?im)^- Health questions completed:\s*(YES|PARTIAL)\b", report):
+            corrected_stage = "Medical / Health"
+        elif re.search(r"(?im)^- Fact Finding / Warm-up:\s*YES\b", report):
+            corrected_stage = "Fact Finding / Warm-up"
+        elif re.search(r"(?im)^- Agent introduction:\s*YES\b", report):
+            corrected_stage = "Who I Am / What I Do"
+        else:
+            corrected_stage = "Opening / Handoff"
+
+        report = re.sub(
+            r"(?im)^CALL STAGE REACHED:\s*Banking\s*$",
+            f"CALL STAGE REACHED: {corrected_stage}",
+            report,
+            count=1,
+        )
+        report = re.sub(
+            r"(?im)^- Final stage supporting sale:\s*Banking\s*$",
+            f"- Final stage supporting sale: {corrected_stage}",
+            report,
+            count=1,
+        )
+
+        report = _text_replace_checklist_value(report, "Payment date explained", "NOT REACHED")
+        report = _text_replace_checklist_value(report, "Banking/payment setup explained", "NOT REACHED")
+
+        report = re.sub(r"(?im)^EARLY END:\s*NO\s*$", "EARLY END: YES", report, count=1)
+
+    return report
+
+
 def enforce_final_audit_consistency(report, transcript=None):
     """
     Post-process free-text audits (and harden any path) so invalid autofail / stage combinations
@@ -6628,6 +6685,7 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _final_cleanup_protect_major_biggest_miss(report, transcript)
     report = _rewrite_not_reached_reason(report, transcript)
     report = _final_cleanup_partial_health_unsold_guardrail(report, transcript)
+    report = _final_cleanup_false_banking_stage_guardrail(report, transcript)
     return report
 
 
