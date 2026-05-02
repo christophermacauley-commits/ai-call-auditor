@@ -2222,6 +2222,147 @@ def format_grouped_speaker_transcript(labeled_text):
     return "\n".join(out).strip() + "\n"
 
 
+
+
+def _extract_handoff_and_direct_address_names(text):
+    """
+    Build a narrow name vault from clear handoff/direct-address contexts.
+    This catches repeated names like James without broadly redacting normal words.
+    """
+    names = set()
+    if not text:
+        return names
+
+    blocked = {
+        "PQ", "Agent", "Prospect", "Unknown", "Carrier", "Third", "Party",
+        "Mississippi", "Tennessee", "Maryland", "Indiana", "Arkansas",
+        "Social", "Security", "State", "Department", "Insurance",
+        "American", "General", "Mutual", "Omaha", "Combined", "Colonial",
+        "Globe", "MIB", "COVID", "Medicare", "Medicaid",
+    }
+
+    patterns = [
+        r"(?i)\bi have\s+([A-Z][a-z]+)\s+(?:here|on the phone|with me|on the line)\b",
+        r"(?i)\b([A-Z][a-z]+)\s+wants to learn\b",
+        r"(?i)\b([A-Z][a-z]+)\s*,\s+i have one of\b",
+        r"(?i)\b(?:now|and|okay|alright|all right|thank you|thanks)\s*,?\s+([A-Z][a-z]+)\s*,",
+        r"(?i)\b([A-Z][a-z]+)\s*,?\s+(?:are you there|can you hear me)\b",
+        r"(?im)^\s*(?:PQ|Agent|Prospect|Unknown)?\s*:?\s*(?:hi|hello|hey)\s*,?\s+([A-Z][a-z]+)\b",
+    ]
+
+    for pat in patterns:
+        for m in re.finditer(pat, text):
+            name = m.group(1).strip()
+            if name and name not in blocked:
+                names.add(name)
+
+    return names
+
+
+def _redact_handoff_name_vault(text):
+    if not text:
+        return text
+    names = _extract_handoff_and_direct_address_names(text)
+    out = text
+    for name in sorted(names, key=len, reverse=True):
+        out = re.sub(rf"\b{re.escape(name)}\b", "[NAME]", out)
+    return out
+
+
+def _suppress_late_pq_after_agent_takeover(transcript):
+    """
+    PQ should only appear during opening handoff.
+    After Agent begins recording disclosure / who-I-am / license script,
+    later PQ labels are usually mislabeled prospect/background/carrier audio.
+    """
+    if not transcript:
+        return transcript
+
+    lines = transcript.splitlines()
+    takeover_seen = False
+    out = []
+
+    takeover_re = re.compile(
+        r"^\s*Agent\s*:.*\b(before we get started|call may be recorded|who i am|what these state|state-approved|state approved|license number|state licensed)\b",
+        re.I,
+    )
+    pq_valid_re = re.compile(
+        r"\b(final expense department|pq|pre[- ]?qual|i have .* here|one of our best|walk.*step by step|you both have a great day)\b",
+        re.I,
+    )
+
+    for line in lines:
+        if takeover_re.search(line):
+            takeover_seen = True
+
+        if takeover_seen and re.match(r"^\s*PQ\s*:", line):
+            content = re.sub(r"^\s*PQ\s*:\s*", "", line)
+            if pq_valid_re.search(content):
+                out.append(line)
+            else:
+                out.append("Unknown: " + content)
+            continue
+
+        out.append(line)
+
+    return "\n".join(out)
+
+
+def _final_cleanup_early_end_stage_and_banking(report, transcript):
+    """
+    Correct early-ended calls that were incorrectly marked as Banking/payment.
+    """
+    if not report:
+        return report
+
+    health_no = bool(re.search(r"(?im)^- Health questions completed:\s*NO\b", report))
+    product_no = bool(re.search(r"(?im)^- Product benefits explained:\s*NO\b", report))
+    options_no = bool(re.search(r"(?im)^- Three options presented:\s*NO\b", report))
+    app_no = bool(re.search(r"(?im)^- Application info collected:\s*NO\b", report))
+    acct_zero = bool(re.search(r"(?im)^- Account verification evidence count:\s*0\b", report))
+    routing_zero = bool(re.search(r"(?im)^- Routing verification evidence count:\s*0\b", report))
+    sold_no = bool(re.search(r"(?im)^- Policy sold:\s*NO\b|^- Was the policy sold\?\s*NO\b", report))
+
+    early_disconnect = bool(re.search(
+        r"\b(are you there|can you hear me|customer disconnected|disconnected before|hangup|hung up)\b",
+        (report or "") + "\n" + (transcript or ""),
+        re.I,
+    ))
+
+    if health_no and product_no and options_no and app_no and acct_zero and routing_zero:
+        report = re.sub(
+            r"(?im)^CALL STAGE REACHED:\s*Banking\s*$",
+            "CALL STAGE REACHED: Fact Finding / Warm-up",
+            report,
+            count=1,
+        )
+        report = re.sub(
+            r"(?im)^- Final stage supporting sale:\s*Banking\s*$",
+            "- Final stage supporting sale: Fact Finding / Warm-up",
+            report,
+            count=1,
+        )
+        report = _text_replace_checklist_value(report, "Payment date explained", "NOT REACHED")
+        report = _text_replace_checklist_value(report, "Banking/payment setup explained", "NOT REACHED")
+
+    if sold_no and early_disconnect:
+        report = re.sub(r"(?im)^RISK:\s*HIGH\s*$", "RISK: MEDIUM", report, count=1)
+        report = re.sub(
+            r"(?ims)^BIGGEST MISS:\s*.*?(?=^TRANSCRIPT NOTE|^SUMMARY:|^OPENAI COST ESTIMATE:|\Z)",
+            "BIGGEST MISS:\n- Call ended during warm-up/fact-finding before health questions, need, product explanation, options, application, disclosures, Peace of Mind, or Cool Down.\n\n",
+            report,
+            count=1,
+        )
+
+    return report
+
+
+def _final_cleanup_names_and_late_pq_in_report(report, transcript):
+    if report:
+        report = _redact_handoff_name_vault(report)
+    return report
+
+
 def create_role_labeled_transcript(transcript_text):
     """
     Create an exact speaker-labeled transcript.
@@ -2301,6 +2442,11 @@ def create_role_labeled_transcript(transcript_text):
 
     # Safety: the exact-label approach should never create fake [NAME]: speaker labels.
     labeled = re.sub(r"\s+\[NAME\]\s*:\s*", "\nAgent: ", labeled)
+    labeled = final_transcript_privacy_cleanup(labeled)
+
+    # Fix late PQ labels after Agent takeover and redact repeated handoff/direct-address names.
+    labeled = _suppress_late_pq_after_agent_takeover(labeled)
+    labeled = _redact_handoff_name_vault(labeled)
     labeled = final_transcript_privacy_cleanup(labeled)
 
     # Show the speaker label only when the speaker changes.
@@ -5758,6 +5904,8 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _final_cleanup_shelby_sold_short_false_fails(report, transcript)
     report = _final_cleanup_confirmed_coverage_bank_and_cooldown(report, transcript)
     report = _final_cleanup_no_autofail_consistency(report, transcript)
+    report = _final_cleanup_early_end_stage_and_banking(report, transcript)
+    report = _final_cleanup_names_and_late_pq_in_report(report, transcript)
     return report
 
 
