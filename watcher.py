@@ -2187,6 +2187,41 @@ You must include exactly one label object for every numbered line.
     return _parse_speaker_label_response(out, expected_numbers)
 
 
+def format_grouped_speaker_transcript(labeled_text):
+    """
+    Collapse repeated consecutive speaker labels for readability.
+    Keeps transcript wording/line breaks, but only shows speaker label again when speaker changes.
+    """
+    if not labeled_text:
+        return labeled_text
+
+    out = []
+    last_speaker = None
+
+    for raw_line in labeled_text.splitlines():
+        line = raw_line.rstrip()
+        if not line.strip():
+            continue
+
+        m = re.match(r"^\s*(PQ|Agent|Prospect|Unknown)\s*:\s*(.*)$", line)
+        if not m:
+            out.append(line)
+            continue
+
+        speaker = m.group(1)
+        content = m.group(2).strip()
+
+        if speaker == last_speaker:
+            out.append(content)
+        else:
+            if out:
+                out.append("")
+            out.append(f"{speaker}: {content}")
+            last_speaker = speaker
+
+    return "\n".join(out).strip() + "\n"
+
+
 def create_role_labeled_transcript(transcript_text):
     """
     Create an exact speaker-labeled transcript.
@@ -2267,6 +2302,9 @@ def create_role_labeled_transcript(transcript_text):
     # Safety: the exact-label approach should never create fake [NAME]: speaker labels.
     labeled = re.sub(r"\s+\[NAME\]\s*:\s*", "\nAgent: ", labeled)
     labeled = final_transcript_privacy_cleanup(labeled)
+
+    # Show the speaker label only when the speaker changes.
+    labeled = format_grouped_speaker_transcript(labeled)
 
     return labeled
 
