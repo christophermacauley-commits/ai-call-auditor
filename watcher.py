@@ -2349,7 +2349,7 @@ def _final_cleanup_early_end_stage_and_banking(report, transcript):
         report = re.sub(r"(?im)^RISK:\s*HIGH\s*$", "RISK: MEDIUM", report, count=1)
         report = re.sub(
             r"(?ims)^BIGGEST MISS:\s*.*?(?=^TRANSCRIPT NOTE|^SUMMARY:|^OPENAI COST ESTIMATE:|\Z)",
-            "BIGGEST MISS:\n- Call ended during warm-up/fact-finding before health questions, need, product explanation, options, application, disclosures, Peace of Mind, or Cool Down.\n\n",
+            "BIGGEST MISS:\n- Prospect stopped responding / disconnected while the agent was still in warm-up/fact-finding, before the agent could complete the report-building section or move into health questions, need, product explanation, options, application, disclosures, Peace of Mind, or Cool Down.\n\n",
             report,
             count=1,
         )
