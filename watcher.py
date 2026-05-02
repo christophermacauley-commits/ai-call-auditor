@@ -63,45 +63,30 @@ def clean_text(text):
 def final_transcript_privacy_cleanup(text):
     """
     Last transcript-only privacy cleanup.
-    Goal: no leaked names in common role-labeled transcript patterns.
-    This is stricter than report cleanup and is safe for transcript text.
+    Redacts names only in narrow, clear contexts.
     """
     if not text:
         return text
 
     t = text
 
-    # Fix role-label model artifacts like:
-    # Prospect: Yes, sir. [NAME]: Do you...
-    # This is almost always the selling agent name becoming a fake role label.
-    # Preserve the prospect response, but split the agent question onto its own line.
+    # Fix fake speaker artifacts like: Prospect: Yes, sir. [NAME]: Do you...
     t = re.sub(r"\s+\[NAME\]\s*:\s*", "\nAgent: ", t)
-    t = re.sub(r"(?im)^((?:PQ|Agent|Prospect|Unknown):.*?)(?:\s+)(?:\[NAME\]|[A-Z][a-z]+)\s*:\s*(?=(?:What|Do|Are|Is|Have|Can|Could|Would|Who|How|Why|When|Where|Now|And|Okay|All right)\b)", r"\1\nAgent: ", t)
 
-    # PQ numbers inside text.
+    # PQ numbers.
     t = re.sub(r"\bPQ\s*\d+\b", "PQ[NUMBER]", t, flags=re.I)
 
-    # Greeting / thanks / filler patterns that can leak a first name.
-    # Examples: "PQ: Hi, John." / "Agent: Thank you, John." / "Agent: And John,..."
+    # Greeting/thanks name leaks.
     t = re.sub(
-        r"(?im)^(\s*(?:PQ|Agent|Prospect|Unknown)\s*:\s*(?:hi|hello|hey|good morning|good afternoon|thank you|thanks|okay|perfect|gotcha|all right|alright|and|but|now)[,\s]+)([A-Z][a-z]+)\b",
+        r"(?im)^(\s*(?:PQ|Agent|Prospect|Unknown)\s*:\s*(?:hi|hello|hey|thank you|thanks)\s*,?\s+)([A-Z][a-z]+)\b",
         r"\1[NAME]",
         t,
     )
 
-    # Mid-line direct-address name leaks: "don't worry, John", "And, John,"
+    # Direct-address name leaks.
     t = re.sub(
-        r"(?i)\b((?:and|but|now|okay|alright|all right|thank you|thanks|don't worry|do not worry|sir|ma'am)[,\s]+)([A-Z][a-z]+)(?=\s*[,\.])",
+        r"(?i)\b((?:all\s+right|alright|okay|perfect|gotcha|don't\s+you\s+worry|do\s+not\s+worry|don't\s+worry)\s*,?\s+)([A-Z][a-z]+)(?=\s*[,\.])",
         r"\1[NAME]",
-        t,
-    )
-
-    # Common sales-script direct address after role label: "Agent: And John, ..."
-    t = re.sub(
-        r"(?im)^(\s*(?:PQ|Agent|Prospect|Unknown)\s*:\s*[^\n]{0,80}?[,\s]+)([A-Z][a-z]+)(,\s+)",
-        lambda m: m.group(1) + "[NAME]" + m.group(3)
-        if not re.search(r"\b(?:Maryland|Indiana|Arkansas|Tennessee|American|Mutual|Omaha|Globe|Colonial|COVID|MIB)\b", m.group(2), re.I)
-        else m.group(0),
         t,
     )
 
@@ -112,57 +97,53 @@ def final_transcript_privacy_cleanup(text):
         t,
     )
 
-    # "Hi, John." / "Hello John" not necessarily at start of role line.
-    t = re.sub(
-        r"(?i)\b(hi|hello|hey|good morning|good afternoon),?\s+([A-Z][a-z]+)\b",
-        r"\1, [NAME]",
-        t,
-    )
-
-    # "Who do I have the pleasure..." answer on same line.
+    # Same-line identity/handoff answers.
     t = re.sub(
         r"(?i)(who do i have the pleasure of (?:speaking with|helping)(?: today)?\??\s+)([A-Z][a-z]+)\b",
         r"\1[NAME]",
         t,
     )
-
-    # Handoff: "I have John here / with me / on the line"
     t = re.sub(
         r"(?i)\b(i have\s+)([A-Z][a-z]+)(\s+(?:here|with me|on the line)\b)",
         r"\1[NAME]\3",
         t,
     )
 
-    # Mr./Mrs./Ms./Miss + name
+    # Title + name.
     t = re.sub(
         r"(?i)\b(Mr|Mrs|Ms|Miss)\.?\s+[A-Z][a-z]+\b",
         r"\1. [NAME]",
         t,
     )
 
-    # Clean bad spacing after placeholders and role labels.
+    # Very narrow known direct-address endings.
+    t = re.sub(
+        r"(?i)\b((?:don't you worry|thank you for your honesty)\s*,?\s+)[A-Z][a-z]+\b",
+        r"\1[NAME]",
+        t,
+    )
+
+    # Fix placeholder stuck to next role label.
     t = re.sub(r"(\[NUMBER\])(?=(?:PQ|Agent|Prospect|Unknown)\s*:)", r"\1\n", t)
     t = re.sub(r"(\[DOB\])(?=(?:PQ|Agent|Prospect|Unknown)\s*:)", r"\1\n", t)
     t = re.sub(r"(\[MONEY\])(?=(?:PQ|Agent|Prospect|Unknown)\s*:)", r"\1\n", t)
 
-    # Collapse accidental repeated identical short lines from prior role-label artifacts.
-    cleaned_lines = []
+    # Collapse repeated identical short greeting lines.
+    cleaned = []
     prev = None
-    repeat_count = 0
-    for ln in t.split("\n"):
-        key = ln.strip()
-        if key == prev and re.match(r"^(?:PQ|Agent|Prospect|Unknown):\s+Hi,?\s+\[NAME\]\.?$", key, re.I):
-            repeat_count += 1
-            if repeat_count <= 1:
-                cleaned_lines.append(ln)
+    repeats = 0
+    for line in t.split("\n"):
+        key = line.strip()
+        if key == prev and re.match(r"^(?:PQ|Agent|Prospect|Unknown):\s+(?:Hi,?\s+)?\[NAME\]\.?$", key, re.I):
+            repeats += 1
+            if repeats <= 1:
+                cleaned.append(line)
             continue
-        else:
-            prev = key
-            repeat_count = 0
-            cleaned_lines.append(ln)
-    t = "\n".join(cleaned_lines)
+        prev = key
+        repeats = 0
+        cleaned.append(line)
 
-    return t
+    return "\n".join(cleaned)
 
 
 def redact_report_text(report):
@@ -2078,16 +2059,22 @@ def _hard_redact_numbers(text):
 
 
 def hard_privacy_redact_transcript(text):
-    """Final privacy pass. No names or numbers should survive this."""
+    """
+    Final privacy pass for sensitive values.
+
+    IMPORTANT:
+    Do not call _hard_redact_names() here. That older helper is too broad and
+    can replace normal transcript words like "before", "there", "small", or
+    "right" with [NAME]. Name cleanup is handled later by the narrower
+    final_transcript_privacy_cleanup() direct-address/name-context rules.
+    """
     if not text:
         return text
 
     t = text
     t = _hard_redact_number_context_lines(t)
-    t = _hard_redact_names(t)
     t = _hard_redact_numbers(t)
     t = _hard_redact_number_context_lines(t)
-    t = _hard_redact_names(t)
 
     return t
 
