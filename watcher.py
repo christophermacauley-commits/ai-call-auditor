@@ -2345,6 +2345,33 @@ def _final_cleanup_early_end_stage_and_banking(report, transcript):
         report = _text_replace_checklist_value(report, "Payment date explained", "NOT REACHED")
         report = _text_replace_checklist_value(report, "Banking/payment setup explained", "NOT REACHED")
 
+        # For early-ended calls, make NOT REACHED reflect every major unfinished stage,
+        # not only the default late-call stages.
+        expanded_not_reached = [
+            "Existing coverage",
+            "Beneficiary",
+            "Need amount",
+            "Health questions",
+            "Product benefits",
+            "Three options",
+            "Client choice",
+            "Application information",
+            "Payment date",
+            "Banking/payment setup",
+            "Banking/account verification",
+            "Disclosures",
+            "Third Party Underwriting",
+            "Peace of Mind",
+            "Cool Down",
+        ]
+        replacement = "NOT REACHED:\n" + "\n".join(f"- {item}" for item in expanded_not_reached) + "\n\n"
+        report = re.sub(
+            r"(?ims)^NOT REACHED:\s*.*?(?=^COMPLIANCE FAILURES:)",
+            replacement,
+            report,
+            count=1,
+        )
+
     if sold_no and early_disconnect:
         report = re.sub(r"(?im)^RISK:\s*HIGH\s*$", "RISK: MEDIUM", report, count=1)
         report = re.sub(
