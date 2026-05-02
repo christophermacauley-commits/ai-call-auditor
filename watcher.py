@@ -81,11 +81,27 @@ def final_transcript_privacy_cleanup(text):
     # PQ numbers inside text.
     t = re.sub(r"\bPQ\s*\d+\b", "PQ[NUMBER]", t, flags=re.I)
 
-    # Greeting / thanks patterns that can leak a first name.
-    # Examples: "PQ: Hi, John." / "Agent: Thank you, John."
+    # Greeting / thanks / filler patterns that can leak a first name.
+    # Examples: "PQ: Hi, John." / "Agent: Thank you, John." / "Agent: And John,..."
     t = re.sub(
-        r"(?im)^(\s*(?:PQ|Agent|Prospect|Unknown)\s*:\s*(?:hi|hello|hey|good morning|good afternoon|thank you|thanks|okay|perfect|gotcha|all right|alright)[,\s]+)([A-Z][a-z]+)\b",
+        r"(?im)^(\s*(?:PQ|Agent|Prospect|Unknown)\s*:\s*(?:hi|hello|hey|good morning|good afternoon|thank you|thanks|okay|perfect|gotcha|all right|alright|and|but|now)[,\s]+)([A-Z][a-z]+)\b",
         r"\1[NAME]",
+        t,
+    )
+
+    # Mid-line direct-address name leaks: "don't worry, John", "And, John,"
+    t = re.sub(
+        r"(?i)\b((?:and|but|now|okay|alright|all right|thank you|thanks|don't worry|do not worry|sir|ma'am)[,\s]+)([A-Z][a-z]+)(?=\s*[,\.])",
+        r"\1[NAME]",
+        t,
+    )
+
+    # Common sales-script direct address after role label: "Agent: And John, ..."
+    t = re.sub(
+        r"(?im)^(\s*(?:PQ|Agent|Prospect|Unknown)\s*:\s*[^\n]{0,80}?[,\s]+)([A-Z][a-z]+)(,\s+)",
+        lambda m: m.group(1) + "[NAME]" + m.group(3)
+        if not re.search(r"\b(?:Maryland|Indiana|Arkansas|Tennessee|American|Mutual|Omaha|Globe|Colonial|COVID|MIB)\b", m.group(2), re.I)
+        else m.group(0),
         t,
     )
 
@@ -128,6 +144,23 @@ def final_transcript_privacy_cleanup(text):
     t = re.sub(r"(\[NUMBER\])(?=(?:PQ|Agent|Prospect|Unknown)\s*:)", r"\1\n", t)
     t = re.sub(r"(\[DOB\])(?=(?:PQ|Agent|Prospect|Unknown)\s*:)", r"\1\n", t)
     t = re.sub(r"(\[MONEY\])(?=(?:PQ|Agent|Prospect|Unknown)\s*:)", r"\1\n", t)
+
+    # Collapse accidental repeated identical short lines from prior role-label artifacts.
+    cleaned_lines = []
+    prev = None
+    repeat_count = 0
+    for ln in t.split("\n"):
+        key = ln.strip()
+        if key == prev and re.match(r"^(?:PQ|Agent|Prospect|Unknown):\s+Hi,?\s+\[NAME\]\.?$", key, re.I):
+            repeat_count += 1
+            if repeat_count <= 1:
+                cleaned_lines.append(ln)
+            continue
+        else:
+            prev = key
+            repeat_count = 0
+            cleaned_lines.append(ln)
+    t = "\n".join(cleaned_lines)
 
     return t
 
@@ -2211,9 +2244,23 @@ def create_role_labeled_transcript(transcript_text):
 
         speaker = all_labels.get(i)
 
+        lower = line.lower().strip()
+
+        # If a line is clearly a continuation fragment, keep the previous speaker.
+        # This prevents long agent paragraphs split by Whisper line wrapping from flipping to Prospect.
+        continuation = bool(
+            last_speaker in {"Agent", "PQ", "Prospect"}
+            and (
+                re.match(r"^(and|but|or|to|that|which|because|so|if|then|with|for|of|in|on|at|as|is|are|was|were|pass,|just|even|like)\b", lower)
+                or line[:1].islower()
+            )
+        )
+
+        if continuation:
+            speaker = last_speaker
+
         # Conservative fallback if OpenAI omitted a label.
         if speaker not in {"PQ", "Agent", "Prospect", "Unknown"}:
-            lower = line.lower()
             if "pq" in lower and ("one of the best" in lower or "walk" in lower or "have " in lower):
                 speaker = "PQ"
             elif re.search(r"\b(no|yes|yeah|okay|alright|all right|i'm|i am|i have|because|thank you|bye|hang up)\b", lower) and len(line.split()) <= 18:
@@ -2228,9 +2275,11 @@ def create_role_labeled_transcript(transcript_text):
 
     labeled = "\n".join(labeled_lines)
     labeled = redact_sensitive_transcript(labeled)
+    labeled = final_transcript_privacy_cleanup(labeled)
 
     # Safety: the exact-label approach should never create fake [NAME]: speaker labels.
     labeled = re.sub(r"\s+\[NAME\]\s*:\s*", "\nAgent: ", labeled)
+    labeled = final_transcript_privacy_cleanup(labeled)
 
     return labeled
 
