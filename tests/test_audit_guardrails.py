@@ -260,7 +260,7 @@ check(
 
 print("Speaker-label self-disclosure test passed.")
 
-late_stage_should_not_downgrade_to_who_i_am = """SCORE: 75
+late_stage_should_not_downgrade_to_who_i_am = """SCORE: 90
 RISK: HIGH
 PASS: NO
 CALL STAGE REACHED: Banking
@@ -537,7 +537,7 @@ run_case(
     must_contain=[
         "PASS: YES",
         "RISK: MEDIUM",
-        "SCORE: 75",
+        "SCORE: 90",
         "- Automatic fail triggered: NO",
         "- Reason: None",
         "BIGGEST MISS:\n- None",
@@ -610,7 +610,7 @@ run_case(
     must_contain=[
         "PASS: YES",
         "RISK: MEDIUM",
-        "SCORE: 75",
+        "SCORE: 90",
         "- Objection occurred without proper call control: NO",
         "- Automatic fail triggered: NO",
         "- Reason: None",

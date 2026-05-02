@@ -7265,8 +7265,8 @@ def _final_cleanup_disqualification_no_agent_fault(report, transcript):
             score = int(m.group(1))
         except Exception:
             score = None
-        if score is not None and score < 75:
-            report = re.sub(r"(?im)^SCORE:\s*\d+\b", "SCORE: 75", report, count=1)
+        if score is not None and score < 90:
+            report = re.sub(r"(?im)^SCORE:\s*\d+\b", "SCORE: 90", report, count=1)
 
     # Remove unfair call-control / future-stage misses for an appropriate disqualification end.
     unfair_phrases = [
