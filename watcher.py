@@ -6092,6 +6092,88 @@ def _normalize_not_reached_due_to_prospect(report, transcript):
 
 
 
+
+
+def _strip_ivr_callback_prompts(text):
+    """Remove carrier/IVR menu callback prompts that are not prospect callback objections."""
+    if not text:
+        return text or ""
+    return re.sub(
+        r"(?im)^.*\b(to receive a callback|press \[NUMBER\].*callback|callback, press|estimated wait time|next available representative)\b.*$",
+        "",
+        text,
+    )
+
+
+def _has_real_callback_autofail_evidence(report, transcript):
+    """
+    True only when there is real callback/delay objection evidence plus agent acceptance.
+    IVR/carrier phone menu callback prompts do not count.
+    """
+    evidence_text = transcript if transcript else report
+    evidence_text = _strip_ivr_callback_prompts(evidence_text or "")
+
+    prospect_requested = bool(re.search(
+        r"(?is)"
+        r"(Prospect:\s*.*(?:call\s+(?:me|you)?\s*back|callback|do this later|talk later|not a good time|busy)|"
+        r"prospect requested (?:a )?callback|requested (?:a )?callback|asked (?:for )?(?:a )?callback|"
+        r"callback due to being busy|too busy.*call back|busy.*call (?:me|you)?\s*back|"
+        r"not a good time.*call back|do this later|talk (?:about this )?later)",
+        evidence_text,
+    ))
+
+    agent_accepted = bool(re.search(
+        r"(?is)"
+        r"(Agent:\s*.*(?:i(?:'ll| will) call you back|i(?:'ll| will) give you a call back|"
+        r"we(?:'ll| will) call you back|we can do this later|agreed to call back|"
+        r"scheduled a callback|set a callback)|"
+        r"agent agreed to call back later|agreed to call back|accepted the callback|"
+        r"instead of attempting call control|instead of.*continuing the sale)",
+        evidence_text,
+    ))
+
+    return prospect_requested and agent_accepted
+
+
+def _final_cleanup_false_callback_autofail(report, transcript):
+    """
+    If callback/autofail language exists without real callback evidence, remove the
+    entire callback autofail cluster. This prevents IVR callback menus from causing autofails.
+    """
+    if not report:
+        return report
+
+    if _has_real_callback_autofail_evidence(report, transcript):
+        return report
+
+    callback_marked = bool(re.search(r"(?im)^- Callback set:\s*YES\b", report))
+    callback_reason = bool(re.search(r"(?im)^- Reason:\s*.*(?:callback|delay)", report))
+    callback_biggest = bool(re.search(r"(?ims)^BIGGEST MISS:\s*.*(?:callback|delay).*?(?=^SUMMARY:|^TRANSCRIPT NOTE|^OPENAI COST ESTIMATE:|\Z)", report))
+
+    if callback_marked or callback_reason or callback_biggest:
+        report = re.sub(r"(?im)^- Callback set:\s*YES\b.*$", "- Callback set: NO", report)
+        report = re.sub(
+            r"(?im)^- Objection occurred without proper call control:\s*YES\b.*$",
+            "- Objection occurred without proper call control: NO",
+            report,
+        )
+
+        # Only clear automatic fail if the reason/biggest miss was callback/delay-based.
+        if callback_reason or callback_biggest:
+            report = re.sub(r"(?im)^- Automatic fail triggered:\s*YES\b.*$", "- Automatic fail triggered: NO", report)
+            report = re.sub(r"(?im)^- Reason:\s*.*$", "- Reason: None", report)
+            report = re.sub(r"(?im)^PASS:\s*AT RISK\s*$", "PASS: YES", report)
+
+            report = re.sub(
+                r"(?ims)^BIGGEST MISS:\s*.*?(?=^SUMMARY:|^TRANSCRIPT NOTE|^OPENAI COST ESTIMATE:|\Z)",
+                "BIGGEST MISS:\n- None\n\n",
+                report,
+                count=1,
+            )
+
+    return report
+
+
 def _final_cleanup_callback_autofail_consistency(report, transcript):
     """
     Future-call guardrail:
@@ -6102,7 +6184,7 @@ def _final_cleanup_callback_autofail_consistency(report, transcript):
     if not report:
         return report
 
-    combined = (report or "") + "\n" + (transcript or "")
+    combined = _strip_ivr_callback_prompts(transcript if transcript else (report or ""))
 
     # Callback autofail needs clear callback / delay evidence.
     # Do not trigger from casual rapport language containing words like "call",
@@ -6709,6 +6791,7 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _restore_safe_business_terms(report)
     report = _normalize_not_reached_due_to_prospect(report, transcript)
     report = _final_cleanup_callback_autofail_consistency(report, transcript)
+    report = _final_cleanup_false_callback_autofail(report, transcript)
     report = _final_cleanup_partial_health_unsold_guardrail(report, transcript)
     report = _final_cleanup_false_banking_stage_guardrail(report, transcript)
     report = _rewrite_not_reached_reason(report, transcript)

@@ -177,3 +177,56 @@ check("3 and 1 preserved", "3 and 1 Method" in out, out)
 check("no score zero", "SCORE: 0" not in out, out)
 
 print("All audit guardrail tests passed.")
+
+ivr_callback_report = """SCORE: 80
+RISK: HIGH
+PASS: AT RISK
+CALL STAGE REACHED: Cool Down
+EARLY END: NO
+NOT REACHED:
+- None
+
+COMPLIANCE FAILURES: None
+
+TASK CHECKLIST:
+- Product benefits explained: YES
+- Three options presented: YES
+- Application info collected: YES
+
+SEARCHABLE ANSWERS:
+- Was the policy sold? YES
+
+AUTOMATIC FAIL CHECKS:
+- Callback set: YES
+- Objection occurred without proper call control: YES
+- Automatic fail triggered: YES
+- Reason: Prospect requested a callback / delay and the agent accepted it instead of controlling or continuing the live sales attempt.
+
+SALE OUTCOME:
+- Policy sold: YES
+
+BIGGEST MISS:
+- Agent accepted a callback / delay instead of controlling the objection or continuing the live sales attempt.
+"""
+
+ivr_callback_transcript = """Carrier: To receive a callback, press [NUMBER].
+Carrier: Estimated wait time is [NUMBER] minutes.
+Agent: I am calling to verify current coverage.
+Prospect: Okay.
+"""
+
+run_case(
+    "ivr callback prompt is not callback autofail",
+    ivr_callback_report,
+    ivr_callback_transcript,
+    must_contain=[
+        "- Callback set: NO",
+        "- Objection occurred without proper call control: NO",
+        "- Automatic fail triggered: NO",
+        "- Reason: None",
+    ],
+    must_not_contain=[
+        "Prospect requested a callback / delay",
+        "Agent accepted a callback / delay",
+    ],
+)
