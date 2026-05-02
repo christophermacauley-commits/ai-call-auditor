@@ -1191,7 +1191,19 @@ def build_report_summary(report_text):
 
     score = first_line_value("SCORE") or block_value("SCORE")
     risk = first_line_value("RISK") or block_value("RISK")
-    result = first_line_value("PASS") or block_value("PASS")
+
+    audit_status = parse_audit_status_from_report(report_text)
+    if audit_status == "PASS":
+        result = "PASS"
+    elif audit_status == "FAIL":
+        result = "FAIL"
+    elif audit_status == "AT_RISK":
+        result = "AT RISK"
+    else:
+        result = first_line_value("PASS") or block_value("PASS")
+
+    sale_outcome = parse_policy_sold_from_report(report_text) or ""
+
     stage_reached = first_line_value("CALL STAGE REACHED") or block_value("CALL STAGE REACHED")
     audit_summary = block_value("SUMMARY")
     biggest_miss = first_bullet_from_block("BIGGEST MISS")
@@ -1209,6 +1221,7 @@ def build_report_summary(report_text):
         "score": clean_value(score) or "Unknown",
         "risk": clean_value(risk) or "Unknown",
         "result": clean_value(result) or "Unknown",
+        "sale_outcome": clean_value(sale_outcome) or "Unknown",
         "stage_reached": clean_value(stage_reached) or "Unknown",
         "audit_summary": clean_value(audit_summary),
         "biggest_miss": clean_value(biggest_miss),
@@ -1223,7 +1236,8 @@ def _format_report_summary_plain(summary):
     labels = (
         ("Score", summary.get("score")),
         ("Risk", summary.get("risk")),
-        ("Result", summary.get("result")),
+        ("Audit Result", summary.get("result")),
+        ("Sale Outcome", summary.get("sale_outcome")),
         ("Stage Reached", summary.get("stage_reached")),
     )
     for label, val in labels:
@@ -3048,7 +3062,8 @@ def view_call(call_id):
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:14px;margin:12px 0 16px;">
                 <div><div class="muted" style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.04em;">Score</div><div style="font-size:22px;font-weight:800;margin-top:4px;">{_sv("score")}</div></div>
                 <div><div class="muted" style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.04em;">Risk</div><div style="font-size:22px;font-weight:800;margin-top:4px;">{_sv("risk")}</div></div>
-                <div><div class="muted" style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.04em;">Result</div><div style="font-size:22px;font-weight:800;margin-top:4px;">{_sv("result")}</div></div>
+                <div><div class="muted" style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.04em;">Audit Result</div><div style="font-size:22px;font-weight:800;margin-top:4px;">{_sv("result")}</div></div>
+                <div><div class="muted" style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.04em;">Sale Outcome</div><div style="font-size:22px;font-weight:800;margin-top:4px;">{_sv("sale_outcome")}</div></div>
                 <div><div class="muted" style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.04em;">Stage Reached</div><div style="font-size:15px;font-weight:700;margin-top:6px;line-height:1.35;">{_sv("stage_reached")}</div></div>
             </div>
             {audit_summary_html}
