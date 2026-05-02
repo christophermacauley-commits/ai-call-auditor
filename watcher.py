@@ -6795,6 +6795,65 @@ def _decode_report_html_entities(report):
     except Exception:
         return report
 
+
+
+def _compress_not_reached_block(report):
+    """
+    Keep the manager-facing NOT REACHED section readable.
+    Expanded line-by-line stage lists are useful internally, but too noisy in the report.
+    Compress repeated reason lists into a short grouped summary.
+    """
+    if not report:
+        return report
+
+    m = re.search(r"(?ims)^NOT REACHED:\s*(.*?)(?=^COMPLIANCE FAILURES:)", report)
+    if not m:
+        return report
+
+    body = m.group(1).strip()
+    lines = [ln.strip() for ln in body.splitlines() if ln.strip().startswith("-")]
+
+    if len(lines) < 6:
+        return report
+
+    body_lower = body.lower()
+
+    if "prospect stopped responding / disconnected" in body_lower:
+        replacement = (
+            "NOT REACHED:\n"
+            "- Remaining sales process — prospect stopped responding / disconnected before the agent could continue.\n"
+            "- Includes: existing coverage, beneficiary, need amount, health questions, product benefits, options, application, payment/banking, disclosures, underwriting, Peace of Mind, and Cool Down.\n\n"
+        )
+    elif "callback/delay objection" in body_lower:
+        replacement = (
+            "NOT REACHED:\n"
+            "- Remaining sales process — live sale attempt ended after the callback/delay objection.\n"
+            "- Includes: product benefits, options, application, payment/banking, disclosures, underwriting, Peace of Mind, and Cool Down.\n\n"
+        )
+    elif "existing coverage was not resolved" in body_lower:
+        replacement = (
+            "NOT REACHED:\n"
+            "- Remaining sales process — existing coverage was not resolved before the call ended.\n"
+            "- Includes: product benefits, options, application, payment/banking, disclosures, underwriting, Peace of Mind, and Cool Down.\n\n"
+        )
+    elif "banking/routing verification was incomplete" in body_lower or "credit union/banking verification" in body_lower:
+        replacement = (
+            "NOT REACHED:\n"
+            "- Remaining post-banking process — banking/account verification was not fully resolved before the call ended.\n"
+            "- Includes: disclosures, underwriting, Peace of Mind, and Cool Down.\n\n"
+        )
+    elif "not reached because" in body_lower or "—" in body:
+        replacement = (
+            "NOT REACHED:\n"
+            "- Remaining sales process — call ended before the agent could continue.\n"
+            "- Includes: product benefits, options, application, payment/banking, disclosures, underwriting, Peace of Mind, and Cool Down.\n\n"
+        )
+    else:
+        return report
+
+    return report[:m.start()] + replacement + report[m.end():]
+
+
 def enforce_final_audit_consistency(report, transcript=None):
     """
     Post-process free-text audits (and harden any path) so invalid autofail / stage combinations
@@ -6992,6 +7051,7 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _final_cleanup_partial_health_unsold_guardrail(report, transcript)
     report = _final_cleanup_false_banking_stage_guardrail(report, transcript)
     report = _rewrite_not_reached_reason(report, transcript)
+    report = _compress_not_reached_block(report)
     report = _final_cleanup_protect_major_biggest_miss(report, transcript)
     report = enforce_risk_for_automatic_fail(report)
     report = _strip_embedded_transcript_from_report(report)
