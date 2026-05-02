@@ -3,6 +3,7 @@ from flask import (
     jsonify,
     make_response,
     redirect,
+    send_file,
     render_template_string,
     request,
     session,
@@ -37,6 +38,7 @@ DASHBOARD_USERNAME = os.getenv("AI_AUDITOR_USERNAME", "admin")
 DASHBOARD_PASSWORD = os.getenv("AI_AUDITOR_PASSWORD", "change-me")
 
 UPLOAD_FOLDER = "calls"
+PROCESSED_CALLS_FOLDER = "processed_calls"
 TRANSCRIPT_UPLOAD_FOLDER = "transcript_uploads"
 TRANSCRIPTS_FOLDER = "transcripts"
 TRANSCRIPTS_ROLE_LABELED_FOLDER = "transcripts_role_labeled"
@@ -58,6 +60,7 @@ STATUS_LABELS = {
 }
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(PROCESSED_CALLS_FOLDER, exist_ok=True)
 os.makedirs(TRANSCRIPT_UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(TRANSCRIPTS_FOLDER, exist_ok=True)
 os.makedirs(TRANSCRIPTS_ROLE_LABELED_FOLDER, exist_ok=True)
@@ -315,14 +318,33 @@ def detect_agent_name_from_call_name(call_name):
     return agent_map.get(agent_number, f"Unknown {agent_number}")
 
 
+
+
+def all_known_agent_names():
+    """
+    Agents to show in the dashboard sidebar even when they have 0 completed calls.
+    Uses agent_map.json values, plus any agents inferred from calls.
+    """
+    agent_map = load_agent_map()
+    names = set()
+    for name in agent_map.values():
+        if name:
+            names.add(str(name).strip())
+    return sorted(n for n in names if n)
+
+
 def build_agent_sidebar_html(calls):
     """
     Sidebar buttons for filtering completed audits by inferred agent.
+    Shows all known agents even when they currently have 0 completed calls.
     """
     counts = {}
     for c in calls:
         agent = detect_agent_name_from_call_name(c[1])
         counts[agent] = counts.get(agent, 0) + 1
+
+    names = set(all_known_agent_names())
+    names.update(counts.keys())
 
     parts = [
         '<button type="button" class="agent-filter-button active" data-agent="all">',
@@ -330,11 +352,13 @@ def build_agent_sidebar_html(calls):
         '</button>',
     ]
 
-    for agent in sorted(counts):
+    for agent in sorted(names):
         agent_esc = escape(agent)
+        count = counts.get(agent, 0)
+        zero_cls = " zero" if count == 0 else ""
         parts.append(
-            f'<button type="button" class="agent-filter-button" data-agent="{agent_esc}">'
-            f'<span>{agent_esc}</span><span class="agent-count">{counts[agent]}</span>'
+            f'<button type="button" class="agent-filter-button{zero_cls}" data-agent="{agent_esc}">'
+            f'<span>{agent_esc}</span><span class="agent-count">{count}</span>'
             f'</button>'
         )
 
@@ -342,9 +366,10 @@ def build_agent_sidebar_html(calls):
 
 
 def build_agent_filter_options_html(calls):
-    names = sorted({detect_agent_name_from_call_name(c[1]) for c in calls})
+    names = set(all_known_agent_names())
+    names.update(detect_agent_name_from_call_name(c[1]) for c in calls)
     options = ['<option value="all">All agents</option>']
-    for name in names:
+    for name in sorted(names):
         safe = escape(name)
         options.append(f'<option value="{safe}">{safe}</option>')
     return "\n".join(options)
@@ -413,6 +438,48 @@ def render_transcript_html(transcript_text):
             html_lines.append(escape(line))
 
     return "\n".join(html_lines)
+
+
+
+
+def get_call_audio_path(call_name):
+    """Find the original audio for a processed or currently queued call."""
+    if not call_name:
+        return None
+
+    for folder in [PROCESSED_CALLS_FOLDER, UPLOAD_FOLDER]:
+        for ext in AUDIO_EXTENSIONS:
+            p = os.path.join(folder, f"{call_name}{ext}")
+            if os.path.isfile(p):
+                return p
+
+    # Fallback for rare collision-renamed processed files.
+    safe_prefix = f"{call_name}_"
+    for folder in [PROCESSED_CALLS_FOLDER, UPLOAD_FOLDER]:
+        if not os.path.isdir(folder):
+            continue
+        for filename in os.listdir(folder):
+            lower = filename.lower()
+            if not lower.endswith(AUDIO_EXTENSIONS):
+                continue
+            base, _ = os.path.splitext(filename)
+            if base == call_name or base.startswith(safe_prefix):
+                p = os.path.join(folder, filename)
+                if os.path.isfile(p):
+                    return p
+
+    return None
+
+
+def audio_mime_type(path):
+    ext = os.path.splitext(path or "")[1].lower()
+    if ext == ".mp3":
+        return "audio/mpeg"
+    if ext == ".wav":
+        return "audio/wav"
+    if ext == ".m4a":
+        return "audio/mp4"
+    return "application/octet-stream"
 
 
 def get_saved_transcript_path(call_name):
@@ -2384,7 +2451,16 @@ form { margin: 0; }
             background: #f8fafc;
             border-color: #e5e7eb;
         }
-        .agent-filter-button.active {
+        
+.agent-filter-button.zero {
+    opacity: 0.62;
+}
+.agent-filter-button.zero .agent-count {
+    background: var(--surface-soft);
+    color: var(--muted);
+}
+
+.agent-filter-button.active {
             background: #eff6ff;
             border-color: #bfdbfe;
             color: #1d4ed8;
@@ -3070,6 +3146,20 @@ def view_call(call_id):
     report_disk_path = os.path.join(REPORTS_FOLDER, f"{call[1]}_report.txt")
     report_on_disk = os.path.isfile(report_disk_path)
 
+    audio_path = get_call_audio_path(call[1])
+    audio_available = bool(audio_path)
+    audio_player_html = (
+        f"""
+        <audio controls preload="metadata" style="width:100%;margin-top:8px;">
+            <source src="/audio/{call[0]}">
+            Your browser does not support the audio player.
+        </audio>
+        <p class="muted" style="font-size:13px;margin:8px 0 0;">Playing saved original audio file.</p>
+        """
+        if audio_available
+        else '<p class="muted" style="margin:0;">Audio file not found for this call.</p>'
+    )
+
     if not (report_text or "").strip():
         report_pre_full = escape("Report not available.")
         report_pre_clean = report_pre_full
@@ -3206,6 +3296,11 @@ def view_call(call_id):
                 </label>
                 <button type="submit" class="button">Save Disposition</button>
             </form>
+        </div>
+
+        <div class="card detail-card span-12">
+            <h3>Audio</h3>
+            {audio_player_html}
         </div>
 
         <div class="card detail-card span-12">
@@ -3380,6 +3475,28 @@ def ask_about_call(call_id):
     if result is None:
         result = keyword_search_answer(question, transcript, report)
     return jsonify({"ok": True, **result})
+
+
+
+
+@app.route("/audio/<int:call_id>")
+@login_required
+def stream_call_audio(call_id):
+    call = get_call(call_id)
+    if not call:
+        return "Call not found.", 404
+
+    audio_path = get_call_audio_path(call[1])
+    if not audio_path or not os.path.isfile(audio_path):
+        return "Audio file not found.", 404
+
+    return send_file(
+        audio_path,
+        mimetype=audio_mime_type(audio_path),
+        as_attachment=False,
+        conditional=True,
+        max_age=0,
+    )
 
 
 @app.route("/transcript/<int:call_id>")
@@ -3769,6 +3886,7 @@ def delete_processing():
         filenames.append(f"{call_name}.txt")
         for filename in filenames:
             remove_file(os.path.join(UPLOAD_FOLDER, filename))
+            remove_file(os.path.join(PROCESSED_CALLS_FOLDER, filename))
             remove_file(os.path.join(TRANSCRIPT_UPLOAD_FOLDER, filename))
         forget_upload_times(filenames)
         forget_processing_states([call_name])
