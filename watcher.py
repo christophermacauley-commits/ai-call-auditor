@@ -6157,17 +6157,13 @@ def _normalize_not_reached_due_to_prospect(report, transcript):
         ]
         not_reached_items = [x for x in not_reached_items if x]
 
-        replacement = (
-            "NOT REACHED:\n"
-            + "\n".join(f"- {item} — not reached because the prospect stopped responding / disconnected before the agent could continue" for item in not_reached_items)
-            + "\n\n"
-        )
-
-        report = re.sub(
-            r"(?ims)^NOT REACHED:\s*.*?(?=^COMPLIANCE FAILURES:)",
-            replacement,
+        report = _set_stage_fields(
             report,
-            count=1,
+            stage=None,
+            not_reached_items=[
+                f"{item} — not reached because the prospect stopped responding / disconnected before the agent could continue"
+                for item in not_reached_items
+            ],
         )
 
         # Remove unfair script/flow misses that are just later-stage incompletion.
