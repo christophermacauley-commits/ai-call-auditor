@@ -6705,10 +6705,12 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _restore_safe_business_terms(report)
     report = _normalize_not_reached_due_to_prospect(report, transcript)
     report = _final_cleanup_callback_autofail_consistency(report, transcript)
-    report = _final_cleanup_protect_major_biggest_miss(report, transcript)
-    report = _rewrite_not_reached_reason(report, transcript)
     report = _final_cleanup_partial_health_unsold_guardrail(report, transcript)
     report = _final_cleanup_false_banking_stage_guardrail(report, transcript)
+    report = _rewrite_not_reached_reason(report, transcript)
+    report = _final_cleanup_protect_major_biggest_miss(report, transcript)
+    report = enforce_risk_for_automatic_fail(report)
+    report = _restore_safe_business_terms(report)
     return report
 
 
