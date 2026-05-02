@@ -2901,6 +2901,16 @@ def view_call(call_id):
         </div>
 
         <div class="card detail-card span-12">
+            <h3>Detailed Report</h3>
+            <p class="muted" style="margin-top:0;font-size:13px;">Manager-friendly excerpt by default. Toggle to view the complete saved audit text.</p>
+            <div id="reportTextClean" class="report-text-html">{report_pre_clean_html}</div>
+            <div id="reportText" class="report-text-html" style="display:none;">{report_pre_full_html}</div>
+            <p style="margin:10px 0 0;font-size:13px;">
+                <button type="button" id="toggleFullReportBtn" class="button button-secondary" style="font-size:13px;padding:6px 12px;" onclick="toggleFullReport()">Show Full Report</button>
+            </p>
+        </div>
+
+        <div class="card detail-card span-12">
             <h3>Ask about this call</h3>
             <p class="muted">Uses the saved redacted transcript file and audit report as context. Answers are short and evidence-based.</p>
             <textarea id="askQuestion" rows="3" style="width:100%;padding:12px;border:1px solid var(--border-strong);border-radius:8px;font:inherit;resize:vertical;" placeholder="e.g. Did the agent ask about existing coverage?"></textarea>
@@ -2909,16 +2919,6 @@ def view_call(call_id):
             </div>
             <pre id="askAnswer" style="margin-top:16px;min-height:48px;">Submit a question to see the answer here.</pre>
             <a id="transcriptHighlightLink" class="button" href="/transcript/{call[0]}?evidence=1" style="display:none;margin-top:12px;">View transcript with evidence highlighted</a>
-        </div>
-
-        <div class="card detail-card span-12">
-            <h3>Detailed Report</h3>
-            <p class="muted" style="margin-top:0;font-size:13px;">Manager-friendly excerpt by default. Toggle to view the complete saved audit text.</p>
-            <div id="reportTextClean" class="report-text-html">{report_pre_clean_html}</div>
-            <div id="reportText" class="report-text-html" style="display:none;">{report_pre_full_html}</div>
-            <p style="margin:10px 0 0;font-size:13px;">
-                <button type="button" id="toggleFullReportBtn" class="button button-secondary" style="font-size:13px;padding:6px 12px;" onclick="toggleFullReport()">Show Full Report</button>
-            </p>
         </div>
 
         <div class="card detail-card span-12">
