@@ -6177,6 +6177,90 @@ def _final_cleanup_callback_autofail_consistency(report, transcript):
     return report
 
 
+
+
+def _has_agent_controllable_major_issue(report):
+    """
+    True when a report contains a stronger agent-controllable issue than
+    the prospect simply disconnecting / stopping response.
+    """
+    if not report:
+        return False
+
+    patterns = [
+        r"(?i)unprofessional language",
+        r"(?i)disrespectful",
+        r"(?i)rude",
+        r"(?i)inappropriate",
+        r"(?i)existing coverage mentioned but not confirmed:\s*YES",
+        r"(?i)automatic fail triggered:\s*YES",
+        r"(?i)callback set:\s*YES",
+        r"(?i)objection occurred without proper call control:\s*YES",
+        r"(?i)agent accepted a callback",
+        r"(?i)banking verification incomplete",
+        r"(?i)routing number verification did not meet",
+        r"(?i)credit union mentioned but bank/account not verified:\s*YES",
+        r"(?i)compliance failures:\s*(?!none\b)",
+    ]
+
+    return any(re.search(p, report) for p in patterns)
+
+
+def _final_cleanup_protect_major_biggest_miss(report, transcript):
+    """
+    If a real agent-controllable issue exists, do not let the generic
+    prospect-disconnect wording remain as Biggest Miss.
+    """
+    if not report:
+        return report
+
+    if not _has_agent_controllable_major_issue(report):
+        return report
+
+    current_biggest = ""
+    m = re.search(r"(?ims)^BIGGEST MISS:\s*(.*?)(?=^SUMMARY:|^TRANSCRIPT NOTE|^OPENAI COST ESTIMATE:|\Z)", report)
+    if m:
+        current_biggest = m.group(1).strip().lower()
+
+    disconnect_biggest = bool(re.search(
+        r"prospect stopped responding|prospect disconnected|disconnected before|before the agent could complete|before the agent could continue",
+        current_biggest,
+        re.I,
+    ))
+
+    if not disconnect_biggest:
+        return report
+
+    replacement = None
+
+    if re.search(r"(?i)unprofessional language|disrespectful|rude|inappropriate", report):
+        replacement = "Agent used unprofessional or disrespectful language / delivery during the call."
+    elif re.search(r"(?im)^- Callback set:\s*YES\b|^-\s*Objection occurred without proper call control:\s*YES\b", report):
+        replacement = "Agent accepted a callback / delay instead of controlling the objection or continuing the live sales attempt."
+    elif re.search(r"(?im)^- Existing coverage mentioned but not confirmed:\s*YES\b", report):
+        replacement = "Existing coverage was mentioned but not properly confirmed before the call moved forward."
+    elif re.search(r"(?im)^- Credit union mentioned but bank/account not verified:\s*YES\b", report):
+        replacement = "Credit union/account information was not properly verified before banking moved forward."
+    elif re.search(r"(?i)banking verification incomplete|routing number verification did not meet", report):
+        replacement = "Banking/routing verification did not meet the required verification standard."
+    elif re.search(r"(?im)^- Automatic fail triggered:\s*YES\b", report):
+        reason = ""
+        rm = re.search(r"(?im)^- Reason:\s*(.+)$", report)
+        if rm:
+            reason = rm.group(1).strip()
+        replacement = reason or "Automatic fail condition was triggered."
+
+    if replacement:
+        report = re.sub(
+            r"(?ims)^BIGGEST MISS:\s*.*?(?=^SUMMARY:|^TRANSCRIPT NOTE|^OPENAI COST ESTIMATE:|\Z)",
+            f"BIGGEST MISS:\n- {replacement}\n\n",
+            report,
+            count=1,
+        )
+
+    return report
+
+
 def enforce_final_audit_consistency(report, transcript=None):
     """
     Post-process free-text audits (and harden any path) so invalid autofail / stage combinations
@@ -6370,6 +6454,7 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _restore_safe_business_terms(report)
     report = _normalize_not_reached_due_to_prospect(report, transcript)
     report = _final_cleanup_callback_autofail_consistency(report, transcript)
+    report = _final_cleanup_protect_major_biggest_miss(report, transcript)
     return report
 
 
