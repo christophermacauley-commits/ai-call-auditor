@@ -6342,6 +6342,96 @@ def _rewrite_not_reached_reason(report, transcript):
     return report
 
 
+
+
+def _final_cleanup_partial_health_unsold_guardrail(report, transcript):
+    """
+    Future-call guardrail:
+    If an unsold call reaches only Medical / Health or partial health and does not
+    reach product/options/application, keep scoring fair but prevent LOW/90-style
+    completed-call treatment.
+    """
+    if not report:
+        return report
+
+    sold_no = bool(re.search(r"(?im)^- Policy sold:\s*NO\b|^- Was the policy sold\?\s*NO\b", report))
+    stage_health = bool(re.search(r"(?im)^CALL STAGE REACHED:\s*(Medical / Health|Health|Medical)\b", report))
+    health_yes_or_partial = bool(re.search(r"(?im)^- Health questions completed:\s*(YES|PARTIAL)\b", report))
+    product_no = bool(re.search(r"(?im)^- Product benefits explained:\s*(NO|NOT REACHED)\b", report))
+    options_no = bool(re.search(r"(?im)^- Three options presented:\s*(NO|NOT REACHED)\b", report))
+    app_no = bool(re.search(r"(?im)^- Application info collected:\s*(NO|NOT REACHED)\b", report))
+    autofail_yes = bool(re.search(r"(?im)^- Automatic fail triggered:\s*YES\b", report))
+
+    partial_health_unsold = sold_no and (stage_health or health_yes_or_partial) and product_no and options_no and app_no
+
+    if not partial_health_unsold:
+        return report
+
+    # The call did not complete the sale path.
+    report = re.sub(r"(?im)^EARLY END:\s*NO\s*$", "EARLY END: YES", report, count=1)
+
+    # If no automatic fail, this is usually medium risk: incomplete, but not necessarily agent fault.
+    if not autofail_yes:
+        report = re.sub(r"(?im)^RISK:\s*LOW\s*$", "RISK: MEDIUM", report, count=1)
+
+    # Keep score fair, but avoid making an incomplete unsold call look like a clean completed win.
+    m = re.search(r"(?im)^SCORE:\s*(\d+)\b", report)
+    if m:
+        try:
+            score = int(m.group(1))
+        except Exception:
+            score = None
+
+        if score is not None and score > 85:
+            report = re.sub(r"(?im)^SCORE:\s*\d+\b", "SCORE: 85", report, count=1)
+
+    # Later stages should be not reached.
+    later_items = [
+        "Product benefits",
+        "Three options",
+        "Client choice",
+        "Application information",
+        "Payment date",
+        "Banking/payment setup",
+        "Banking/account verification",
+        "Disclosures",
+        "Third Party Underwriting",
+        "Peace of Mind",
+        "Cool Down",
+    ]
+
+    reason = _not_reached_reason_for_unfinished_call(report, transcript) if "_not_reached_reason_for_unfinished_call" in globals() else "not reached because the call ended before the agent could continue"
+
+    replacement = (
+        "NOT REACHED:\n"
+        + "\n".join(f"- {item} — {reason}" for item in later_items)
+        + "\n\n"
+    )
+
+    report = re.sub(
+        r"(?ims)^NOT REACHED:\s*.*?(?=^COMPLIANCE FAILURES:)",
+        replacement,
+        report,
+        count=1,
+    )
+
+    report = _text_replace_checklist_value(report, "Payment date explained", "NOT REACHED")
+    report = _text_replace_checklist_value(report, "Banking/payment setup explained", "NOT REACHED")
+
+    # If no stronger agent-controllable issue exists, keep biggest miss about the call ending/incomplete path.
+    has_major_issue = _has_agent_controllable_major_issue(report) if "_has_agent_controllable_major_issue" in globals() else False
+    if not has_major_issue:
+        biggest = "Call ended after partial health/medical questions before the agent could move into product explanation, options, application, disclosures, Peace of Mind, or Cool Down."
+        report = re.sub(
+            r"(?ims)^BIGGEST MISS:\s*.*?(?=^SUMMARY:|^TRANSCRIPT NOTE|^OPENAI COST ESTIMATE:|\Z)",
+            f"BIGGEST MISS:\n- {biggest}\n\n",
+            report,
+            count=1,
+        )
+
+    return report
+
+
 def enforce_final_audit_consistency(report, transcript=None):
     """
     Post-process free-text audits (and harden any path) so invalid autofail / stage combinations
@@ -6537,6 +6627,7 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _final_cleanup_callback_autofail_consistency(report, transcript)
     report = _final_cleanup_protect_major_biggest_miss(report, transcript)
     report = _rewrite_not_reached_reason(report, transcript)
+    report = _final_cleanup_partial_health_unsold_guardrail(report, transcript)
     return report
 
 
