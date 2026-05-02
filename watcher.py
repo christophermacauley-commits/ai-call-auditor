@@ -2840,51 +2840,39 @@ def _normalize_sale_final_stage(val):
 
 def detect_agent_callback_from_transcript(transcript):
     """
-    True only when transcript clearly shows the agent offering, agreeing to, or scheduling
-    a callback / deferring the live sale — conservative (no silence / vague inference).
+    True only when transcript clearly supports a real callback/delay autofail pattern.
+
+    Uses the shared IVR-safe callback evidence helper so old callback cleanup paths
+    and newer callback autofail cleanup paths do not fight each other.
     """
     if not transcript or not str(transcript).strip():
         return False
+
+    helper = globals().get("_has_real_callback_autofail_evidence")
+    if helper:
+        return bool(helper("", transcript))
+
+    # Fallback only if helper is unavailable during import/refactor.
     tl = str(transcript).lower()
     tl = tl.replace("\u2019", "'").replace("\u2018", "'")
-
-    # Conservative: only agent-owned callback / follow-up commitments.
-    # Do NOT match loose prospect-only phrases like "we can talk in a month",
-    # "I need to call someone", "I have calls coming in", or bare "call you back"
-    # unless the wording clearly shows the agent is offering/agrees/schedules.
-    patterns = (
-        r"\bi'?ll\s+call\s+(?:you\s+)?back\b",
-        r"\bi\s+will\s+call\s+(?:you\s+)?back\b",
-        r"\bi'?ll\s+give\s+you\s+a\s+call\s+back\b",
-        r"\bi\s+will\s+give\s+you\s+a\s+call\s+back\b",
-        r"\bi\s+can\s+call\s+(?:you\s+)?(?:back|later)\b",
-        r"\blet\s+me\s+call\s+(?:you\s+)?(?:back|later)\b",
-        r"\blet\s+me\s+give\s+you\s+a\s+call\s+back\b",
-        r"\bwe'?ll\s+call\s+(?:you\s+)?back\b",
-        r"\bwe\s+will\s+call\s+(?:you\s+)?back\b",
-        r"\bwe\s+can\s+finish\s+this\s+later\b",
-        r"\blet'?s\s+schedule\s+(?:another\s+)?(?:time|call)\b",
-        r"\bwhen\s+would\s+be\s+(?:a\s+)?better\s+time\s+for\s+(?:me|us)\s+to\s+call\b",
-        r"\bschedule\s+(?:a\s+)?(?:time|call)\s+to\s+(?:call|connect|finish)\b",
-        r"\bwe\s+can\s+pick\s+up\s+(?:where\s+we\s+left\s+off\s+)?(?:tomorrow|later|another\s+day)\b",
-        r"\bwe\s+can\s+continue\s+(?:this\s+)?(?:tomorrow|later|another\s+time)\b",
+    tl = re.sub(
+        r"(?im)^.*\b(to receive a callback|press \[NUMBER\].*callback|callback, press|estimated wait time|next available representative)\b.*$",
+        "",
+        tl,
     )
 
-    neg_before = re.compile(
-        r"(?:don'?t|do\s+not|never|no\s+need\s+to|not\s+gonna|won'?t)\s+(?:call|ring|bother)\b",
-        re.I,
-    )
+    prospect_requested = bool(re.search(
+        r"(?is)(prospect:\s*.*(?:call\s+(?:me|you)?\s*back|callback|do this later|talk later|not a good time|busy)|"
+        r"can you call me back|call me back later|do this later|talk later)",
+        tl,
+    ))
+    agent_accepted = bool(re.search(
+        r"(?is)(agent:\s*.*(?:i(?:'ll| will) call you back|i(?:'ll| will) give you a call back|"
+        r"we(?:'ll| will) call you back|we can do this later|agreed to call back|scheduled a callback|set a callback))",
+        tl,
+    ))
 
-    for pat in patterns:
-        for m in re.finditer(pat, tl):
-            window_start = max(0, m.start() - 60)
-            before = tl[window_start : m.start()]
-            if neg_before.search(before):
-                continue
-            return True
-    return False
-
-
+    return prospect_requested and agent_accepted
 
 def _transcript_no_valid_agent_callback(transcript):
     """True when no clear agent-owned callback/follow-up commitment is present."""
@@ -6706,18 +6694,23 @@ def _final_cleanup_false_banking_stage_guardrail(report, transcript):
     if no_late_sales_path:
         # Fall back to the latest supported completed stage.
         # Use both report and transcript evidence so we do not downgrade too far.
-        evidence_text = (report or "") + "\n" + (transcript or "")
+        # Prefer transcript evidence for stage fallback. Checklist labels like
+        # "Need amount discussed: NO" or "Beneficiary identified: NO" must not count
+        # as positive evidence that those stages were reached.
+        evidence_text = transcript if transcript else (report or "")
 
         beneficiary_reached = bool(re.search(
-            r"(?is)(beneficiary|who would be your beneficiary|what(?:'s| is) his name|what(?:'s| is) her name)",
+            r"(?is)(who would be your beneficiary|beneficiary on your policy|what(?:'s| is) his name|what(?:'s| is) her name|who would you want|who do you want as)",
             evidence_text,
         ))
         need_reached = bool(re.search(
-            r"(?is)(final expenses|burial|cremation|coverage for cremation|coverage for burial|how much coverage|recommend between)",
+            r"(?is)(how much coverage|recommend between|coverage for cremation|coverage for burial|cover burial|cover cremation|take full responsibility for your final expenses)",
             evidence_text,
         ))
+        # Quote evidence must be positive transcript/report language.
+        # Do not match checklist labels like "Three options presented: NO".
         quote_reached = bool(re.search(
-            r"(?is)(pull those up|qualified for one of our preferred plans|preferred plans|quotes|options|monthly premium|cost right now)",
+            r"(?is)(pull those up|pull up (?:the )?(?:plans|quotes)|qualified for one of our preferred plans|preferred plans|monthly premium|exact cost right now|give you the exact cost)",
             evidence_text,
         ))
 
