@@ -2211,6 +2211,27 @@ pre {
 
 form { margin: 0; }
 
+
+.disposition-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: end;
+    margin-top: 12px;
+}
+.disposition-form label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--muted-strong);
+}
+.disposition-form select {
+    min-width: 220px;
+}
+
+
 @media (max-width: 900px) {
     .main {
         padding: 20px 16px 40px;
@@ -2948,6 +2969,60 @@ def api_dashboard_partial():
     )
 
 
+
+
+VALID_DISPOSITIONS = ["SOLD", "U90", "LCR", "BOOTC", "LEAD", "AGE"]
+
+def _call_col(call, idx, default=""):
+    try:
+        v = call[idx]
+        return v if v is not None else default
+    except Exception:
+        return default
+
+def call_auto_disposition(call):
+    return str(_call_col(call, 7, "") or "").strip().upper()
+
+def call_manual_disposition(call):
+    return str(_call_col(call, 8, "") or "").strip().upper()
+
+def call_final_disposition(call):
+    manual = call_manual_disposition(call)
+    auto = call_auto_disposition(call)
+    final = str(_call_col(call, 9, "") or "").strip().upper()
+    if manual in VALID_DISPOSITIONS:
+        return manual
+    if final in VALID_DISPOSITIONS:
+        return final
+    if auto in VALID_DISPOSITIONS:
+        return auto
+    return "LEAD"
+
+def call_disposition_reason(call):
+    return str(_call_col(call, 10, "") or "").strip()
+
+def disposition_badge_html(disposition):
+    d = (disposition or "LEAD").strip().upper()
+    classes = {
+        "SOLD": "badge badge-pass",
+        "LEAD": "badge badge-neutral",
+        "U90": "badge badge-warn",
+        "LCR": "badge badge-fail",
+        "BOOTC": "badge badge-warn",
+        "AGE": "badge badge-fail",
+    }
+    cls = classes.get(d, "badge badge-neutral")
+    return f'<span class="{cls}">{escape(d)}</span>'
+
+def disposition_select_options(selected):
+    selected = (selected or "").strip().upper()
+    opts = ['<option value="">Use auto disposition</option>']
+    for d in VALID_DISPOSITIONS:
+        sel = " selected" if d == selected else ""
+        opts.append(f'<option value="{d}"{sel}>{d}</option>')
+    return "\\n".join(opts)
+
+
 @app.route("/call/<int:call_id>")
 @login_required
 def view_call(call_id):
@@ -2984,6 +3059,14 @@ def view_call(call_id):
 
     summary_data = build_report_summary(report_text)
     summary_plain = _format_report_summary_plain(summary_data)
+
+    auto_disp = call_auto_disposition(call)
+    manual_disp = call_manual_disposition(call)
+    final_disp = call_final_disposition(call)
+    disp_reason = call_disposition_reason(call)
+    disp_source = "Manual override" if manual_disp in VALID_DISPOSITIONS else "Auto"
+    disp_reason_html = escape(disp_reason) if disp_reason else "No disposition reason saved yet."
+    disp_options_html = disposition_select_options(manual_disp)
 
     def _sv(key):
         v = summary_data.get(key)
@@ -3076,6 +3159,33 @@ def view_call(call_id):
                 <button type="button" class="button button-secondary" onclick="copyTextById('reportText', 'Full report')">Copy Full Report</button>
                 {report_save}
             </div>
+        </div>
+
+        <div class="card detail-card span-12">
+            <h3>Disposition</h3>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin:12px 0;">
+                <div>
+                    <div class="muted" style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.04em;">Final</div>
+                    <div style="margin-top:6px;">{disposition_badge_html(final_disp)}</div>
+                </div>
+                <div>
+                    <div class="muted" style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.04em;">Auto</div>
+                    <div style="font-size:18px;font-weight:800;margin-top:6px;">{escape(auto_disp or "Unknown")}</div>
+                </div>
+                <div>
+                    <div class="muted" style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.04em;">Source</div>
+                    <div style="font-size:18px;font-weight:800;margin-top:6px;">{escape(disp_source)}</div>
+                </div>
+            </div>
+            <p class="muted" style="margin:8px 0 0;font-size:13px;">{disp_reason_html}</p>
+            <form method="post" action="/call/{call[0]}/disposition" class="disposition-form">
+                <label>Manual override
+                    <select name="manual_disposition" aria-label="Manual disposition override">
+                        {disp_options_html}
+                    </select>
+                </label>
+                <button type="submit" class="button">Save Disposition</button>
+            </form>
         </div>
 
         <div class="card detail-card span-12">
@@ -3182,6 +3292,45 @@ def view_call(call_id):
     """
 
     return render_template_string(BASE, content=content)
+
+
+
+
+@app.route("/call/<int:call_id>/disposition", methods=["POST"])
+@login_required
+def update_call_disposition(call_id):
+    manual = (request.form.get("manual_disposition") or "").strip().upper()
+    if manual and manual not in VALID_DISPOSITIONS:
+        manual = ""
+
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+
+    row = c.execute(
+        "SELECT auto_disposition FROM calls WHERE id=?",
+        (call_id,),
+    ).fetchone()
+
+    if not row:
+        conn.close()
+        return redirect("/")
+
+    auto = (row[0] or "").strip().upper()
+    final = manual if manual in VALID_DISPOSITIONS else (auto if auto in VALID_DISPOSITIONS else "LEAD")
+    reason = "Manual override saved." if manual else "Manual override cleared; using auto disposition."
+
+    c.execute(
+        """
+        UPDATE calls
+        SET manual_disposition=?, final_disposition=?, disposition_reason=?
+        WHERE id=?
+        """,
+        (manual or None, final, reason, call_id),
+    )
+    conn.commit()
+    conn.close()
+
+    return redirect(f"/call/{call_id}")
 
 
 @app.route("/call/<int:call_id>/ask", methods=["POST"])
