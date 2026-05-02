@@ -2846,6 +2846,10 @@ def view_call(call_id):
         else '<span class="button" style="opacity:0.55;cursor:not-allowed;" title="No saved report file on disk yet" role="text">Save Report</span>'
     )
 
+    transcript_body_html = render_report_html(transcript_body)
+    report_pre_clean_html = render_report_html(report_pre_clean)
+    report_pre_full_html = render_report_html(report_pre_full)
+
     content = f"""
     <a class="back" href="/">← Back to Dashboard</a>
 
@@ -2909,14 +2913,14 @@ def view_call(call_id):
 
         <div class="card detail-card span-12">
             <h3>Transcript</h3>
-            <pre>{escape(transcript_body)}</pre>
+            <div class="report-text-html">{transcript_body_html}</div>
         </div>
 
         <div class="card detail-card span-12">
             <h3>Detailed Report</h3>
             <p class="muted" style="margin-top:0;font-size:13px;">Manager-friendly excerpt by default. Toggle to view the complete saved audit text.</p>
-            <pre id="reportTextClean" class="transcript-viewer">{report_pre_clean}</pre>
-            <pre id="reportText" class="transcript-viewer" style="display:none;">{report_pre_full}</pre>
+            <div id="reportTextClean" class="report-text-html">{report_pre_clean_html}</div>
+            <div id="reportText" class="report-text-html" style="display:none;">{report_pre_full_html}</div>
             <p style="margin:10px 0 0;font-size:13px;">
                 <button type="button" id="toggleFullReportBtn" class="button button-secondary" style="font-size:13px;padding:6px 12px;" onclick="toggleFullReport()">Show Full Report</button>
             </p>
