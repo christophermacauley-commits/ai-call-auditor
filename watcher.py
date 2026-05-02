@@ -6670,17 +6670,10 @@ def _final_cleanup_partial_health_unsold_guardrail(report, transcript):
 
     reason = _not_reached_reason_for_unfinished_call(report, transcript) if "_not_reached_reason_for_unfinished_call" in globals() else "not reached because the call ended before the agent could continue"
 
-    replacement = (
-        "NOT REACHED:\n"
-        + "\n".join(f"- {item} — {reason}" for item in later_items)
-        + "\n\n"
-    )
-
-    report = re.sub(
-        r"(?ims)^NOT REACHED:\s*.*?(?=^COMPLIANCE FAILURES:)",
-        replacement,
+    report = _set_stage_fields(
         report,
-        count=1,
+        stage=None,
+        not_reached_items=[f"{item} — {reason}" for item in later_items],
     )
 
     report = _text_replace_checklist_value(report, "Payment date explained", "NOT REACHED")
