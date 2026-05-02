@@ -146,7 +146,84 @@ def final_transcript_privacy_cleanup(text):
     return "\n".join(cleaned)
 
 
+
+
+def _protect_report_metric_numbers(report):
+    """
+    Temporarily protect non-private audit/report numbers before report redaction.
+    This prevents report metrics from becoming [NUMBER].
+    """
+    if not report:
+        return report, {}
+
+    protected = {}
+    counter = 0
+
+    metric_line_re = re.compile(
+        r"(?im)^("
+        r"SCORE|"
+        r"- Compliance|"
+        r"- Sales Process|"
+        r"- Product Explanation|"
+        r"- Closing|"
+        r"- Communication Quality|"
+        r"- Input tokens \\(est\\)|"
+        r"- Output tokens \\(est\\)|"
+        r"Account verification evidence count|"
+        r"Routing verification evidence count"
+        r"):\\s*([0-9]+(?:\\.[0-9]+)?)\\b"
+    )
+
+    def repl(m):
+        nonlocal counter
+        token = f"__REPORT_METRIC_{counter}__"
+        counter += 1
+        full = m.group(0)
+        protected[token] = full
+        return token
+
+    return metric_line_re.sub(repl, report), protected
+
+
+def _restore_report_metric_numbers(report, protected):
+    if not report or not protected:
+        return report
+    out = report
+    for token, value in protected.items():
+        out = out.replace(token, value)
+    return out
+
+
+def _restore_redacted_report_metric_lines(report):
+    """
+    Repair already-redacted metric lines where the numeric score was replaced.
+    If the number is gone and cannot be known, leave it as Unknown rather than SCORE: 0.
+    """
+    if not report:
+        return report
+
+    metric_names = [
+        "Compliance",
+        "Sales Process",
+        "Product Explanation",
+        "Closing",
+        "Communication Quality",
+    ]
+
+    for name in metric_names:
+        report = re.sub(
+            rf"(?im)^- {re.escape(name)}:\\s*\\[NUMBER\\]\\s*$",
+            f"- {name}: Unknown",
+            report,
+        )
+
+    report = re.sub(r"(?im)^SCORE:\\s*\\[NUMBER\\]\\s*$", "SCORE: Unknown", report)
+
+    return report
+
+
 def redact_report_text(report):
+    report, _metric_protect = _protect_report_metric_numbers(report)
     """
     Report-safe privacy cleanup.
     Do NOT run full transcript redaction on reports because it breaks audit structure:
@@ -180,7 +257,7 @@ def redact_report_text(report):
     r = re.sub(r"(?i)\b\[NUMBER\]\s+and\s+\[NUMBER\]\s+Method\b", "3 and 1 Method", r)
     r = re.sub(r"(?i)\b3\s+and\s+1\s+Method\b", "3 and 1 Method", r)
 
-    return _restore_safe_business_terms(r)
+    return _restore_safe_business_terms(_restore_redacted_report_metric_lines(_restore_report_metric_numbers(_restore_safe_business_terms(r), _metric_protect)))
 
 
 
