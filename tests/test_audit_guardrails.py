@@ -477,3 +477,150 @@ peace_of_mind_after_sale_fixed = run_case(
 )
 
 print("Peace of Mind after sale test passed.")
+
+age_disqualification_report = """SCORE: 40
+RISK: HIGH
+PASS: NO
+CALL STAGE REACHED: Who I Am / What I Do
+EARLY END: YES
+NOT REACHED:
+- Health questions
+- Product benefits
+- Three options
+
+COMPLIANCE FAILURES:
+- None
+
+SCRIPT / FLOW MISSES:
+- Early refusal call: prospect ended call before warm-up; no further progression possible
+- Agent did not attempt calm call control when prospect expressed disinterest and ended call
+
+TASK CHECKLIST:
+- Recording disclosure: YES
+- Agent introduction: YES
+- License number: NOT REACHED
+- Fact Finding / Warm-up: NOT REACHED
+- Health questions completed: NO
+- Product benefits explained: NO
+- Three options presented: NO
+- Application info collected: NO
+
+SEARCHABLE ANSWERS:
+- Was the policy sold? NO
+
+AUTOMATIC FAIL CHECKS:
+- Callback set: NO
+- Objection occurred without proper call control: NO
+- Automatic fail triggered: NO
+- Reason: None
+
+SALE OUTCOME:
+- Policy sold: NO
+- Evidence: Agent ended call after informing prospect of disqualification due to age; no sale progression
+- Final stage supporting sale: None
+
+BIGGEST MISS:
+- Agent did not attempt calm call control.
+"""
+
+age_disqualification_transcript = """Agent: What's the birthday?
+Prospect: I'm [NUMBER].
+Agent: Unfortunately you have to be younger than [NUMBER], so you won't be able to qualify for the plans that I have.
+Prospect: Okay.
+Agent: I'm sorry. Have a nice day.
+"""
+
+run_case(
+    "age disqualification should not fail agent",
+    age_disqualification_report,
+    age_disqualification_transcript,
+    must_contain=[
+        "PASS: YES",
+        "RISK: MEDIUM",
+        "SCORE: 75",
+        "- Automatic fail triggered: NO",
+        "- Reason: None",
+        "BIGGEST MISS:\n- None",
+    ],
+    must_not_contain=[
+        "PASS: NO",
+        "Agent did not attempt calm call control",
+        "Early refusal call",
+    ],
+)
+
+no_income_lcr_report = """SCORE: 65
+RISK: HIGH
+PASS: NO
+CALL STAGE REACHED: Who I Am / What I Do
+EARLY END: YES
+NOT REACHED:
+- Health questions
+- Product benefits
+- Three options
+
+COMPLIANCE FAILURES:
+- None
+
+SCRIPT / FLOW MISSES:
+- Early refusal call: agent did not attempt calm call control when prospect expressed disinterest.
+- 3 and 1 Method incomplete: Fact Finding / Warm-up not reached, so no rapport or personal disclosure occurred.
+
+TASK CHECKLIST:
+- Recording disclosure: YES
+- Agent introduction: YES
+- License number: YES
+- Fact Finding / Warm-up: NOT REACHED
+- Health questions completed: NO
+- Product benefits explained: NO
+- Three options presented: NO
+- Application info collected: NO
+
+SEARCHABLE ANSWERS:
+- Was the policy sold? NO
+
+AUTOMATIC FAIL CHECKS:
+- Callback set: NO
+- Objection occurred without proper call control: YES
+- Automatic fail triggered: YES
+- Reason: Objection occurred without proper call control
+
+SALE OUTCOME:
+- Policy sold: NO
+- Evidence: Call ended before application or enrollment; no sale completion evidence
+- Final stage supporting sale: Who I Am / What I Do
+
+BIGGEST MISS:
+- Objection occurred without proper call control during Who I Am / What I Do stage.
+"""
+
+no_income_lcr_transcript = """Agent: Are you working or retired?
+Prospect: I'm on medical leave.
+Agent: Do you have any kind of income right now at all?
+Prospect: Not at all.
+Agent: I don't want to sell you a policy if you don't have any income. I don't want to take food off your table.
+Agent: I'm not going to make you buy a policy if you don't have any income.
+Agent: I hope you have an amazing day and hope you start feeling better.
+"""
+
+run_case(
+    "no income lcr should not fail agent",
+    no_income_lcr_report,
+    no_income_lcr_transcript,
+    must_contain=[
+        "PASS: YES",
+        "RISK: MEDIUM",
+        "SCORE: 75",
+        "- Objection occurred without proper call control: NO",
+        "- Automatic fail triggered: NO",
+        "- Reason: None",
+        "No income",
+    ],
+    must_not_contain=[
+        "PASS: NO",
+        "Automatic fail triggered: YES",
+        "Early refusal call",
+    ],
+)
+
+print("Disqualification fairness tests passed.")

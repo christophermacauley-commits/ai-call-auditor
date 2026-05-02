@@ -20,8 +20,11 @@ def detect_disposition(call_name, transcript, report, duration_seconds=None):
     if re.search(r"\b(over\s*80|older than\s*80|too old|outside (?:the )?age range|age limit|cannot qualify due to age)\b", text):
         return "AGE", "Age-related disqualification detected."
 
-    if re.search(r"\b(did not qualify|does not qualify|not qualify|declined|knockout|terminal|hospice|nursing home|oxygen|dialysis|cancer treatment|heart failure|stroke|copd)\b", text):
+    if re.search(r"\b(did not qualify|does not qualify|not qualify|declined|knockout|terminal|hospice|nursing home|oxygen|dialysis|cancer treatment|heart failure|stroke|copd|kidney failure|organ failure)\b", text):
         return "LCR", "Health-related disqualification language detected."
+
+    if re.search(r"\b(no income|don't have any income|do not have any income|not at all.*income|working on my disability|take food off your table|can't afford it|cannot afford it)\b", text):
+        return "LCR", "No-income / affordability disqualification language detected."
 
     # BOOTC = very early drop during PQ/handoff or immediately after,
     # before the selling agent meaningfully starts the call.

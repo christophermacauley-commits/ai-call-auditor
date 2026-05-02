@@ -7170,6 +7170,144 @@ def _final_cleanup_summary_stage_contradictions(report):
     return report
 
 
+
+
+def _detect_disqualification_no_agent_fault(report, transcript):
+    """
+    Detect calls that ended because the prospect was not eligible / could not proceed,
+    not because the agent failed the sales process.
+    Includes AGE, health DNQ/LCR, and no-income affordability cases.
+    """
+    combined = ((report or "") + "\n" + (transcript or "")).lower()
+
+    age_dq = bool(re.search(
+        r"(too old|younger than \[number\]|you have to be younger|ages? (?:are )?only|outside (?:the )?age range|cannot qualify due to age)",
+        combined,
+        re.I,
+    ))
+
+    health_dq = bool(re.search(
+        r"(kidney failure|organ failure|congestive heart failure|terminal|hospice|nursing home|oxygen|dialysis|"
+        r"cancer treatment|did not qualify|does not qualify|won't be able to qualify|wouldn't be able to qualify|"
+        r"can't help you today|cannot help you today)",
+        combined,
+        re.I,
+    ))
+
+    no_income_dq = bool(re.search(
+        r"(no income|don't have any income|do not have any income|not at all.*income|"
+        r"working on my disability|i don't want to sell you a policy if you don't have any income|"
+        r"don't want to take food off your table|do not want to take food off your table|"
+        r"if i can't afford it|if i cannot afford it)",
+        combined,
+        re.I | re.S,
+    ))
+
+    if age_dq:
+        return "AGE", "Prospect was outside the eligible age range."
+    if no_income_dq:
+        return "LCR", "Prospect had no income / affordability barrier, so the agent appropriately did not continue the sale."
+    if health_dq:
+        return "LCR", "Prospect had a disqualifying health condition."
+    return None, ""
+
+
+def _final_cleanup_disqualification_no_agent_fault(report, transcript):
+    """
+    AGE / LCR / no-income calls should not be treated as agent sales failures
+    when the agent appropriately ends the call after discovering ineligibility.
+    """
+    if not report:
+        return report
+
+    disposition, reason = _detect_disqualification_no_agent_fault(report, transcript)
+    if not disposition:
+        return report
+
+    # Do not override real callback/coverage/banking/etc. automatic fails.
+    real_autofail_reason = ""
+    rm = re.search(r"(?im)^- Reason:\s*(.+)$", report or "")
+    if rm:
+        real_autofail_reason = rm.group(1).strip().lower()
+
+    callback_or_control_only = (
+        "objection occurred without proper call control" in real_autofail_reason
+        or "call control" in real_autofail_reason
+        or "none" in real_autofail_reason
+        or not real_autofail_reason
+    )
+
+    if callback_or_control_only:
+        report = re.sub(
+            r"(?im)^- Objection occurred without proper call control:\s*YES\b.*$",
+            "- Objection occurred without proper call control: NO",
+            report,
+        )
+        report = re.sub(
+            r"(?im)^- Automatic fail triggered:\s*YES\b.*$",
+            "- Automatic fail triggered: NO",
+            report,
+        )
+        report = re.sub(
+            r"(?im)^- Reason:\s*.*$",
+            "- Reason: None",
+            report,
+            count=1,
+        )
+
+    # These are not agent failures; keep them incomplete but fair.
+    report = re.sub(r"(?im)^PASS:\s*NO\s*$", "PASS: YES", report, count=1)
+    report = re.sub(r"(?im)^RISK:\s*HIGH\s*$", "RISK: MEDIUM", report, count=1)
+
+    m = re.search(r"(?im)^SCORE:\s*(\d+)\b", report)
+    if m:
+        try:
+            score = int(m.group(1))
+        except Exception:
+            score = None
+        if score is not None and score < 75:
+            report = re.sub(r"(?im)^SCORE:\s*\d+\b", "SCORE: 75", report, count=1)
+
+    # Remove unfair call-control / future-stage misses for an appropriate disqualification end.
+    unfair_phrases = [
+        "Early refusal call",
+        "did not attempt calm call control",
+        "Objection occurred without proper call control",
+        "prospect ended call before warm-up",
+        "lack of progression",
+        "poor objection handling",
+        "no further progression possible",
+        "Fact Finding / Warm-up not reached, so no rapport",
+    ]
+    for phrase in unfair_phrases:
+        report = _text_remove_lines_containing(report, phrase)
+
+    # Keep outcome clear.
+    report = re.sub(
+        r"(?im)^- Evidence:\s*.*$",
+        f"- Evidence: {reason}",
+        report,
+        count=1,
+    )
+
+    # Biggest miss should not accuse the agent when the call ended due to disqualification.
+    report = re.sub(
+        r"(?ims)^BIGGEST MISS:\s*.*?(?=^OBJECTIONS DETECTED:|^SUMMARY:|^TRANSCRIPT NOTE|^OPENAI COST ESTIMATE:|\Z)",
+        "BIGGEST MISS:\n- None\n\n",
+        report,
+        count=1,
+    )
+
+    # Summary cleanup for obvious contradiction.
+    report = re.sub(
+        r"(?i)The call is scored low due to lack of progression, poor objection handling, and early disengagement\.",
+        "The call ended because the prospect was not eligible / could not reasonably proceed; future sales stages were not reached.",
+        report,
+    )
+
+    return report
+
+
 def enforce_final_audit_consistency(report, transcript=None):
     """
     Post-process free-text audits (and harden any path) so invalid autofail / stage combinations
@@ -7368,6 +7506,7 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _final_cleanup_false_banking_stage_guardrail(report, transcript)
     report = _final_cleanup_sold_call_completion_evidence(report, transcript)
     report = _final_cleanup_peace_of_mind_after_sale(report, transcript)
+    report = _final_cleanup_disqualification_no_agent_fault(report, transcript)
     report = _rewrite_not_reached_reason(report, transcript)
     report = _compress_not_reached_block(report)
     report = _final_cleanup_protect_major_biggest_miss(report, transcript)
