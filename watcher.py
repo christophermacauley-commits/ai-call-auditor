@@ -6663,6 +6663,59 @@ def _final_cleanup_partial_health_unsold_guardrail(report, transcript):
 
 
 
+
+
+def _set_stage_fields(report, stage, final_stage=None, not_reached_items=None, early_end=None):
+    """
+    Shared helper for stage-field rewrites.
+
+    This should gradually replace scattered direct regex rewrites for:
+    - CALL STAGE REACHED
+    - EARLY END
+    - NOT REACHED
+    - Final stage supporting sale
+
+    Keep this helper small and conservative.
+    """
+    if not report:
+        return report
+
+    if stage:
+        report = re.sub(
+            r"(?im)^CALL STAGE REACHED:\s*.*$",
+            f"CALL STAGE REACHED: {stage}",
+            report,
+            count=1,
+        )
+
+    if early_end is not None:
+        report = re.sub(
+            r"(?im)^EARLY END:\s*(YES|NO|UNCLEAR).*$",
+            f"EARLY END: {'YES' if early_end else 'NO'}",
+            report,
+            count=1,
+        )
+
+    if final_stage:
+        report = re.sub(
+            r"(?im)^- Final stage supporting sale:\s*.*$",
+            f"- Final stage supporting sale: {final_stage}",
+            report,
+            count=1,
+        )
+
+    if not_reached_items is not None:
+        block = "NOT REACHED:\n" + "\n".join(f"- {item}" for item in not_reached_items) + "\n\n"
+        report = re.sub(
+            r"(?ims)^NOT REACHED:\s*.*?(?=^COMPLIANCE FAILURES:)",
+            block,
+            report,
+            count=1,
+        )
+
+    return report
+
+
 def _final_cleanup_false_banking_stage_guardrail(report, transcript):
     """
     Future-call guardrail:
@@ -6727,22 +6780,15 @@ def _final_cleanup_false_banking_stage_guardrail(report, transcript):
         else:
             corrected_stage = "Opening / Handoff"
 
-        report = re.sub(
-            r"(?im)^CALL STAGE REACHED:\s*.*$",
-            f"CALL STAGE REACHED: {corrected_stage}",
+        report = _set_stage_fields(
             report,
-            count=1,
-        )
-        report = re.sub(
-            r"(?im)^- Final stage supporting sale:\s*.*$",
-            f"- Final stage supporting sale: {corrected_stage}",
-            report,
-            count=1,
+            corrected_stage,
+            final_stage=corrected_stage,
+            early_end=True,
         )
 
         report = _text_replace_checklist_value(report, "Payment date explained", "NOT REACHED")
         report = _text_replace_checklist_value(report, "Banking/payment setup explained", "NOT REACHED")
-        report = re.sub(r"(?im)^EARLY END:\s*NO\s*$", "EARLY END: YES", report, count=1)
 
     return report
 
