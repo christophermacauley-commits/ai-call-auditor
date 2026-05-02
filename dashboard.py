@@ -1583,7 +1583,7 @@ body {
 }
 
 .top-nav-inner {
-    max-width: 1200px;
+    max-width: min(1800px, 96vw);
     margin: 0 auto;
     padding: 14px 22px;
     display: flex;
@@ -1635,7 +1635,7 @@ body {
 }
 
 .main {
-    max-width: 1200px;
+    max-width: min(1800px, 96vw);
     margin: 0 auto;
     padding: 28px 22px 56px;
 }
