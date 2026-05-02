@@ -1486,6 +1486,7 @@ def build_completed_calls_table_rows_html(calls):
         agent_cell = escape(agent_name)
         agent_attr = escape(agent_name)
         ts_cell = escape(str(c[6])) if c[6] else "—"
+        date_attr = escape(str(c[6])[:10]) if c[6] else ""
         score_val = c[4] if c[4] is not None else "—"
         score_attr = "" if c[4] is None else str(int(c[4]))
         cid = c[0]
@@ -1493,7 +1494,7 @@ def build_completed_calls_table_rows_html(calls):
         audit_badge = format_audit_badge_html(report_src)
         rows.append(
             f"""
-            <tr class="call-filter-row" data-agent="{agent_attr}" data-sale="{sale_data}" data-pass="{pass_data}" data-audit="{audit_attr}" data-audit-rank="{audit_rank}" data-score="{score_attr}" data-disposition="{disposition_attr}" data-sort-date="{sort_date}" data-call-id="{cid}">
+            <tr class="call-filter-row" data-agent="{agent_attr}" data-sale="{sale_data}" data-pass="{pass_data}" data-audit="{audit_attr}" data-audit-rank="{audit_rank}" data-score="{score_attr}" data-disposition="{disposition_attr}" data-call-date="{date_attr}" data-sort-date="{sort_date}" data-call-id="{cid}">
                 <td class="call-name"><a href="/call/{cid}">{name_esc}</a></td>
                 <td>{agent_cell}</td>
                 <td class="score-cell"><span class="badge badge-score">{score_val}</span></td>
@@ -2768,6 +2769,16 @@ def dashboard():
         <select id="filter-agent" aria-label="Filter by agent" class="hidden">
             {agent_filter_options_html}
         </select>
+        <div class="card filter-bar" id="agent-date-metrics-filter">
+            <label>Metrics days
+                <select id="filter-days" aria-label="Filter metrics and calls by one or more days" multiple size="4" style="min-width:220px;">
+                    <option value="all" selected>All days</option>
+                </select>
+            </label>
+            <div class="muted" style="font-size:13px;line-height:1.35;">
+                Click an agent on the left, then choose one or more days. Hold Command to select multiple days.
+            </div>
+        </div>
         <div class="card filter-bar" id="completed-filters">
             <label>Sold status
                 <select id="filter-sold-status" aria-label="Filter by sold status or audit pass fail">
@@ -2894,6 +2905,119 @@ def dashboard():
                 }});
                 rows.forEach(function(tr) {{ tbody.appendChild(tr); }});
             }}
+            function selectedDays() {{
+                var dayF = document.getElementById("filter-days");
+                if (!dayF) return ["all"];
+                var vals = Array.prototype.slice.call(dayF.selectedOptions).map(function(o) {{ return o.value; }});
+                if (!vals.length || vals.indexOf("all") !== -1) return ["all"];
+                return vals;
+            }}
+
+            function rowMatchesAgentAndDays(tr) {{
+                var agentF = document.getElementById("filter-agent");
+                var agentV = agentF ? agentF.value : "all";
+                var days = selectedDays();
+                var agent = tr.getAttribute("data-agent") || "Unknown";
+                var date = tr.getAttribute("data-call-date") || "";
+                if (agentV !== "all" && agent !== agentV) return false;
+                if (days.indexOf("all") === -1 && days.indexOf(date) === -1) return false;
+                return true;
+            }}
+
+            function rebuildDayOptions() {{
+                var dayF = document.getElementById("filter-days");
+                if (!dayF) return;
+
+                var oldVals = Array.prototype.slice.call(dayF.selectedOptions).map(function(o) {{ return o.value; }});
+                var useAll = !oldVals.length || oldVals.indexOf("all") !== -1;
+
+                var dates = {{}};
+                var agentF = document.getElementById("filter-agent");
+                var agentV = agentF ? agentF.value : "all";
+
+                document.querySelectorAll(".call-filter-row").forEach(function(tr) {{
+                    var agent = tr.getAttribute("data-agent") || "Unknown";
+                    var date = tr.getAttribute("data-call-date") || "";
+                    if (!date) return;
+                    if (agentV !== "all" && agent !== agentV) return;
+                    dates[date] = true;
+                }});
+
+                var sorted = Object.keys(dates).sort().reverse();
+                var html = '<option value="all">All days</option>';
+                sorted.forEach(function(d) {{
+                    html += '<option value="' + d + '">' + d + '</option>';
+                }});
+                dayF.innerHTML = html;
+
+                Array.prototype.slice.call(dayF.options).forEach(function(opt) {{
+                    if (useAll && opt.value === "all") opt.selected = true;
+                    else if (!useAll && oldVals.indexOf(opt.value) !== -1) opt.selected = true;
+                }});
+
+                if (!Array.prototype.slice.call(dayF.selectedOptions).length && dayF.options.length) {{
+                    dayF.options[0].selected = true;
+                }}
+            }}
+
+            function formatPct(num, den) {{
+                if (!den) return "—";
+                return (Math.round((1000 * num / den)) / 10).toFixed(1) + "%";
+            }}
+
+            function updateVisibleMetrics() {{
+                var rows = Array.prototype.slice.call(document.querySelectorAll(".call-filter-row"))
+                    .filter(rowMatchesAgentAndDays);
+
+                var total = rows.length;
+                var scores = [];
+                var soldYes = 0, soldNo = 0, soldUnclear = 0;
+                var auditPass = 0, auditFail = 0, auditAtRisk = 0;
+
+                rows.forEach(function(tr) {{
+                    var sc = tr.getAttribute("data-score");
+                    if (sc) {{
+                        var n = parseInt(sc, 10);
+                        if (!isNaN(n)) scores.push(n);
+                    }}
+
+                    var sale = tr.getAttribute("data-sale") || "none";
+                    if (sale === "yes") soldYes++;
+                    else if (sale === "no") soldNo++;
+                    else if (sale === "unclear") soldUnclear++;
+
+                    var au = tr.getAttribute("data-audit") || "unknown";
+                    if (au === "pass") auditPass++;
+                    else if (au === "fail") auditFail++;
+                    else if (au === "atrisk") auditAtRisk++;
+                }});
+
+                var avg = "—";
+                if (scores.length) {{
+                    var sum = scores.reduce(function(a, b) {{ return a + b; }}, 0);
+                    avg = (Math.round((10 * sum / scores.length)) / 10).toFixed(1);
+                }}
+
+                var soldKnown = soldYes + soldNo + soldUnclear;
+                var soldMain = soldKnown ? formatPct(soldYes, soldKnown).replace(".0%", "%") + " sold" : "—";
+                var auditKnown = auditPass + auditFail + auditAtRisk;
+                var auditMain = formatPct(auditPass, auditKnown);
+
+                var totalEl = document.getElementById("metric-total-calls");
+                var avgEl = document.getElementById("metric-avg-score");
+                var soldEl = document.getElementById("metric-sold-main");
+                var soldSub = document.getElementById("metric-sold-sub");
+                var auditEl = document.getElementById("metric-audit-pass-rate");
+                var auditSub = document.getElementById("metric-audit-breakdown");
+
+                if (totalEl) totalEl.textContent = String(total);
+                if (avgEl) avgEl.textContent = avg;
+                if (soldEl) soldEl.textContent = soldMain;
+                if (soldSub) soldSub.textContent = soldKnown ? (soldYes + " sold · " + soldNo + " not sold · " + soldUnclear + " unclear · audit pass " + auditMain) : "";
+                if (auditEl) auditEl.textContent = auditMain;
+                if (auditSub) auditSub.textContent = auditKnown ? (auditPass + " pass · " + auditFail + " fail · " + auditAtRisk + " at risk") : "";
+            }}
+
             function applyFilters() {{
                 var agentF = document.getElementById("filter-agent");
                 var statusF = document.getElementById("filter-sold-status");
@@ -2909,24 +3033,32 @@ def dashboard():
                 var av = auditF.value;
                 var sv = scoreF.value;
                 var range = parseRange(sv);
+                var days = selectedDays();
                 var visible = 0;
+
                 document.querySelectorAll(".call-filter-row").forEach(function(tr) {{
                     var ok = true;
                     var agent = tr.getAttribute("data-agent") || "Unknown";
+                    var date = tr.getAttribute("data-call-date") || "";
                     var sale = tr.getAttribute("data-sale") || "none";
                     var disp = tr.getAttribute("data-disposition") || "";
                     var au = tr.getAttribute("data-audit") || "unknown";
+
                     if (agentV !== "all" && agent !== agentV) ok = false;
+                    if (days.indexOf("all") === -1 && days.indexOf(date) === -1) ok = false;
                     if (dv !== "all" && disp !== dv) ok = false;
+
                     if (pv === "sold" && sale !== "yes") ok = false;
                     if (pv === "notsold" && sale !== "no") ok = false;
                     if (pv === "unclear" && sale !== "unclear") ok = false;
                     if (pv === "pass" && (sale !== "none" || au !== "pass")) ok = false;
                     if (pv === "fail" && (sale !== "none" || au !== "fail")) ok = false;
                     if (pv === "atrisk" && au !== "atrisk") ok = false;
+
                     if (av === "pass" && au !== "pass") ok = false;
                     if (av === "fail" && au !== "fail") ok = false;
                     if (av === "atrisk" && au !== "atrisk") ok = false;
+
                     var sc = tr.getAttribute("data-score");
                     if (range) {{
                         if (!sc) ok = false;
@@ -2935,40 +3067,46 @@ def dashboard():
                             if (isNaN(n) || n < range.lo || n > range.hi) ok = false;
                         }}
                     }}
+
                     tr.style.display = ok ? "" : "none";
                     if (ok) visible++;
                 }});
+
                 var rowNodes = document.querySelectorAll(".call-filter-row");
                 var denom = rowNodes.length;
                 if (countEl) {{
-                    if (denom === 0) {{
-                        countEl.textContent = "";
-                    }} else if (visible === denom) {{
-                        countEl.textContent = "Showing all " + denom + " call" + (denom === 1 ? "" : "s");
-                    }} else {{
-                        countEl.textContent = "Showing " + visible + " of " + denom + " calls";
-                    }}
+                    if (denom === 0) countEl.textContent = "";
+                    else if (visible === denom) countEl.textContent = "Showing all " + denom + " call" + (denom === 1 ? "" : "s");
+                    else countEl.textContent = "Showing " + visible + " of " + denom + " calls";
                 }}
 
                 agentButtons.forEach(function(btn) {{
                     btn.classList.toggle("active", btn.getAttribute("data-agent") === agentV);
                 }});
+
+                updateVisibleMetrics();
             }}
 
             document.querySelectorAll(".agent-filter-button").forEach(function(btn) {{
                 btn.addEventListener("click", function() {{
                     var agentF = document.getElementById("filter-agent");
+                    var dayF = document.getElementById("filter-days");
                     if (!agentF) return;
                     agentF.value = btn.getAttribute("data-agent") || "all";
+                    if (dayF) {{
+                        Array.prototype.slice.call(dayF.options).forEach(function(opt) {{ opt.selected = opt.value === "all"; }});
+                    }}
+                    rebuildDayOptions();
                     applyFilters();
                 }});
             }});
 
             function refresh() {{
                 sortRows();
+                rebuildDayOptions();
                 applyFilters();
             }}
-            ["filter-agent", "filter-sold-status", "filter-disposition", "filter-audit", "filter-score", "sort-by"].forEach(function(id) {{
+            ["filter-agent", "filter-days", "filter-sold-status", "filter-disposition", "filter-audit", "filter-score", "sort-by"].forEach(function(id) {{
                 var el = document.getElementById(id);
                 if (el) el.addEventListener("change", refresh);
             }});
@@ -3001,7 +3139,6 @@ def dashboard():
             fetch("/api/dashboard-partial")
                 .then(function(r) { return r.json(); })
                 .then(function(d) {
-                    if (d.metrics) applyMetrics(d.metrics);
                     var pm = document.getElementById("dashboard-processing-mount");
                     if (pm && d.processing_html != null) {
                         pm.innerHTML = d.processing_html;
@@ -3086,6 +3223,7 @@ def call_final_disposition(call):
     manual = call_manual_disposition(call)
     auto = call_auto_disposition(call)
     final = str(_call_col(call, 9, "") or "").strip().upper()
+
     if manual in VALID_DISPOSITIONS:
         return manual
     if final in VALID_DISPOSITIONS:
@@ -3116,7 +3254,7 @@ def disposition_select_options(selected):
     for d in VALID_DISPOSITIONS:
         sel = " selected" if d == selected else ""
         opts.append(f'<option value="{d}"{sel}>{d}</option>')
-    return "\\n".join(opts)
+    return "\n".join(opts)
 
 
 @app.route("/call/<int:call_id>")
