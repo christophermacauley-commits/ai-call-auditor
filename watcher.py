@@ -6090,6 +6090,93 @@ def _normalize_not_reached_due_to_prospect(report, transcript):
     return report
 
 
+
+
+def _final_cleanup_callback_autofail_consistency(report, transcript):
+    """
+    Future-call guardrail:
+    If the report itself says the prospect requested a callback/busy delay and the
+    agent accepted the callback instead of controlling or continuing the sale,
+    the automatic-fail section must reflect that consistently.
+    """
+    if not report:
+        return report
+
+    combined = (report or "") + "\n" + (transcript or "")
+
+    callback_requested = bool(re.search(
+        r"(?is)"
+        r"(prospect requested callback|requested callback|asked for (?:a )?callback|"
+        r"call back later|callback due to being busy|prospect.*busy|"
+        r"busy.*call back|do this later|talk later|not a good time)",
+        combined,
+    ))
+
+    agent_accepted_without_control = bool(re.search(
+        r"(?is)"
+        r"(agent agreed to call back later|agreed to call back|"
+        r"instead of attempting call control|instead of.*continuing the sale|"
+        r"accepted the callback|set a callback|scheduled a callback|"
+        r"resulting in an automatic fail)",
+        combined,
+    ))
+
+    # Do not trigger on prospect-only future intent if the report does not say
+    # the agent accepted/delayed/failed to control.
+    if not (callback_requested and agent_accepted_without_control):
+        return report
+
+    # Normalize automatic-fail checks.
+    report = re.sub(
+        r"(?im)^- Callback set:\s*(?:YES|NO|UNCLEAR)\b.*$",
+        "- Callback set: YES",
+        report,
+    )
+    report = re.sub(
+        r"(?im)^- Objection occurred without proper call control:\s*(?:YES|NO|UNCLEAR)\b.*$",
+        "- Objection occurred without proper call control: YES",
+        report,
+    )
+    report = re.sub(
+        r"(?im)^- Automatic fail triggered:\s*(?:YES|NO|UNCLEAR)\b.*$",
+        "- Automatic fail triggered: YES",
+        report,
+    )
+
+    if re.search(r"(?im)^- Reason:\s*.*$", report):
+        report = re.sub(
+            r"(?im)^- Reason:\s*.*$",
+            "- Reason: Prospect requested a callback / delay and the agent accepted it instead of controlling or continuing the live sales attempt.",
+            report,
+            count=1,
+        )
+    else:
+        report = re.sub(
+            r"(?im)^- Automatic fail triggered:\s*YES\b.*$",
+            "- Automatic fail triggered: YES\n- Reason: Prospect requested a callback / delay and the agent accepted it instead of controlling or continuing the live sales attempt.",
+            report,
+            count=1,
+        )
+
+    # Risk should be HIGH for a callback autofail.
+    report = re.sub(r"(?im)^RISK:\s*(?:LOW|MEDIUM)\s*$", "RISK: HIGH", report, count=1)
+
+    # If report currently says PASS: YES, make it AT RISK rather than clean pass.
+    report = re.sub(r"(?im)^PASS:\s*YES\s*$", "PASS: AT RISK", report, count=1)
+
+    # Add/replace biggest miss.
+    biggest = "Agent accepted a callback / delay instead of controlling the objection or continuing the live sales attempt."
+    if re.search(r"(?ims)^BIGGEST MISS:\s*.*?(?=^SUMMARY:|^TRANSCRIPT NOTE|^OPENAI COST ESTIMATE:|\Z)", report):
+        report = re.sub(
+            r"(?ims)^BIGGEST MISS:\s*.*?(?=^SUMMARY:|^TRANSCRIPT NOTE|^OPENAI COST ESTIMATE:|\Z)",
+            f"BIGGEST MISS:\n- {biggest}\n\n",
+            report,
+            count=1,
+        )
+
+    return report
+
+
 def enforce_final_audit_consistency(report, transcript=None):
     """
     Post-process free-text audits (and harden any path) so invalid autofail / stage combinations
@@ -6282,6 +6369,7 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _final_cleanup_zero_score_guardrail(report, transcript)
     report = _restore_safe_business_terms(report)
     report = _normalize_not_reached_due_to_prospect(report, transcript)
+    report = _final_cleanup_callback_autofail_consistency(report, transcript)
     return report
 
 
