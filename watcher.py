@@ -6847,6 +6847,105 @@ def _compress_not_reached_block(report):
     return report[:m.start()] + replacement + report[m.end():]
 
 
+
+
+def _transcript_has_strong_sale_completion_evidence(transcript):
+    """
+    Strong evidence that the sale/application reached completion or near-completion.
+    This prevents sold calls from being marked unsold just because Peace of Mind / Cool Down
+    did not happen.
+    """
+    if not transcript:
+        return False
+
+    t = str(transcript).lower()
+
+    strong_patterns = [
+        r"application process was completed over the telephone",
+        r"voice signature",
+        r"by signing this application",
+        r"completing your application",
+        r"completed application",
+        r"you have applied for .*whole life insurance policy",
+        r"application for insurance",
+        r"authorize the drafting of insurance premiums",
+        r"provided your banking information and authorize",
+        r"copy of your completed application",
+        r"assigning the application electronically",
+        r"now we're almost done.*rest of your application",
+    ]
+
+    hits = sum(1 for p in strong_patterns if re.search(p, t, re.I | re.S))
+
+    banking_evidence = bool(re.search(
+        r"(banking information|routing number|account number|authorize the drafting|bank account|first payment)",
+        t,
+        re.I,
+    ))
+
+    disclosure_evidence = bool(re.search(
+        r"(disclosures|required disclosures|voice signature|application process was completed|by signing this application)",
+        t,
+        re.I,
+    ))
+
+    return hits >= 2 and banking_evidence and disclosure_evidence
+
+
+def _final_cleanup_sold_call_completion_evidence(report, transcript):
+    """
+    If strong transcript evidence shows application/banking/disclosures/voice signature,
+    do not let the report say policy sold NO simply because final post-sale stages
+    like Peace of Mind or Cool Down were not reached.
+    """
+    if not report:
+        return report
+
+    if not _transcript_has_strong_sale_completion_evidence(transcript):
+        return report
+
+    report = re.sub(r"(?im)^- Was the policy sold\?\s*NO\b.*$", "- Was the policy sold? YES", report)
+    report = re.sub(r"(?im)^- Policy sold:\s*NO\b.*$", "- Policy sold: YES", report)
+
+    if re.search(r"(?im)^SALE OUTCOME:\s*$", report):
+        report = re.sub(
+            r"(?im)^- Evidence:\s*.*$",
+            "- Evidence: Application, banking authorization, disclosures, and voice-signature/application completion language were completed.",
+            report,
+            count=1,
+        )
+
+    report = re.sub(
+        r"(?im)^- Final stage supporting sale:\s*.*$",
+        "- Final stage supporting sale: Third Party Underwriting",
+        report,
+        count=1,
+    )
+
+    # A sold call may still be AT RISK for a real autofail, but should not be PASS: NO only due to unsold outcome.
+    if not re.search(r"(?im)^- Automatic fail triggered:\s*YES\b", report):
+        report = re.sub(r"(?im)^PASS:\s*NO\s*$", "PASS: YES", report, count=1)
+        report = re.sub(r"(?im)^RISK:\s*HIGH\s*$", "RISK: MEDIUM", report, count=1)
+
+    # If the report says Early End only because POM/Cool Down did not happen, keep it less misleading.
+    # Do not force EARLY END to NO unless the call fully reached Cool Down.
+    report = re.sub(
+        r"(?im)^- Evidence:\s*Application completed through banking, no callback set, no post-sale completion evidence\s*$",
+        "- Evidence: Application, banking authorization, disclosures, and voice-signature/application completion language were completed.",
+        report,
+        count=1,
+    )
+
+    # Remove summary sentence that contradicts sale evidence.
+    report = re.sub(
+        r"(?i)Post-sale stages \(Disclosures, Third Party Underwriting, Peace of Mind, Cool Down\) were not reached, and the policy was not sold on this call\.",
+        "Peace of Mind and Cool Down were not reached, but the application, banking authorization, disclosures, and voice-signature/application completion language support a sold/application-completed outcome.",
+        report,
+    )
+
+    return report
+
+
 def enforce_final_audit_consistency(report, transcript=None):
     """
     Post-process free-text audits (and harden any path) so invalid autofail / stage combinations
@@ -7043,6 +7142,7 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _final_cleanup_false_callback_autofail(report, transcript)
     report = _final_cleanup_partial_health_unsold_guardrail(report, transcript)
     report = _final_cleanup_false_banking_stage_guardrail(report, transcript)
+    report = _final_cleanup_sold_call_completion_evidence(report, transcript)
     report = _rewrite_not_reached_reason(report, transcript)
     report = _compress_not_reached_block(report)
     report = _final_cleanup_protect_major_biggest_miss(report, transcript)

@@ -344,3 +344,68 @@ late_stage_fixed = run_case(
 )
 
 print("Late-stage downgrade regression test passed.")
+
+sold_completion_report = """SCORE: 88
+RISK: MEDIUM
+PASS: YES
+CALL STAGE REACHED: Third Party Underwriting
+EARLY END: YES
+NOT REACHED:
+- Peace of Mind
+- Cool Down
+
+COMPLIANCE FAILURES: None
+
+TASK CHECKLIST:
+- Application info collected: PARTIAL
+- Payment date explained: YES
+- Banking/payment setup explained: PARTIAL
+
+SEARCHABLE ANSWERS:
+- Was the policy sold? NO
+
+AUTOMATIC FAIL CHECKS:
+- Callback set: NO
+- Objection occurred without proper call control: NO
+- Automatic fail triggered: NO
+- Reason: None
+
+SALE OUTCOME:
+- Policy sold: NO
+- Evidence: Application completed through banking, no callback set, no post-sale completion evidence
+- Final stage supporting sale: Application Information
+
+SUMMARY:
+The application and banking were completed, but the policy was not sold on this call.
+
+BIGGEST MISS:
+- None
+"""
+
+sold_completion_transcript = """Agent: I am going to do some disclosures.
+Agent: I understand this application process was completed over the telephone.
+Agent: I understand that this application and all other documents have been read to me for my review and voice signature.
+Agent: Do you acknowledge that you provided your banking information and authorize the drafting of insurance premiums from the set account? Yes or no?
+Prospect: Yes.
+Agent: Do you understand that by stating yes, you're assigning the application electronically?
+Prospect: Yes.
+Agent: Now we're almost done. I'm just going to fill out the rest of your application.
+"""
+
+sold_completion_fixed = run_case(
+    "sold completion evidence should stay sold",
+    sold_completion_report,
+    sold_completion_transcript,
+    must_contain=[
+        "- Was the policy sold? YES",
+        "- Policy sold: YES",
+        "- Final stage supporting sale: Third Party Underwriting",
+    ],
+    must_not_contain=[
+        "- Policy sold: NO",
+        "- Was the policy sold? NO",
+        "no post-sale completion evidence",
+    ],
+)
+
+print("Sold completion evidence test passed.")
