@@ -4598,12 +4598,10 @@ def _text_set_line(report, label_regex, replacement):
 
 
 def _text_force_not_reached_block(report, stages):
-    block = "NOT REACHED:\n" + "\n".join(f"- {s}" for s in stages) + "\n\n"
-    return re.sub(
-        r"(?ims)^NOT REACHED:\s*.*?(?=^COMPLIANCE FAILURES:)",
-        block,
+    return _set_stage_fields(
         report,
-        count=1,
+        stage=None,
+        not_reached_items=stages,
     )
 
 
