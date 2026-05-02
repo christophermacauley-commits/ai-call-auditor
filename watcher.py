@@ -180,7 +180,7 @@ def redact_report_text(report):
     r = re.sub(r"(?i)\b\[NUMBER\]\s+and\s+\[NUMBER\]\s+Method\b", "3 and 1 Method", r)
     r = re.sub(r"(?i)\b3\s+and\s+1\s+Method\b", "3 and 1 Method", r)
 
-    return r
+    return _restore_safe_business_terms(r)
 
 
 
@@ -5745,6 +5745,128 @@ def _final_cleanup_no_autofail_consistency(report, transcript):
     return report
 
 
+
+
+def _restore_safe_business_terms(report):
+    """
+    Restore safe script/training terms that should never be privacy-redacted.
+    """
+    if not report:
+        return report
+
+    replacements = {
+        "[NUMBER] and [NUMBER] Method": "3 and 1 Method",
+        "[NUMBER] & [NUMBER] Method": "3 and 1 Method",
+        "[NUMBER]-and-[NUMBER] Method": "3 and 1 Method",
+        "[NUMBER] and [NUMBER] topic groups": "3 and 1 topic groups",
+        "[NUMBER] and [NUMBER] agent self-disclosure": "3 and 1 agent self-disclosure",
+        "gpt-[NUMBER].[NUMBER]-mini": "gpt-4.1-mini",
+        "gpt-[NUMBER]-mini": "gpt-4.1-mini",
+    }
+
+    out = report
+    for old, new in replacements.items():
+        out = out.replace(old, new)
+
+    return out
+
+
+def _final_cleanup_early_unsold_score_risk_guardrail(report, transcript):
+    """
+    Future-call guardrail:
+    If a call is unsold and only reached warm-up/fact-finding before core sales stages,
+    it should not remain LOW risk or score in the 90s.
+    """
+    if not report:
+        return report
+
+    sold_no = bool(re.search(r"(?im)^- Policy sold:\s*NO\b|^- Was the policy sold\?\s*NO\b", report))
+    stage_warmup = bool(re.search(r"(?im)^CALL STAGE REACHED:\s*(Fact Finding / Warm-up|Warm-up|Fact Finding)\b", report))
+    health_no = bool(re.search(r"(?im)^- Health questions completed:\s*(NO|NOT REACHED)\b", report))
+    product_no = bool(re.search(r"(?im)^- Product benefits explained:\s*(NO|NOT REACHED)\b", report))
+    options_no = bool(re.search(r"(?im)^- Three options presented:\s*(NO|NOT REACHED)\b", report))
+    app_no = bool(re.search(r"(?im)^- Application info collected:\s*(NO|NOT REACHED)\b", report))
+    autofail_yes = bool(re.search(r"(?im)^- Automatic fail triggered:\s*YES\b", report))
+
+    early_unsold_warmup = sold_no and stage_warmup and health_no and product_no and options_no and app_no
+
+    if early_unsold_warmup:
+        report = re.sub(r"(?im)^EARLY END:\s*NO\s*$", "EARLY END: YES", report, count=1)
+
+        if not autofail_yes:
+            report = re.sub(r"(?im)^RISK:\s*LOW\s*$", "RISK: MEDIUM", report, count=1)
+            report = re.sub(r"(?im)^RISK:\s*HIGH\s*$", "RISK: MEDIUM", report, count=1)
+
+        # Cap overly-generous scores for early-ended unsold warm-up calls.
+        m = re.search(r"(?im)^SCORE:\s*(\d+)\b", report)
+        if m:
+            try:
+                score = int(m.group(1))
+            except Exception:
+                score = None
+            if score is not None and score > 78:
+                report = re.sub(r"(?im)^SCORE:\s*\d+\b", "SCORE: 78", report, count=1)
+
+        # Payment/banking cannot be reached if the report says no application/account verification.
+        report = _text_replace_checklist_value(report, "Payment date explained", "NOT REACHED")
+        report = _text_replace_checklist_value(report, "Banking/payment setup explained", "NOT REACHED")
+
+        expanded_not_reached = [
+            "Existing coverage",
+            "Beneficiary",
+            "Need amount",
+            "Health questions",
+            "Product benefits",
+            "Three options",
+            "Client choice",
+            "Application information",
+            "Payment date",
+            "Banking/payment setup",
+            "Banking/account verification",
+            "Disclosures",
+            "Third Party Underwriting",
+            "Peace of Mind",
+            "Cool Down",
+        ]
+        replacement = "NOT REACHED:\\n" + "\\n".join(f"- {item}" for item in expanded_not_reached) + "\\n\\n"
+        report = re.sub(
+            r"(?ims)^NOT REACHED:\\s*.*?(?=^COMPLIANCE FAILURES:)",
+            replacement,
+            report,
+            count=1,
+        )
+
+    return report
+
+
+def _final_cleanup_zero_score_guardrail(report, transcript):
+    """
+    SCORE: 0 should not be paired with LOW risk / PASS YES unless the report is a known
+    processing-failed placeholder. This catches impossible legacy report states.
+    """
+    if not report:
+        return report
+
+    score_zero = bool(re.search(r"(?im)^SCORE:\s*0\b", report))
+    processing_failed = bool(re.search(r"(?i)processing failed|unable to evaluate|unable to complete audit", report))
+
+    if score_zero and not processing_failed:
+        report = re.sub(r"(?im)^RISK:\s*LOW\s*$", "RISK: HIGH", report, count=1)
+        report = re.sub(r"(?im)^PASS:\s*YES\s*$", "PASS: NO", report, count=1)
+
+        if not re.search(r"(?ims)^COMPLIANCE FAILURES:\s*.*?(?=^SCRIPT / FLOW MISSES:)", report):
+            return report
+
+        report = re.sub(
+            r"(?ims)^BIGGEST MISS:\s*.*?(?=^SUMMARY:|^TRANSCRIPT NOTE|^OPENAI COST ESTIMATE:|\Z)",
+            "BIGGEST MISS:\n- Report has SCORE: 0 and should be reviewed or regenerated because the score conflicts with the audit result.\n\n",
+            report,
+            count=1,
+        )
+
+    return report
+
+
 def enforce_final_audit_consistency(report, transcript=None):
     """
     Post-process free-text audits (and harden any path) so invalid autofail / stage combinations
@@ -5933,6 +6055,9 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _final_cleanup_no_autofail_consistency(report, transcript)
     report = _final_cleanup_early_end_stage_and_banking(report, transcript)
     report = _final_cleanup_names_and_late_pq_in_report(report, transcript)
+    report = _final_cleanup_early_unsold_score_risk_guardrail(report, transcript)
+    report = _final_cleanup_zero_score_guardrail(report, transcript)
+    report = _restore_safe_business_terms(report)
     return report
 
 
