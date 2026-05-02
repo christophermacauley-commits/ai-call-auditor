@@ -323,6 +323,39 @@ def build_agent_filter_options_html(calls):
         options.append(f'<option value="{safe}">{safe}</option>')
     return "\n".join(options)
 
+def render_transcript_html(transcript_text):
+    """
+    Render transcript text with styled speaker labels.
+    Safe: escapes all content before adding label markup.
+    """
+    if transcript_text is None:
+        transcript_text = ""
+
+    html_lines = []
+    for raw_line in transcript_text.splitlines():
+        line = raw_line.rstrip()
+
+        if not line:
+            html_lines.append("")
+            continue
+
+        m = re.match(r"^\s*(PQ|Agent|Prospect|Unknown)\s*:\s*(.*)$", line)
+        if m:
+            speaker = m.group(1)
+            content = escape(m.group(2))
+            cls = {
+                "PQ": "speaker-pq",
+                "Agent": "speaker-agent",
+                "Prospect": "speaker-prospect",
+                "Unknown": "speaker-unknown",
+            }.get(speaker, "speaker-unknown")
+            html_lines.append(f'<span class="speaker-label {cls}">{speaker}:</span> {content}')
+        else:
+            html_lines.append(escape(line))
+
+    return "\n".join(html_lines)
+
+
 def get_saved_transcript_path(call_name):
     """Prefer role-labeled transcript when available; fall back to raw redacted transcript."""
     role_labeled_path = os.path.join(TRANSCRIPTS_ROLE_LABELED_FOLDER, f"{call_name}.txt")
@@ -2143,7 +2176,36 @@ form { margin: 0; }
         flex-wrap: wrap;
     }
 }
-</style>
+
+        .transcript-viewer-html {
+            white-space: pre-wrap;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+            font-size: 13px;
+            line-height: 1.55;
+            background: #0f172a;
+            color: #e5e7eb;
+            border-radius: 12px;
+            padding: 16px;
+            overflow-x: auto;
+        }
+        .speaker-label {
+            font-weight: 800;
+            letter-spacing: 0.02em;
+        }
+        .speaker-pq {
+            color: #a78bfa;
+        }
+        .speaker-agent {
+            color: #60a5fa;
+        }
+        .speaker-prospect {
+            color: #34d399;
+        }
+        .speaker-unknown {
+            color: #fbbf24;
+        }
+
+    </style>
 </head>
 <body>
 
@@ -2927,6 +2989,7 @@ def view_transcript(call_id):
 
     transcript = get_saved_transcript(call[1])
     transcript_content = transcript if transcript else "Transcript not available."
+    transcript_html = render_transcript_html(transcript_content)
     cid = call[0]
     transcript_path = get_saved_transcript_path(call[1])
     transcript_kind = get_saved_transcript_kind(call[1])
@@ -2965,7 +3028,7 @@ def view_transcript(call_id):
         <h2>{transcript_heading}</h2>
         <p class="muted" style="margin-top:0;margin-bottom:12px;">{transcript_note}</p>
         <textarea id="transcript-raw" class="hidden" readonly>{escape(transcript_content)}</textarea>
-        <pre id="transcriptText" class="transcript-viewer" data-call-id="{cid}">{escape(transcript_content)}</pre>
+        <div id="transcriptText" class="transcript-viewer-html" data-call-id="{cid}">{transcript_html}</div>
     </div>
     {transcript_highlight_script(cid)}
     {CLIPBOARD_HELPERS_SCRIPT}
