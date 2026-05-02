@@ -409,3 +409,71 @@ sold_completion_fixed = run_case(
 )
 
 print("Sold completion evidence test passed.")
+
+peace_of_mind_after_sale_report = """SCORE: 88
+RISK: MEDIUM
+PASS: YES
+CALL STAGE REACHED: Third Party Underwriting
+EARLY END: YES
+NOT REACHED:
+- Peace of Mind
+- Cool Down
+
+COMPLIANCE FAILURES: None
+
+TASK CHECKLIST:
+- Peace of mind completed: NOT REACHED
+- Cool down completed: NOT REACHED
+
+SEARCHABLE ANSWERS:
+- Was the policy sold? YES
+
+AUTOMATIC FAIL CHECKS:
+- Callback set: NO
+- Objection occurred without proper call control: NO
+- Automatic fail triggered: NO
+- Reason: None
+
+SALE OUTCOME:
+- Policy sold: YES
+- Evidence: Application, banking authorization, disclosures, and voice-signature/application completion language were completed.
+- Final stage supporting sale: Third Party Underwriting
+
+SUMMARY:
+Application and voice signature were completed. Peace of Mind and Cool Down were not reached.
+
+BIGGEST MISS:
+- None
+"""
+
+peace_of_mind_after_sale_transcript = """Agent: I understand this application process was completed over the telephone.
+Agent: I understand that this application and all other documents have been read to me for my review and voice signature.
+Prospect: Yes.
+Agent: Do you understand that by stating yes, you're assigning the application electronically?
+Prospect: Yes.
+Agent: Okay. Well, [NAME], we're done. You're good.
+Agent: We're not going to forget about you either.
+Agent: We're going to mail you the package tomorrow and include everything we talked about and all the information for the program you're qualified for.
+Prospect: Thank you.
+Agent: Have a great day.
+"""
+
+peace_of_mind_after_sale_fixed = run_case(
+    "peace of mind after sold call",
+    peace_of_mind_after_sale_report,
+    peace_of_mind_after_sale_transcript,
+    must_contain=[
+        "CALL STAGE REACHED: Peace of Mind",
+        "EARLY END: NO",
+        "- Peace of mind completed: YES",
+        "- Cool down completed: NO",
+        "- Final stage supporting sale: Peace of Mind",
+        "- Cool Down",
+    ],
+    must_not_contain=[
+        "- Peace of Mind\n",
+        "Peace of Mind and Cool Down were not reached",
+    ],
+)
+
+print("Peace of Mind after sale test passed.")

@@ -7022,6 +7022,121 @@ def _final_cleanup_sold_call_completion_evidence(report, transcript):
     return report
 
 
+
+
+def _transcript_has_peace_of_mind_after_sale(transcript):
+    """
+    Detect Peace of Mind reached after sale/application completion.
+    This is stricter than polite closing and should not mark Cool Down.
+    """
+    if not transcript:
+        return False
+
+    t = str(transcript).lower()
+
+    sale_anchor = re.search(
+        r"(voice signature|application process was completed|by signing this application|"
+        r"you have applied for|american amicable.*recording|app id|pound sign|"
+        r"authorize the drafting|completed application)",
+        t,
+        re.I | re.S,
+    )
+    if not sale_anchor:
+        return False
+
+    after_sale = t[sale_anchor.start():]
+
+    pom_hits = 0
+    for pat in [
+        r"you're good",
+        r"you are good",
+        r"we'?re not going to forget about you",
+        r"we are not going to forget about you",
+        r"mail (?:you )?(?:the )?(?:package|welcome letter|policy)",
+        r"send (?:you )?(?:the )?(?:package|welcome letter|policy)",
+        r"include everything we talked about",
+        r"include all (?:of )?(?:the )?information",
+        r"information (?:about )?(?:the )?(?:program|plan|company)",
+        r"qualified for",
+    ]:
+        if re.search(pat, after_sale, re.I | re.S):
+            pom_hits += 1
+
+    return pom_hits >= 3
+
+
+def _remove_not_reached_item(report, item_name):
+    """Remove one simple NOT REACHED bullet by name, preserving the rest of the block."""
+    if not report:
+        return report
+
+    pattern = rf"(?im)^-\s*{re.escape(item_name)}\s*$\n?"
+    return re.sub(pattern, "", report)
+
+
+def _final_cleanup_peace_of_mind_after_sale(report, transcript):
+    """
+    If a sold/application-completed call clearly reaches Peace of Mind after TPU/voice-signature,
+    align stage/checklist/NOT REACHED accordingly. Do not mark Cool Down unless actual
+    post-sale casual conversation happened.
+    """
+    if not report:
+        return report
+
+    sold_yes = bool(re.search(r"(?im)^- Policy sold:\s*YES\b|^- Was the policy sold\?\s*YES\b", report))
+    if not sold_yes:
+        return report
+
+    if not _transcript_has_peace_of_mind_after_sale(transcript):
+        return report
+
+    # Do not override Cool Down if already clearly reached.
+    cooldown_yes = bool(re.search(r"(?im)^- Cool down completed:\s*YES\b|^CALL STAGE REACHED:\s*Cool Down\b", report))
+
+    if not cooldown_yes:
+        report = _set_stage_fields(
+            report,
+            "Peace of Mind",
+            final_stage="Peace of Mind",
+            early_end=False,
+        )
+        report = _remove_not_reached_item(report, "Peace of Mind")
+        if "Cool Down" not in re.search(r"(?ims)^NOT REACHED:\s*(.*?)(?=^COMPLIANCE FAILURES:)", report).group(1) if re.search(r"(?ims)^NOT REACHED:\s*(.*?)(?=^COMPLIANCE FAILURES:)", report) else "":
+            # If the block exists and Cool Down is not listed, add it as the only post-POM remaining item.
+            report = re.sub(
+                r"(?ims)^NOT REACHED:\s*.*?(?=^COMPLIANCE FAILURES:)",
+                "NOT REACHED:\n- Cool Down\n\n",
+                report,
+                count=1,
+            )
+    else:
+        report = _set_stage_fields(
+            report,
+            "Cool Down",
+            final_stage="Cool Down",
+            early_end=False,
+        )
+
+    report = _text_replace_checklist_value(report, "Peace of mind completed", "YES")
+
+    if not cooldown_yes:
+        report = _text_replace_checklist_value(report, "Cool down completed", "NO")
+
+    # Remove/soften contradictory summary wording if present.
+    report = re.sub(
+        r"(?i)Peace of Mind and Cool Down were not reached",
+        "Cool Down was not reached",
+        report,
+    )
+    report = re.sub(
+        r"(?i)Post-sale stages .*? were not reached",
+        "Cool Down was not reached",
+        report,
+    )
+
+    return report
+
+
 def enforce_final_audit_consistency(report, transcript=None):
     """
     Post-process free-text audits (and harden any path) so invalid autofail / stage combinations
@@ -7219,6 +7334,7 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _final_cleanup_partial_health_unsold_guardrail(report, transcript)
     report = _final_cleanup_false_banking_stage_guardrail(report, transcript)
     report = _final_cleanup_sold_call_completion_evidence(report, transcript)
+    report = _final_cleanup_peace_of_mind_after_sale(report, transcript)
     report = _rewrite_not_reached_reason(report, transcript)
     report = _compress_not_reached_block(report)
     report = _final_cleanup_protect_major_biggest_miss(report, transcript)
