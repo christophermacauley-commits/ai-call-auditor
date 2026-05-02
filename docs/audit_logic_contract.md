@@ -112,3 +112,14 @@ Every logic fix should include:
 1. Rule update if needed.
 2. Regression test.
 3. Smallest code change that passes tests.
+
+## Stage / NOT REACHED Maintenance Rule
+
+Only one helper should eventually own stage-section rewrites:
+
+- CALL STAGE REACHED
+- EARLY END
+- NOT REACHED
+- Final stage supporting sale
+
+Older cleanup functions may still detect conditions, but they should delegate the final rewrite to a shared helper instead of independently rewriting the same report fields.
