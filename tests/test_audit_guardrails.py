@@ -259,3 +259,88 @@ check(
 )
 
 print("Speaker-label self-disclosure test passed.")
+
+late_stage_should_not_downgrade_to_who_i_am = """SCORE: 75
+RISK: HIGH
+PASS: NO
+CALL STAGE REACHED: Banking
+EARLY END: YES
+NOT REACHED:
+- Existing coverage
+- Beneficiary
+- Need amount
+- Health questions
+- Product benefits
+- Three options
+- Client choice
+- Application information
+- Payment date
+- Banking/payment setup
+- Banking/account verification
+- Disclosures
+- Third Party Underwriting
+- Peace of Mind
+- Cool Down
+
+COMPLIANCE FAILURES:
+- None
+
+TASK CHECKLIST:
+- Agent introduction: YES
+- Fact Finding / Warm-up: YES
+- Beneficiary identified: NO
+- Need amount discussed: NO
+- Health questions completed: NO
+- Product benefits explained: NO
+- Three options presented: NO
+- Application info collected: NO
+- Payment date explained: NO
+- Banking/payment setup explained: NO
+- Banking/account information requested or verified 3 times: NOT REACHED
+- Routing number requested or verified 3 times: NOT REACHED
+- Account verification evidence count: 0
+- Routing verification evidence count: 0
+
+SEARCHABLE ANSWERS:
+- Was the policy sold? NO
+
+AUTOMATIC FAIL CHECKS:
+- Callback set: NO
+- Objection occurred without proper call control: YES
+- Automatic fail triggered: YES
+- Reason: Early refusal call: no calm call control attempt
+
+SALE OUTCOME:
+- Policy sold: NO
+- Final stage supporting sale: Banking
+
+BIGGEST MISS:
+- Failure to attempt calm call control.
+"""
+
+late_stage_transcript = """Agent: I usually recommend between [NUMBER] dollars of coverage for cremation and [NUMBER] to [NUMBER] for burial.
+Agent: So now that I know that you do take full responsibility for your final expenses, who would be your beneficiary on your policy?
+Prospect: My husband.
+Agent: Gotcha, what's his name?
+Prospect: Rick.
+Agent: Now that I have all your answers, I'm hoping I can get you qualified for one of our preferred plans. It'll just take me a few minutes to pull those up.
+Prospect: I'm not going to be able to finish this call. Can you just email everything to me?
+Agent: I can text you my mobile line.
+"""
+
+late_stage_fixed = run_case(
+    "late-stage evidence should not downgrade to who i am",
+    late_stage_should_not_downgrade_to_who_i_am,
+    late_stage_transcript,
+    must_contain=[
+        "CALL STAGE REACHED: Quotes",
+        "- Final stage supporting sale: Quotes",
+    ],
+    must_not_contain=[
+        "CALL STAGE REACHED: Who I Am / What I Do",
+        "- Beneficiary — not reached",
+        "- Need amount — not reached",
+    ],
+)
+
+print("Late-stage downgrade regression test passed.")
