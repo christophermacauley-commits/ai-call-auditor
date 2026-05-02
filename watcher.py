@@ -6261,6 +6261,87 @@ def _final_cleanup_protect_major_biggest_miss(report, transcript):
     return report
 
 
+
+
+def _not_reached_reason_for_unfinished_call(report, transcript):
+    """
+    Choose the most accurate reason for later stages being not reached.
+    Order matters: agent-controllable autofails should not be mislabeled as prospect disconnects.
+    """
+    combined = ((report or "") + "\n" + (transcript or "")).lower()
+
+    callback_autofail = bool(re.search(
+        r"(?is)"
+        r"(callback set:\s*yes|agent accepted a callback|agreed to call back|"
+        r"prospect requested callback|call back later|callback / delay|"
+        r"objection occurred without proper call control:\s*yes)",
+        combined,
+    ))
+
+    unresolved_coverage = bool(re.search(
+        r"(?im)^- Existing coverage mentioned but not confirmed:\s*YES\b",
+        report or "",
+    ))
+
+    credit_union_fail = bool(re.search(
+        r"(?im)^- Credit union mentioned but bank/account not verified:\s*YES\b",
+        report or "",
+    ))
+
+    banking_fail = bool(re.search(
+        r"(?i)banking verification incomplete|routing number verification did not meet",
+        report or "",
+    ))
+
+    unprofessional = bool(re.search(
+        r"(?i)unprofessional language|disrespectful|rude|inappropriate",
+        report or "",
+    ))
+
+    disconnected = bool(re.search(
+        r"(?i)prospect stopped responding|customer disconnected|prospect disconnected|client disconnected|"
+        r"stopped responding|can you hear me|are you there|disconnected before|hung up|hang up",
+        combined,
+    ))
+
+    if callback_autofail:
+        return "not reached because the live sales attempt ended after the callback/delay objection"
+    if unresolved_coverage:
+        return "not reached because existing coverage was not resolved before the call ended"
+    if credit_union_fail:
+        return "not reached because credit union/banking verification was not resolved before the call ended"
+    if banking_fail:
+        return "not reached because banking/routing verification was incomplete before the call ended"
+    if unprofessional:
+        return "not reached because the call ended after an agent-controllable professionalism issue"
+    if disconnected:
+        return "not reached because the prospect stopped responding / disconnected before the agent could continue"
+
+    return "not reached because the call ended before the agent could continue"
+
+
+def _rewrite_not_reached_reason(report, transcript):
+    """
+    Rewrite expanded NOT REACHED reason suffixes so they match the true unfinished-call reason.
+    """
+    if not report:
+        return report
+
+    if "NOT REACHED:" not in report:
+        return report
+
+    reason = _not_reached_reason_for_unfinished_call(report, transcript)
+
+    # Only rewrite expanded reason lines, not simple '- Disclosures' style lists.
+    report = re.sub(
+        r"(?im)^- ([^-:\n][^\n]*?)\s+—\s+not reached because .*$",
+        lambda m: f"- {m.group(1).strip()} — {reason}",
+        report,
+    )
+
+    return report
+
+
 def enforce_final_audit_consistency(report, transcript=None):
     """
     Post-process free-text audits (and harden any path) so invalid autofail / stage combinations
@@ -6455,6 +6536,7 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _normalize_not_reached_due_to_prospect(report, transcript)
     report = _final_cleanup_callback_autofail_consistency(report, transcript)
     report = _final_cleanup_protect_major_biggest_miss(report, transcript)
+    report = _rewrite_not_reached_reason(report, transcript)
     return report
 
 
