@@ -1411,6 +1411,9 @@ def build_completed_calls_table_rows_html(calls):
         audit_rank = audit_sort_rank_from_status(audit_st)
         stage_raw = parse_stage_from_report(report_src)
         stage_cell = escape(stage_raw) if stage_raw else "—"
+        final_disp = call_final_disposition(c)
+        disposition_attr = escape(final_disp)
+        disposition_cell = disposition_badge_html(final_disp)
         name_esc = escape(c[1])
         agent_name = detect_agent_name_from_call_name(c[1])
         agent_cell = escape(agent_name)
@@ -1423,11 +1426,12 @@ def build_completed_calls_table_rows_html(calls):
         audit_badge = format_audit_badge_html(report_src)
         rows.append(
             f"""
-            <tr class="call-filter-row" data-agent="{agent_attr}" data-sale="{sale_data}" data-pass="{pass_data}" data-audit="{audit_attr}" data-audit-rank="{audit_rank}" data-score="{score_attr}" data-sort-date="{sort_date}" data-call-id="{cid}">
+            <tr class="call-filter-row" data-agent="{agent_attr}" data-sale="{sale_data}" data-pass="{pass_data}" data-audit="{audit_attr}" data-audit-rank="{audit_rank}" data-score="{score_attr}" data-disposition="{disposition_attr}" data-sort-date="{sort_date}" data-call-id="{cid}">
                 <td class="call-name"><a href="/call/{cid}">{name_esc}</a></td>
                 <td>{agent_cell}</td>
                 <td class="score-cell"><span class="badge badge-score">{score_val}</span></td>
                 <td>{status_html}</td>
+                <td>{disposition_cell}</td>
                 <td>{audit_badge}</td>
                 <td>{stage_cell}</td>
                 <td><span class="muted-sm" style="margin:0;">{ts_cell}</span></td>
@@ -2700,6 +2704,17 @@ def dashboard():
                     <option value="atrisk">Audit at risk (PASS line)</option>
                 </select>
             </label>
+            <label>Disposition
+                <select id="filter-disposition" aria-label="Filter by disposition">
+                    <option value="all">All dispositions</option>
+                    <option value="SOLD">SOLD</option>
+                    <option value="U90">U90</option>
+                    <option value="LCR">LCR</option>
+                    <option value="BOOTC">BOOTC</option>
+                    <option value="LEAD">LEAD</option>
+                    <option value="AGE">AGE</option>
+                </select>
+            </label>
             <label>Audit
                 <select id="filter-audit" aria-label="Filter by audit outcome">
                     <option value="all">All</option>
@@ -2735,6 +2750,7 @@ def dashboard():
                         <th>Agent</th>
                         <th>Score</th>
                         <th>Sold status</th>
+                        <th>Disposition</th>
                         <th>Audit</th>
                         <th>Stage</th>
                         <th>Date / time</th>
@@ -2805,13 +2821,15 @@ def dashboard():
             function applyFilters() {{
                 var agentF = document.getElementById("filter-agent");
                 var statusF = document.getElementById("filter-sold-status");
+                var dispositionF = document.getElementById("filter-disposition");
                 var auditF = document.getElementById("filter-audit");
                 var scoreF = document.getElementById("filter-score");
                 var countEl = document.getElementById("filter-count");
                 var agentButtons = Array.prototype.slice.call(document.querySelectorAll(".agent-filter-button"));
-                if (!agentF || !statusF || !auditF || !scoreF) return;
+                if (!agentF || !statusF || !dispositionF || !auditF || !scoreF) return;
                 var agentV = agentF.value;
                 var pv = statusF.value;
+                var dv = dispositionF.value;
                 var av = auditF.value;
                 var sv = scoreF.value;
                 var range = parseRange(sv);
@@ -2820,8 +2838,10 @@ def dashboard():
                     var ok = true;
                     var agent = tr.getAttribute("data-agent") || "Unknown";
                     var sale = tr.getAttribute("data-sale") || "none";
+                    var disp = tr.getAttribute("data-disposition") || "";
                     var au = tr.getAttribute("data-audit") || "unknown";
                     if (agentV !== "all" && agent !== agentV) ok = false;
+                    if (dv !== "all" && disp !== dv) ok = false;
                     if (pv === "sold" && sale !== "yes") ok = false;
                     if (pv === "notsold" && sale !== "no") ok = false;
                     if (pv === "unclear" && sale !== "unclear") ok = false;
@@ -2872,7 +2892,7 @@ def dashboard():
                 sortRows();
                 applyFilters();
             }}
-            ["filter-agent", "filter-sold-status", "filter-audit", "filter-score", "sort-by"].forEach(function(id) {{
+            ["filter-agent", "filter-sold-status", "filter-disposition", "filter-audit", "filter-score", "sort-by"].forEach(function(id) {{
                 var el = document.getElementById(id);
                 if (el) el.addEventListener("change", refresh);
             }});
