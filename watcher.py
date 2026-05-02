@@ -6259,6 +6259,70 @@ def _has_real_callback_autofail_evidence(report, transcript):
     return prospect_requested and agent_accepted
 
 
+
+
+def _set_callback_fields(report, callback_set=None, objection_no_control=None, autofail=None, reason=None):
+    """
+    Shared helper for callback/autofail report-field rewrites.
+
+    This should gradually replace scattered direct regex rewrites for:
+    - Did the agent set a callback?
+    - Callback set:
+    - Objection occurred without proper call control:
+    - Automatic fail triggered:
+    - Reason:
+    """
+    if not report:
+        return report
+
+    if callback_set is not None:
+        val = "YES" if callback_set else "NO"
+        report = re.sub(
+            r"(?im)^- Did the agent set a callback\?\s*.*$",
+            f"- Did the agent set a callback? {val}",
+            report,
+        )
+        report = re.sub(
+            r"(?im)^- Callback set:\s*(?:YES|NO|UNCLEAR)\b.*$",
+            f"- Callback set: {val}",
+            report,
+        )
+
+    if objection_no_control is not None:
+        val = "YES" if objection_no_control else "NO"
+        report = re.sub(
+            r"(?im)^- Objection occurred without proper call control:\s*(?:YES|NO|UNCLEAR)\b.*$",
+            f"- Objection occurred without proper call control: {val}",
+            report,
+        )
+
+    if autofail is not None:
+        val = "YES" if autofail else "NO"
+        report = re.sub(
+            r"(?im)^- Automatic fail triggered:\s*(?:YES|NO|UNCLEAR)\b.*$",
+            f"- Automatic fail triggered: {val}",
+            report,
+        )
+
+    if reason is not None:
+        if re.search(r"(?im)^- Reason:\s*.*$", report):
+            report = re.sub(
+                r"(?im)^- Reason:\s*.*$",
+                f"- Reason: {reason}",
+                report,
+                count=1,
+            )
+        else:
+            report = re.sub(
+                r"(?im)^- Automatic fail triggered:\s*(?:YES|NO|UNCLEAR)\b.*$",
+                lambda m: m.group(0) + f"\n- Reason: {reason}",
+                report,
+                count=1,
+            )
+
+    return report
+
+
 def _final_cleanup_false_callback_autofail(report, transcript):
     """
     If callback/autofail language exists without real callback evidence, remove the
@@ -6275,17 +6339,19 @@ def _final_cleanup_false_callback_autofail(report, transcript):
     callback_biggest = bool(re.search(r"(?ims)^BIGGEST MISS:\s*.*(?:callback|delay).*?(?=^SUMMARY:|^TRANSCRIPT NOTE|^OPENAI COST ESTIMATE:|\Z)", report))
 
     if callback_marked or callback_reason or callback_biggest:
-        report = re.sub(r"(?im)^- Callback set:\s*YES\b.*$", "- Callback set: NO", report)
-        report = re.sub(
-            r"(?im)^- Objection occurred without proper call control:\s*YES\b.*$",
-            "- Objection occurred without proper call control: NO",
+        report = _set_callback_fields(
             report,
+            callback_set=False,
+            objection_no_control=False,
         )
 
         # Only clear automatic fail if the reason/biggest miss was callback/delay-based.
         if callback_reason or callback_biggest:
-            report = re.sub(r"(?im)^- Automatic fail triggered:\s*YES\b.*$", "- Automatic fail triggered: NO", report)
-            report = re.sub(r"(?im)^- Reason:\s*.*$", "- Reason: None", report)
+            report = _set_callback_fields(
+                report,
+                autofail=False,
+                reason="None",
+            )
             report = re.sub(r"(?im)^PASS:\s*AT RISK\s*$", "PASS: YES", report)
 
             report = re.sub(
@@ -6356,36 +6422,13 @@ def _final_cleanup_callback_autofail_consistency(report, transcript):
         return report
 
     # Normalize automatic-fail checks.
-    report = re.sub(
-        r"(?im)^- Callback set:\s*(?:YES|NO|UNCLEAR)\b.*$",
-        "- Callback set: YES",
+    report = _set_callback_fields(
         report,
+        callback_set=True,
+        objection_no_control=True,
+        autofail=True,
+        reason="Prospect requested a callback / delay and the agent accepted it instead of controlling or continuing the live sales attempt.",
     )
-    report = re.sub(
-        r"(?im)^- Objection occurred without proper call control:\s*(?:YES|NO|UNCLEAR)\b.*$",
-        "- Objection occurred without proper call control: YES",
-        report,
-    )
-    report = re.sub(
-        r"(?im)^- Automatic fail triggered:\s*(?:YES|NO|UNCLEAR)\b.*$",
-        "- Automatic fail triggered: YES",
-        report,
-    )
-
-    if re.search(r"(?im)^- Reason:\s*.*$", report):
-        report = re.sub(
-            r"(?im)^- Reason:\s*.*$",
-            "- Reason: Prospect requested a callback / delay and the agent accepted it instead of controlling or continuing the live sales attempt.",
-            report,
-            count=1,
-        )
-    else:
-        report = re.sub(
-            r"(?im)^- Automatic fail triggered:\s*YES\b.*$",
-            "- Automatic fail triggered: YES\n- Reason: Prospect requested a callback / delay and the agent accepted it instead of controlling or continuing the live sales attempt.",
-            report,
-            count=1,
-        )
 
     # Risk should be HIGH for a callback autofail.
     report = re.sub(r"(?im)^RISK:\s*(?:LOW|MEDIUM)\s*$", "RISK: HIGH", report, count=1)
