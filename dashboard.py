@@ -323,6 +323,39 @@ def build_agent_filter_options_html(calls):
         options.append(f'<option value="{safe}">{safe}</option>')
     return "\n".join(options)
 
+def render_report_html(report_text):
+    """
+    Render report text safely while coloring speaker labels anywhere they appear,
+    especially in the embedded TRANSCRIPT section of a report.
+    """
+    if report_text is None:
+        report_text = ""
+
+    html_lines = []
+    for raw_line in report_text.splitlines():
+        line = raw_line.rstrip()
+
+        if not line:
+            html_lines.append("")
+            continue
+
+        m = re.match(r"^\s*(PQ|Agent|Prospect|Unknown)\s*:\s*(.*)$", line)
+        if m:
+            speaker = m.group(1)
+            content = escape(m.group(2))
+            cls = {
+                "PQ": "speaker-pq",
+                "Agent": "speaker-agent",
+                "Prospect": "speaker-prospect",
+                "Unknown": "speaker-unknown",
+            }.get(speaker, "speaker-unknown")
+            html_lines.append(f'<span class="speaker-label {cls}">{speaker}:</span> {content}')
+        else:
+            html_lines.append(escape(line))
+
+    return "\n".join(html_lines)
+
+
 def render_transcript_html(transcript_text):
     """
     Render transcript text with styled speaker labels.
@@ -2182,27 +2215,40 @@ form { margin: 0; }
             font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
             font-size: 13px;
             line-height: 1.55;
-            background: #0f172a;
-            color: #e5e7eb;
+            background: #ffffff;
+            color: #111827;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 16px;
+            overflow-x: auto;
+        }
+        .report-text-html {
+            white-space: pre-wrap;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+            font-size: 13px;
+            line-height: 1.55;
+            background: #ffffff;
+            color: #111827;
+            border: 1px solid #e5e7eb;
             border-radius: 12px;
             padding: 16px;
             overflow-x: auto;
         }
         .speaker-label {
-            font-weight: 800;
+            font-weight: 900;
             letter-spacing: 0.02em;
         }
         .speaker-pq {
-            color: #a78bfa;
+            color: #7c3aed;
         }
         .speaker-agent {
-            color: #60a5fa;
+            color: #2563eb;
         }
         .speaker-prospect {
-            color: #34d399;
+            color: #059669;
         }
         .speaker-unknown {
-            color: #fbbf24;
+            color: #d97706;
         }
 
     </style>
