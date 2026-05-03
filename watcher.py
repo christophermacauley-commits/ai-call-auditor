@@ -7470,6 +7470,46 @@ def _final_cleanup_disqualification_no_agent_fault(report, transcript):
     return report
 
 
+
+# FINAL AUDIT CONSISTENCY PIPELINE
+#
+# This function is intentionally ordered. Many cleanup rules rewrite the same
+# visible report fields, so do not reorder calls casually.
+#
+# Main fields affected:
+# - SCORE
+# - RISK
+# - PASS
+# - CALL STAGE REACHED
+# - EARLY END
+# - NOT REACHED
+# - SALE OUTCOME / Policy sold
+# - AUTOMATIC FAIL CHECKS
+# - BIGGEST MISS / SUMMARY / COACHING
+#
+# Current safety rule:
+# - Add or update a regression test before changing behavior.
+# - Prefer shared helpers for repeated field rewrites.
+# - Avoid call-specific patches; write general rules.
+# - Backfill reports after behavior changes.
+#
+# Broad order:
+# 1. Transcript-supported hard corrections
+# 2. Callback / coverage / banking false-positive cleanup
+# 3. Stage and sale-outcome consistency cleanup
+# 4. Sold-call completion and Peace of Mind corrections
+# 5. AGE / LCR / no-income fairness cleanup
+# 6. NOT REACHED reason rewrite/compression
+# 7. Biggest miss / summary / display cleanup
+# 8. Final pass/risk/autofail enforcement
+#
+# Known technical debt:
+# - SCORE/PASS/RISK are still written by multiple rules.
+# - NOT REACHED is still formatted by multiple helpers.
+# - Automatic-fail reasons should eventually be merged through one helper.
+# - Stage downgrade and Policy Sold invariants need stronger end-of-chain tests.
+#
+
 def enforce_final_audit_consistency(report, transcript=None):
     """
     Post-process free-text audits (and harden any path) so invalid autofail / stage combinations
