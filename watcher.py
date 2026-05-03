@@ -637,10 +637,10 @@ def _transcript_shows_client_chose_option(transcript):
 
 def _final_enforce_existing_coverage_autofail_pass_no(report):
     """
-    Final safety pass: sold-call existing-coverage autofail is a hard fail.
+    Final safety pass for existing-coverage autofail.
 
-    Some later cleanup/invariant logic may leave PASS as AT RISK on sold reports.
-    If the final report says this existing-coverage autofail triggered, force PASS: NO.
+    If the policy was sold, an automatic fail makes the sale AT RISK.
+    If the policy was not sold/unclear, an automatic fail is PASS: NO.
     """
     if not report:
         return report
@@ -656,7 +656,12 @@ def _final_enforce_existing_coverage_autofail_pass_no(report):
     ))
 
     if has_existing_coverage_autofail:
-        report = re.sub(r"(?im)^PASS:\s*.*$", "PASS: NO", report, count=1)
+        sold_yes = bool(re.search(
+            r"(?im)^-\s*Policy sold:\s*YES\s*$|^-\s*Was the policy sold\?\s*YES\s*$",
+            report,
+        ))
+        desired_pass = "PASS: AT RISK" if sold_yes else "PASS: NO"
+        report = re.sub(r"(?im)^PASS:\s*.*$", desired_pass, report, count=1)
 
     return report
 
@@ -757,13 +762,12 @@ def _final_cleanup_sold_existing_coverage_not_confirmed(report, transcript):
     report = re.sub(r"(?im)^RISK:\s*(LOW|MEDIUM)\s*$", "RISK: HIGH", report, count=1)
     report = re.sub(r"(?im)^PASS:\s*(YES|AT RISK)\s*$", "PASS: NO", report, count=1)
 
-    # Some later cleanup/invariant logic may preserve AT RISK wording on sold
-    # reports. This autofail must always be a hard fail.
+    # Sold reports with autofail should be AT RISK, not PASS: NO.
     if re.search(r"(?im)^-\s*Automatic fail triggered:\s*YES\s*$", report) and re.search(
         r"(?is)Existing coverage mentioned but not confirmed before completing the sale",
         report,
     ):
-        report = re.sub(r"(?im)^PASS:\s*.*$", "PASS: NO", report, count=1)
+        report = re.sub(r"(?im)^PASS:\s*.*$", "PASS: AT RISK", report, count=1)
 
     # Add clear compliance/coaching language if absent.
     if not re.search(r"(?is)Existing coverage mentioned but not confirmed before completing the sale", report):
@@ -809,7 +813,8 @@ def _final_cleanup_sold_existing_coverage_not_confirmed(report, transcript):
         r"(?im)^-\s*Automatic fail triggered:\s*YES\s*$",
         report,
     ):
-        report = re.sub(r"(?im)^PASS:\s*.*$", "PASS: NO", report, count=1)
+        sold_yes = bool(re.search(r"(?im)^-\s*Policy sold:\s*YES\s*$|^-\s*Was the policy sold\?\s*YES\s*$", report))
+        report = re.sub(r"(?im)^PASS:\s*.*$", "PASS: AT RISK" if sold_yes else "PASS: NO", report, count=1)
 
     return report
 
@@ -10449,6 +10454,23 @@ def transcribe(file_path, call_name, filename):
     return "\n".join(transcript_parts).strip()
 
 
+
+def finalize_audit_report(report, transcript):
+    """
+    Shared final normalization path for live audits and guardrail tests.
+
+    Keep this as the single place for final report consistency after the model
+    response and after any broad enforcement has run. This avoids drift between
+    audit() and tests/test_audit_guardrails.py run_case().
+    """
+    report = enforce_final_audit_consistency(report, transcript)
+    report = enforce_pass_logic(report)
+    report = enforce_risk_for_automatic_fail(report)
+    report = _final_enforce_existing_coverage_autofail_pass_no(report)
+    report = _final_enforce_callback_needs_coverage_line(report)
+    report = _final_cleanup_needs_stage_fields(report, transcript)
+    return report
+
 def audit(transcript, progress_callback=None, call_name=None):
     if progress_callback:
         progress_callback(AI_START_PROGRESS, "Running AI audit")
@@ -10479,21 +10501,14 @@ def audit(transcript, progress_callback=None, call_name=None):
     report = trim_to_score_and_remove_unwanted_sections(report)
     report = normalize_top3_coaching_header_line(report)
 
-    report = enforce_final_audit_consistency(report, transcript)
-    report = enforce_pass_logic(report)
-    report = enforce_risk_for_automatic_fail(report)
+    report = finalize_audit_report(report, transcript)
     if openai_cost:
         report = append_openai_cost_footer(report, openai_cost)
 
     if progress_callback:
         progress_callback(AI_DONE_PROGRESS, "Saving audit report")
 
-    report = _final_enforce_existing_coverage_autofail_pass_no(report)
-    report = _final_enforce_callback_needs_coverage_line(report)
-    # Final stage-field alignment after audit-tail enforcement/evidence rewrites.
-    # This catches Needs-stage coverage-checkup reports where carrier verification
-    # was attempted but not completed.
-    report = _final_cleanup_needs_stage_fields(report, transcript)
+    report = finalize_audit_report(report, transcript)
     return report
 
 
