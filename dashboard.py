@@ -1599,6 +1599,176 @@ def get_processing_files():
     return processing
 
 
+
+def normalize_call_rename(value):
+    """
+    Convert a user-entered call name into the safe basename used by reports,
+    transcripts, audio lookup, and DB call_name.
+    """
+    value = (value or "").strip()
+    if not value:
+        return ""
+
+    # Do not allow users to include folders or file extensions.
+    value = os.path.basename(value)
+    for ext in [".mp3", ".wav", ".m4a", ".txt"]:
+        if value.lower().endswith(ext):
+            value = value[: -len(ext)]
+
+    value = secure_filename(value)
+    value = re.sub(r"_+", "_", value).strip("_-.")
+    return value[:180]
+
+
+def _rename_file_if_exists(src, dst, changed):
+    """Rename one file if present. Refuse to overwrite an existing target."""
+    if not os.path.exists(src):
+        return
+
+    if os.path.exists(dst):
+        raise ValueError(f"Cannot rename because target already exists: {dst}")
+
+    os.rename(src, dst)
+    changed.append((src, dst))
+
+
+def _rollback_renames(changed):
+    """Best-effort rollback if DB update fails after file renames."""
+    for src, dst in reversed(changed):
+        try:
+            if os.path.exists(dst) and not os.path.exists(src):
+                os.rename(dst, src)
+        except Exception:
+            pass
+
+
+def rename_call_everywhere(call_id, new_call_name):
+    """
+    Rename a completed call without breaking dashboard links.
+
+    This updates the calls table and renames same-basename artifacts across
+    reports, transcripts, role-labeled transcripts, original audio, processed
+    audio, transcript uploads, processing_state, and upload_times.
+    """
+    new_call_name = normalize_call_rename(new_call_name)
+    if not new_call_name:
+        return False, "Enter a valid call name."
+
+    call = get_call(call_id)
+    if not call:
+        return False, "Call not found."
+
+    old_call_name = call[1]
+    if not old_call_name:
+        return False, "Current call name is missing."
+
+    if new_call_name == old_call_name:
+        return True, "Call name unchanged."
+
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    duplicate = c.execute(
+        "SELECT id FROM calls WHERE call_name=? AND id<>?",
+        (new_call_name, call_id),
+    ).fetchone()
+    conn.close()
+
+    if duplicate:
+        return False, "Another call already uses that name."
+
+    planned_targets = [
+        os.path.join(REPORTS_FOLDER, f"{new_call_name}_report.txt"),
+        os.path.join(TRANSCRIPTS_FOLDER, f"{new_call_name}.txt"),
+        os.path.join(TRANSCRIPTS_ROLE_LABELED_FOLDER, f"{new_call_name}.txt"),
+        os.path.join(TRANSCRIPT_UPLOAD_FOLDER, f"{new_call_name}.txt"),
+    ]
+
+    for folder in [UPLOAD_FOLDER, PROCESSED_CALLS_FOLDER]:
+        for ext in AUDIO_EXTENSIONS:
+            planned_targets.append(os.path.join(folder, f"{new_call_name}{ext}"))
+
+    for target in planned_targets:
+        if os.path.exists(target):
+            return False, f"Cannot rename because a target file already exists: {target}"
+
+    changed = []
+    try:
+        _rename_file_if_exists(
+            os.path.join(REPORTS_FOLDER, f"{old_call_name}_report.txt"),
+            os.path.join(REPORTS_FOLDER, f"{new_call_name}_report.txt"),
+            changed,
+        )
+        _rename_file_if_exists(
+            os.path.join(TRANSCRIPTS_FOLDER, f"{old_call_name}.txt"),
+            os.path.join(TRANSCRIPTS_FOLDER, f"{new_call_name}.txt"),
+            changed,
+        )
+        _rename_file_if_exists(
+            os.path.join(TRANSCRIPTS_ROLE_LABELED_FOLDER, f"{old_call_name}.txt"),
+            os.path.join(TRANSCRIPTS_ROLE_LABELED_FOLDER, f"{new_call_name}.txt"),
+            changed,
+        )
+        _rename_file_if_exists(
+            os.path.join(TRANSCRIPT_UPLOAD_FOLDER, f"{old_call_name}.txt"),
+            os.path.join(TRANSCRIPT_UPLOAD_FOLDER, f"{new_call_name}.txt"),
+            changed,
+        )
+
+        old_filenames = []
+        new_filenames = []
+        for folder in [UPLOAD_FOLDER, PROCESSED_CALLS_FOLDER]:
+            for ext in AUDIO_EXTENSIONS:
+                old_filename = f"{old_call_name}{ext}"
+                new_filename = f"{new_call_name}{ext}"
+                old_filenames.append(old_filename)
+                new_filenames.append(new_filename)
+                _rename_file_if_exists(
+                    os.path.join(folder, old_filename),
+                    os.path.join(folder, new_filename),
+                    changed,
+                )
+
+        old_filenames.append(f"{old_call_name}.txt")
+        new_filenames.append(f"{new_call_name}.txt")
+
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+
+        c.execute("UPDATE calls SET call_name=? WHERE id=?", (new_call_name, call_id))
+
+        c.execute(
+            """
+            UPDATE processing_state
+            SET call_name=?,
+                filename=CASE
+                    WHEN filename=? THEN ?
+                    ELSE filename
+                END,
+                updated_at=CURRENT_TIMESTAMP
+            WHERE call_name=?
+            """,
+            (new_call_name, f"{old_call_name}.txt", f"{new_call_name}.txt", old_call_name),
+        )
+
+        for old_filename, new_filename in zip(old_filenames, new_filenames):
+            c.execute(
+                "UPDATE upload_times SET filename=? WHERE filename=?",
+                (new_filename, old_filename),
+            )
+
+        conn.commit()
+        conn.close()
+
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        _rollback_renames(changed)
+        return False, f"Rename failed and was rolled back: {e}"
+
+    return True, f"Renamed call to {new_call_name}."
+
 def remove_file(path):
     try:
         if os.path.exists(path):
@@ -3278,6 +3448,13 @@ def view_call(call_id):
     )
 
     name_esc = escape(call[1])
+    rename_msg = (request.args.get("rename_msg") or "").strip()
+    rename_error = (request.args.get("rename_error") or "").strip()
+    rename_notice_html = ""
+    if rename_msg:
+        rename_notice_html = f'<div class="card" style="border-color:#b7ebc6;background:#f0fff4;margin:12px 0;">{escape(rename_msg)}</div>'
+    elif rename_error:
+        rename_notice_html = f'<div class="card" style="border-color:#f5c2c7;background:#fff5f5;margin:12px 0;">{escape(rename_error)}</div>'
     ts_line = escape(str(call[6])) if call[6] else ""
     ts_sub = f'<div class="muted">{ts_line}</div>' if ts_line else ""
 
@@ -3369,6 +3546,7 @@ def view_call(call_id):
 
     content = f"""
     <a class="back" href="/">← Back to Dashboard</a>
+    {rename_notice_html}
 
     <textarea id="export-report-src" class="hidden" readonly aria-hidden="true">{escape(report_text)}</textarea>
     <textarea id="export-transcript-src" class="hidden" readonly aria-hidden="true">{escape(transcript_export)}</textarea>
@@ -3381,6 +3559,10 @@ def view_call(call_id):
         </div>
         <div style="text-align:right;">
             <a class="button" href="/transcript/{call[0]}">View Transcript</a>
+            <form method="POST" action="/call/{call[0]}/rename" style="margin-top:10px;text-align:left;display:flex;gap:6px;justify-content:flex-end;align-items:center;flex-wrap:wrap;">
+                <input type="text" name="new_call_name" value="{name_esc}" aria-label="New call name" style="min-width:220px;padding:8px;border:1px solid var(--border-strong);border-radius:8px;font:inherit;">
+                <button class="button button-secondary" type="submit" onclick="return confirm('Rename this call and matching saved files?');">Rename</button>
+            </form>
             <form method="POST" action="/delete/{call[0]}" onsubmit="return confirm('Delete this call and its files?');" style="margin-top:10px;">
                 <button class="delete-button" type="submit">Delete</button>
             </form>
@@ -3547,6 +3729,19 @@ def view_call(call_id):
     return render_template_string(BASE, content=content)
 
 
+
+
+
+@app.route("/call/<int:call_id>/rename", methods=["POST"])
+@login_required
+def rename_call(call_id):
+    new_call_name = request.form.get("new_call_name") or ""
+    ok, message = rename_call_everywhere(call_id, new_call_name)
+
+    if ok:
+        return redirect(f"/call/{call_id}?rename_msg={escape(message)}")
+
+    return redirect(f"/call/{call_id}?rename_error={escape(message)}")
 
 
 @app.route("/call/<int:call_id>/disposition", methods=["POST"])
