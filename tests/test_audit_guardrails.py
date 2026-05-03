@@ -1317,3 +1317,106 @@ run_case(
 )
 
 print("Coverage hangup and Needs-stage tests passed.")
+
+sold_call_stale_disqualification_report = """SCORE: 90
+RISK: MEDIUM
+PASS: YES
+CALL STAGE REACHED: Peace of Mind
+EARLY END: NO
+NOT REACHED:
+- Cool Down
+
+SCRIPT / FLOW MISSES:
+- Banking/account information requested or verified 3 times incomplete: routing number verification did not meet the three-event standard.
+
+TASK CHECKLIST:
+- Routing number requested or verified 3 times: PARTIAL
+
+SEARCHABLE ANSWERS:
+- Was the policy sold? YES
+
+AUTOMATIC FAIL CHECKS:
+- Callback set: NO
+- Automatic fail triggered: NO
+- Reason: None
+
+SALE OUTCOME:
+- Policy sold: YES
+- Evidence: Prospect had a disqualifying health condition.
+- Final stage supporting sale: Peace of Mind
+
+COACHING:
+- Agent appropriately stopped after identifying disqualification / inability to proceed. Prospect had a disqualifying health condition.
+
+BIGGEST MISS:
+- None
+
+SUMMARY:
+The call ended because the prospect was not eligible / could not reasonably proceed. Future sales stages were not reached because continuing the sale was not appropriate.
+"""
+
+sold_call_completion_transcript = """Agent: I am going to do some disclosures.
+Agent: I understand this application process was completed over the telephone.
+Agent: I need your review and voice signature by signing this application.
+Agent: You have applied for the Golden Solutions Whole Life Insurance Policy.
+Agent: A copy of your completed application will be provided.
+Agent: Do you acknowledge that you provided your banking information and authorize the drafting of insurance premiums from this account?
+Prospect: Yes.
+"""
+
+run_case(
+    "sold call does not keep stale disqualification cleanup",
+    sold_call_stale_disqualification_report,
+    sold_call_completion_transcript,
+    must_contain=[
+        "- Policy sold: YES",
+        "- Evidence: Application, banking authorization, disclosures, and voice-signature/application completion language were completed.",
+        "BIGGEST MISS:\n- Routing number verification did not meet the three-event standard after the sale was completed.",
+        "The agent completed a sold call",
+    ],
+    must_not_contain=[
+        "Prospect had a disqualifying health condition",
+        "Agent appropriately stopped after identifying disqualification",
+        "continuing the sale was not appropriate",
+    ],
+)
+
+needs_stage_final_stage_report = """SCORE: 85
+RISK: MEDIUM
+PASS: YES
+CALL STAGE REACHED: Medical / Health
+EARLY END: YES
+NOT REACHED:
+- Product benefits
+
+SEARCHABLE ANSWERS:
+- Was the policy sold? NO
+
+AUTOMATIC FAIL CHECKS:
+- Callback set: NO
+- Automatic fail triggered: NO
+- Reason: None
+
+SALE OUTCOME:
+- Policy sold: NO
+- Evidence: No application completion or banking/payment setup; call ended during health qualification
+- Final stage supporting sale: Medical / Health
+
+BIGGEST MISS:
+- Prospect stopped responding before the agent could continue.
+"""
+
+run_case(
+    "needs upgrade also updates final supporting stage",
+    needs_stage_final_stage_report,
+    needs_stage_after_health_transcript,
+    must_contain=[
+        "CALL STAGE REACHED: Needs",
+        "- Final stage supporting sale: Needs",
+    ],
+    must_not_contain=[
+        "- Final stage supporting sale: Medical / Health",
+    ],
+)
+
+print("Sold stale-disqualification and Needs final-stage regression tests passed.")

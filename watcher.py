@@ -7255,6 +7255,11 @@ def _final_cleanup_sold_call_completion_evidence(report, transcript):
     If strong transcript evidence shows application/banking/disclosures/voice signature,
     do not let the report say policy sold NO simply because final post-sale stages
     like Peace of Mind or Cool Down were not reached.
+
+    This also protects sold calls from stale no-sale/disqualification cleanup text.
+    A completed application can still have real process misses, but coaching, evidence,
+    and summary should not say the agent stopped for DNQ/ineligibility unless the
+    transcript independently supports that outcome.
     """
     if not report:
         return report
@@ -7293,6 +7298,60 @@ def _final_cleanup_sold_call_completion_evidence(report, transcript):
         report,
         count=1,
     )
+
+    # Remove stale DNQ/ineligibility cleanup that contradicts completed-sale evidence.
+    stale_dq = re.compile(
+        r"(?i)(agent appropriately stopped after identifying disqualification|"
+        r"prospect had a disqualifying health condition|"
+        r"prospect was not eligible|"
+        r"call ended because the prospect was not eligible|"
+        r"continuing the sale was not appropriate)"
+    )
+    if stale_dq.search(report):
+        report = _text_remove_lines_containing(report, "Agent appropriately stopped after identifying disqualification")
+        report = _text_remove_lines_containing(report, "Prospect had a disqualifying health condition")
+        report = _text_remove_lines_containing(report, "prospect was not eligible")
+        report = _text_remove_lines_containing(report, "continuing the sale was not appropriate")
+
+        sold_summary = (
+            "The agent completed a sold call: options were presented, the client chose an option, "
+            "application information and payment date were collected, banking setup was handled, "
+            "and required disclosures plus voice-signature/application completion language were completed."
+        )
+        if re.search(r"(?ims)^SUMMARY:\s*.*?(?=^OPENAI COST ESTIMATE:|\Z)", report):
+            report = re.sub(
+                r"(?ims)^SUMMARY:\s*.*?(?=^OPENAI COST ESTIMATE:|\Z)",
+                f"SUMMARY:\n{sold_summary}\n",
+                report,
+                count=1,
+            )
+        else:
+            report = report.rstrip() + f"\n\nSUMMARY:\n{sold_summary}\n"
+
+        if re.search(r"(?ims)^COACHING:\s*(?=^BIGGEST MISS:|^SUMMARY:|^OPENAI COST ESTIMATE:|\Z)", report):
+            coaching = "Review the remaining scored process misses from the completed sale, especially any verification or rapport items still marked incomplete."
+            report = re.sub(
+                r"(?ims)^COACHING:\s*(?=^BIGGEST MISS:|^SUMMARY:|^OPENAI COST ESTIMATE:|\Z)",
+                f"COACHING:\n- {coaching}\n\n",
+                report,
+                count=1,
+            )
+
+    if re.search(r"(?ims)^BIGGEST MISS:\s*[-•]?\s*None\s*(?=^SUMMARY:|^TRANSCRIPT NOTE|^OPENAI COST ESTIMATE:|\Z)", report):
+        biggest = None
+        if re.search(r"(?i)routing number verification did not meet|routing number requested or verified 3 times:\s*PARTIAL", report):
+            biggest = "Routing number verification did not meet the three-event standard after the sale was completed."
+        elif re.search(r"(?i)banking/account information requested or verified 3 times:\s*PARTIAL|banking/account information requested or verified 3 times incomplete", report):
+            biggest = "Banking/account verification did not fully meet the required verification standard after the sale was completed."
+        elif re.search(r"(?i)3 and 1 Method incomplete|3 and 1 Method used:\s*PARTIAL", report):
+            biggest = "3 and 1 rapport was incomplete before the sale moved forward."
+        if biggest:
+            report = re.sub(
+                r"(?ims)^BIGGEST MISS:\s*.*?(?=^SUMMARY:|^TRANSCRIPT NOTE|^OPENAI COST ESTIMATE:|\Z)",
+                f"BIGGEST MISS:\n- {biggest}\n\n",
+                report,
+                count=1,
+            )
 
     # Remove summary sentence that contradicts sale evidence.
     report = re.sub(
@@ -7922,6 +7981,12 @@ def enforce_final_audit_consistency(report, transcript=None):
         report = re.sub(
             r"(?im)^CALL STAGE REACHED:\s*Medical / Health\s*$",
             "CALL STAGE REACHED: Needs",
+            report,
+            count=1,
+        )
+        report = re.sub(
+            r"(?im)^- Final stage supporting sale:\s*Medical / Health\s*$",
+            "- Final stage supporting sale: Needs",
             report,
             count=1,
         )
