@@ -13,6 +13,8 @@ def run_case(name, report, transcript, must_contain=(), must_not_contain=()):
     out = watcher.enforce_final_audit_consistency(report, transcript)
     out = watcher.enforce_pass_logic(out)
     out = watcher.enforce_risk_for_automatic_fail(out)
+    if hasattr(watcher, "_final_enforce_callback_needs_coverage_line"):
+        out = watcher._final_enforce_callback_needs_coverage_line(out)
     out = watcher.redact_report_text(out)
 
     for s in must_contain:
@@ -1010,7 +1012,7 @@ run_case(
     reason_merge_transcript,
     must_contain=[
         "- Automatic fail triggered: YES",
-        "- Reason: Existing coverage mentioned but not confirmed; Prospect requested a callback / delay and the agent accepted it instead of controlling or continuing the live sales attempt.",
+        "- Reason: Callback set without allowed exception; Existing coverage mentioned but not confirmed",
         "RISK: HIGH",
         "PASS: NO",
     ],
@@ -2471,3 +2473,79 @@ run_case(
 )
 
 print("Quotes-not-application cleanup tests passed.")
+
+callback_with_unconfirmed_coverage_no_sale_report = """SCORE: 85
+RISK: MEDIUM
+PASS: YES
+CALL STAGE REACHED: Needs
+EARLY END: YES
+
+COMPLIANCE FAILURES: None
+
+SCRIPT / FLOW MISSES:
+- 3 and 1 Method incomplete.
+
+TASK CHECKLIST:
+- Existing coverage asked: YES
+- Beneficiary identified: YES
+- Health questions completed: YES
+
+SEARCHABLE ANSWERS:
+- Did the agent set a callback? NO
+- Did the agent confirm current coverage? NO
+- Did the agent call an insurance company to confirm current coverage? NO
+- Did the agent ask about existing coverage? YES
+- Did the agent identify a beneficiary? YES
+- Was the policy sold? NO
+
+AUTOMATIC FAIL CHECKS:
+- Callback set: NO
+- Existing coverage mentioned but not confirmed: NO
+- Automatic fail triggered: NO
+- Reason: None
+
+SALE OUTCOME:
+- Policy sold: NO
+- Evidence: No application or banking completed; call ended before enrollment.
+- Final stage supporting sale: Needs
+
+BIGGEST MISS:
+- 3 and 1 Method incomplete.
+"""
+
+callback_with_unconfirmed_coverage_no_sale_transcript = """Agent: Do you have any final expense plan in place currently or is this going to be your only policy?
+Prospect: I have a plan.
+Agent: How much coverage on that?
+Prospect: I don't know.
+Agent: Since you do already have a plan, I commend you for putting that coverage in place.
+Agent: Who would be your beneficiary on your policy?
+Prospect: My husband.
+Agent: I cannot email anything because we haven't got to the application process yet.
+Agent: Just give me a call back and we'll get something set up for you.
+"""
+
+run_case(
+    "callback with unconfirmed coverage no sale should autofail",
+    callback_with_unconfirmed_coverage_no_sale_report,
+    callback_with_unconfirmed_coverage_no_sale_transcript,
+    must_contain=[
+        "RISK: HIGH",
+        "PASS: NO",
+        "- Did the agent set a callback? YES",
+        "- Callback set: YES",
+        "- Existing coverage mentioned but not confirmed: YES",
+        "- Beneficiary identified: NO",
+        "- Automatic fail triggered: YES",
+        "Callback set without allowed exception",
+        "Existing coverage mentioned but not confirmed",
+    ],
+    must_not_contain=[
+        "- Callback set: NO",
+        "- Automatic fail triggered: NO",
+        "- Reason: None",
+        "RISK: MEDIUM",
+        "PASS: YES",
+    ],
+)
+
+print("Callback + unconfirmed coverage no-sale cleanup tests passed.")

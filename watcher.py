@@ -8802,6 +8802,488 @@ def _transcript_reached_application_collection(transcript):
         r")\b",
         after_quotes,
     ))
+
+
+def _transcript_has_callback_set_or_accepted(transcript):
+    """
+    Detect callback set/accepted language when no allowed exception applies.
+    This includes agent telling prospect to call back later to get set up.
+    """
+    t = transcript or ""
+    if not t.strip():
+        return False
+
+    return bool(re.search(
+        r"(?is)\b("
+        r"call (?:me|us)? back|"
+        r"give me a call back|"
+        r"give us a call back|"
+        r"i(?:'ll| will) call you back|"
+        r"we(?:'ll| will) call you back|"
+        r"call you tomorrow|call you later|"
+        r"talk (?:tomorrow|later)|"
+        r"we(?:'ll| will) get something set up (?:for you)?"
+        r")\b",
+        t,
+    ))
+
+
+
+
+def _final_enforce_callback_needs_coverage_line(report):
+    """
+    Final safety pass for callback/no-sale reports.
+
+    If a no-sale report has callback autofail and the report/evidence says
+    existing coverage was not verified, keep the explicit checklist line aligned.
+    Also correct beneficiary to NO for callback-before-completion cases.
+    """
+    if not report:
+        return report
+
+    is_callback_no_sale = (
+        re.search(r"(?im)^-\s*Callback set:\s*YES\s*$", report)
+        and re.search(r"(?im)^-\s*Automatic fail triggered:\s*YES\s*$", report)
+        and re.search(r"(?im)^-\s*(?:Policy sold|Was the policy sold\?):\s*NO\s*$", report)
+    )
+
+    if not is_callback_no_sale:
+        return report
+
+    coverage_failure_indicated = bool(re.search(
+        r"(?is)"
+        r"Existing coverage mentioned but not confirmed|"
+        r"existing coverage .* not verified|"
+        r"coverage .* not verified|"
+        r"State Farm not verified|"
+        r"Did the agent confirm current coverage\?\s*NO|"
+        r"Did the agent call an insurance company to confirm current coverage\?\s*NO",
+        report,
+    ))
+
+    if coverage_failure_indicated and not re.search(r"(?im)^-\s*Existing coverage mentioned but not confirmed:\s*YES\s*$", report):
+        if re.search(r"(?im)^AUTOMATIC FAIL CHECKS:\s*$", report):
+            report = re.sub(
+                r"(?im)^AUTOMATIC FAIL CHECKS:\s*$",
+                "AUTOMATIC FAIL CHECKS:\n- Existing coverage mentioned but not confirmed: YES",
+                report,
+                count=1,
+            )
+        else:
+            report = report.rstrip() + "\n\nAUTOMATIC FAIL CHECKS:\n- Existing coverage mentioned but not confirmed: YES\n"
+
+    if coverage_failure_indicated:
+        if not re.search(r"(?im)^-\s*Reason:", report):
+            report = re.sub(
+                r"(?im)^-\s*Automatic fail triggered:\s*YES\s*$",
+                "- Automatic fail triggered: YES\n- Reason: Callback set without allowed exception; Existing coverage mentioned but not confirmed",
+                report,
+                count=1,
+            )
+        elif not re.search(r"(?im)^-\s*Reason:.*Existing coverage mentioned but not confirmed", report):
+            report = re.sub(
+                r"(?im)^-\s*Reason:\s*(.*)$",
+                r"- Reason: \1; Existing coverage mentioned but not confirmed",
+                report,
+                count=1,
+            )
+
+    # For callback-before-completion no-sale reports, beneficiary should not be
+    # credited as completed just because a name was mentioned.
+    if not re.search(r"(?im)^-\s*Beneficiary identified:\s*NO\s*$", report):
+        if re.search(r"(?im)^-\s*Beneficiary identified:", report):
+            report = re.sub(
+                r"(?im)^-\s*Beneficiary identified:.*$",
+                "- Beneficiary identified: NO",
+                report,
+                count=1,
+            )
+        elif re.search(r"(?im)^TASK CHECKLIST:\s*$", report):
+            report = re.sub(
+                r"(?im)^TASK CHECKLIST:\s*$",
+                "TASK CHECKLIST:\n- Beneficiary identified: NO",
+                report,
+                count=1,
+            )
+
+    if re.search(r"(?im)^-\s*Did the agent identify a beneficiary\?:", report):
+        report = re.sub(
+            r"(?im)^-\s*Did the agent identify a beneficiary\?:.*$",
+            "- Did the agent identify a beneficiary? NO",
+            report,
+            count=1,
+        )
+
+    return report
+def _final_cleanup_callback_existing_coverage_no_sale(report, transcript):
+    """
+    If a no-sale call had current coverage mentioned but not confirmed and the
+    agent ended/deferred with a callback, align callback and coverage autofail.
+    """
+    if not report:
+        return report
+
+    sold_no = bool(re.search(r"(?im)^-\s*Policy sold:\s*NO\s*$|^-\s*Was the policy sold\?\s*NO\s*$", report))
+    if not sold_no:
+        return report
+
+    if not _transcript_has_callback_set_or_accepted(transcript):
+        return report
+
+    # Report-field alignment: if a Needs early-end callback report says existing
+    # coverage was asked and current coverage was not confirmed, force the explicit
+    # coverage autofail line before later transcript-based detection can miss it.
+    if (
+        re.search(r"(?im)^CALL STAGE REACHED:\s*Needs\s*$", report)
+        and re.search(r"(?im)^EARLY END:\s*YES\s*$", report)
+        and re.search(r"(?im)^-\s*Callback set:\s*YES\s*$", report)
+        and (
+            re.search(r"(?im)^-\s*Existing coverage asked:\s*YES\s*$", report)
+            or re.search(r"(?im)^-\s*Did the agent ask about existing coverage\?:\s*YES\s*$", report)
+        )
+        and re.search(r"(?im)^-\s*Did the agent confirm current coverage\?:\s*NO\s*$", report)
+    ):
+        if re.search(r"(?im)^-\s*Existing coverage mentioned but not confirmed:", report):
+            report = re.sub(
+                r"(?im)^-\s*Existing coverage mentioned but not confirmed:.*$",
+                "- Existing coverage mentioned but not confirmed: YES",
+                report,
+                count=1,
+            )
+        else:
+            report = re.sub(
+                r"(?im)^AUTOMATIC FAIL CHECKS:\s*",
+                "AUTOMATIC FAIL CHECKS:\n- Existing coverage mentioned but not confirmed: YES\n",
+                report,
+                count=1,
+            )
+
+        if re.search(r"(?im)^-\s*Reason:", report):
+            if not re.search(r"(?im)^-\s*Reason:.*Existing coverage mentioned but not confirmed", report):
+                report = re.sub(
+                    r"(?im)^-\s*Reason:\s*(.*)$",
+                    r"- Reason: \1; Existing coverage mentioned but not confirmed",
+                    report,
+                    count=1,
+                )
+        elif re.search(r"(?im)^-\s*Automatic fail triggered:\s*YES\s*$", report):
+            report = re.sub(
+                r"(?im)^-\s*Automatic fail triggered:\s*YES\s*$",
+                "- Automatic fail triggered: YES\n- Reason: Callback set without allowed exception; Existing coverage mentioned but not confirmed",
+                report,
+                count=1,
+            )
+
+    coverage_mentioned = _transcript_mentions_current_existing_coverage(transcript) or bool(re.search(
+        r"(?is)"
+        r"(?:do you have any final expense plan in place currently|"
+        r"do you have any .* life insurance .* currently|"
+        r"do you have .* coverage .* currently|"
+        r"is this going to be your only policy)"
+        r".{0,450}"
+        r"(?:i have|i've got|yes|yeah|a plan|my plan|coverage|policy|"
+        r"how much coverage on that|since you do already have|putting that coverage in place)|"
+        r"since you do already have (?:a plan|coverage|a policy)|"
+        r"you do already have (?:a plan|coverage|a policy)|"
+        r"how much coverage on that|"
+        r"putting that coverage in place|"
+        r"commend you for putting that coverage in place",
+        transcript or "",
+    ))
+    coverage_confirmed = _transcript_shows_existing_coverage_confirmed(transcript)
+
+    # Callback itself is enough for autofail when no exception applies; if
+    # current coverage was also mentioned and not confirmed, combine the causes.
+    if re.search(r"(?im)^-\s*Did the agent set a callback\?:", report):
+        report = re.sub(
+            r"(?im)^-\s*Did the agent set a callback\?:\s*(?:NO|YES|PARTIAL|UNCLEAR).*$",
+            "- Did the agent set a callback? YES",
+            report,
+        )
+    else:
+        report = re.sub(
+            r"(?im)^SEARCHABLE ANSWERS:\s*",
+            "SEARCHABLE ANSWERS:\n- Did the agent set a callback? YES\n",
+            report,
+            count=1,
+        )
+    report = re.sub(
+        r"(?im)^-\s*Callback set:\s*NO\s*$",
+        "- Callback set: YES",
+        report,
+    )
+
+    if coverage_mentioned and not coverage_confirmed:
+        if re.search(r"(?im)^-\s*Existing coverage mentioned but not confirmed:", report):
+            report = re.sub(
+                r"(?im)^-\s*Existing coverage mentioned but not confirmed:\s*(?:NO|YES|PARTIAL|IN PROCESS).*$",
+                "- Existing coverage mentioned but not confirmed: YES",
+                report,
+            )
+        else:
+            report = re.sub(
+                r"(?im)^AUTOMATIC FAIL CHECKS:\s*",
+                "AUTOMATIC FAIL CHECKS:\n- Existing coverage mentioned but not confirmed: YES\n",
+                report,
+                count=1,
+            )
+
+        # If another cleanup removed or moved the line, force it directly before Automatic fail.
+        if not re.search(r"(?im)^-\s*Existing coverage mentioned but not confirmed:\s*YES\s*$", report):
+            report = re.sub(
+                r"(?im)^-\s*Automatic fail triggered:",
+                "- Existing coverage mentioned but not confirmed: YES\n- Automatic fail triggered:",
+                report,
+                count=1,
+            )
+
+    # Beneficiary should not be marked YES when it was only a passing answer
+    # before need/beneficiary section was completed in an early-ended call.
+    if re.search(r"(?im)^CALL STAGE REACHED:\s*Needs\s*$", report) and re.search(r"(?im)^EARLY END:\s*YES\s*$", report):
+        if re.search(r"(?im)^-\s*Beneficiary identified:", report):
+            report = re.sub(r"(?im)^-\s*Beneficiary identified:\s*(?:YES|NO|PARTIAL).*$", "- Beneficiary identified: NO", report)
+        else:
+            report = re.sub(r"(?im)^TASK CHECKLIST:\s*", "TASK CHECKLIST:\n- Beneficiary identified: NO\n", report, count=1)
+
+        if re.search(r"(?im)^-\s*Did the agent identify a beneficiary\?:", report):
+            report = re.sub(r"(?im)^-\s*Did the agent identify a beneficiary\?:\s*(?:YES|NO|PARTIAL).*$", "- Did the agent identify a beneficiary? NO", report)
+        else:
+            report = re.sub(r"(?im)^SEARCHABLE ANSWERS:\s*", "SEARCHABLE ANSWERS:\n- Did the agent identify a beneficiary? NO\n", report, count=1)
+
+    report = re.sub(
+        r"(?im)^-\s*Automatic fail triggered:\s*NO\s*$",
+        "- Automatic fail triggered: YES",
+        report,
+        count=1,
+    )
+
+    reasons = ["Callback set without allowed exception"]
+    if coverage_mentioned and not coverage_confirmed:
+        reasons.append("Existing coverage mentioned but not confirmed")
+    reason_text = "; ".join(reasons)
+
+    if re.search(r"(?im)^-\s*Reason:", report):
+        report = re.sub(r"(?im)^-\s*Reason:.*$", f"- Reason: {reason_text}", report, count=1)
+    else:
+        report = re.sub(r"(?im)^-\s*Automatic fail triggered:\s*YES\s*$", f"- Automatic fail triggered: YES\n- Reason: {reason_text}", report, count=1)
+
+    report = re.sub(r"(?im)^RISK:\s*(?:LOW|MEDIUM)\s*$", "RISK: HIGH", report, count=1)
+    report = re.sub(r"(?im)^PASS:\s*(?:YES|AT RISK)\s*$", "PASS: NO", report, count=1)
+
+    if re.search(r"(?im)^COMPLIANCE FAILURES:\s*None\s*$", report):
+        report = re.sub(
+            r"(?im)^COMPLIANCE FAILURES:\s*None\s*$",
+            f"COMPLIANCE FAILURES:\n- {reason_text}.",
+            report,
+            count=1,
+        )
+    elif re.search(r"(?im)^COMPLIANCE FAILURES:\s*", report) and reason_text not in report:
+        report = re.sub(
+            r"(?im)^COMPLIANCE FAILURES:\s*",
+            f"COMPLIANCE FAILURES:\n- {reason_text}.\n",
+            report,
+            count=1,
+        )
+
+    if re.search(r"(?im)^BIGGEST MISS:\s*-?\s*None\s*$", report) or re.search(r"(?ims)^BIGGEST MISS:\s*(?=^SUMMARY:|^OPENAI COST ESTIMATE:|\Z)", report):
+        report = re.sub(
+            r"(?ims)^BIGGEST MISS:\s*(?:-\s*None\s*)?(?=^SUMMARY:|^OPENAI COST ESTIMATE:|\Z)",
+            f"BIGGEST MISS:\n- {reason_text}.\n\n",
+            report,
+            count=1,
+        )
+    elif "3 and 1 Method incomplete" in report:
+        report = re.sub(
+            r"(?ims)^BIGGEST MISS:\s*.*?(?=^SUMMARY:|^OPENAI COST ESTIMATE:|\Z)",
+            f"BIGGEST MISS:\n- {reason_text}.\n\n",
+            report,
+            count=1,
+        )
+
+    # Final alignment for callback/no-sale with current coverage mentioned.
+    if coverage_mentioned and not coverage_confirmed:
+        if not re.search(r"(?im)^-\s*Existing coverage mentioned but not confirmed:\s*YES\s*$", report):
+            if re.search(r"(?im)^-\s*Existing coverage mentioned but not confirmed:", report):
+                report = re.sub(
+                    r"(?im)^-\s*Existing coverage mentioned but not confirmed:.*$",
+                    "- Existing coverage mentioned but not confirmed: YES",
+                    report,
+                    count=1,
+                )
+            else:
+                report = re.sub(
+                    r"(?im)^-\s*Automatic fail triggered:",
+                    "- Existing coverage mentioned but not confirmed: YES\n- Automatic fail triggered:",
+                    report,
+                    count=1,
+                )
+
+        if re.search(r"(?im)^-\s*Reason:", report) and "Existing coverage mentioned but not confirmed" not in report:
+            report = re.sub(
+                r"(?im)^-\s*Reason:\s*(.*)$",
+                r"- Reason: \1; Existing coverage mentioned but not confirmed",
+                report,
+                count=1,
+            )
+
+    # Hard final alignment for Needs-stage early callback after current coverage was discussed.
+    needs_early_callback = (
+        re.search(r"(?im)^CALL STAGE REACHED:\s*Needs\s*$", report)
+        and re.search(r"(?im)^EARLY END:\s*YES\s*$", report)
+        and re.search(r"(?im)^-\s*Callback set:\s*YES\s*$", report)
+    )
+    current_coverage_discussed = bool(re.search(
+        r"(?is)"
+        r"final expense plan in place currently|"
+        r"only policy|"
+        r"how much coverage on that|"
+        r"since you do already have a plan|"
+        r"since you do already have coverage|"
+        r"putting that coverage in place|"
+        r"commend you for putting that coverage in place",
+        transcript or "",
+    ))
+
+    if needs_early_callback and current_coverage_discussed:
+        if re.search(r"(?im)^-\s*Existing coverage mentioned but not confirmed:", report):
+            report = re.sub(
+                r"(?im)^-\s*Existing coverage mentioned but not confirmed:.*$",
+                "- Existing coverage mentioned but not confirmed: YES",
+                report,
+                count=1,
+            )
+        else:
+            report = re.sub(
+                r"(?im)^-\s*Automatic fail triggered:",
+                "- Existing coverage mentioned but not confirmed: YES\n- Automatic fail triggered:",
+                report,
+                count=1,
+            )
+
+        if "Existing coverage mentioned but not confirmed" not in re.search(r"(?im)^-\s*Reason:.*$", report).group(0):
+            report = re.sub(
+                r"(?im)^-\s*Reason:\s*(.*)$",
+                r"- Reason: \1; Existing coverage mentioned but not confirmed",
+                report,
+                count=1,
+            )
+
+    if needs_early_callback:
+        if re.search(r"(?im)^-\s*Beneficiary identified:", report):
+            report = re.sub(
+                r"(?im)^-\s*Beneficiary identified:.*$",
+                "- Beneficiary identified: NO",
+                report,
+                count=1,
+            )
+        else:
+            report = re.sub(
+                r"(?im)^TASK CHECKLIST:\s*",
+                "TASK CHECKLIST:\n- Beneficiary identified: NO\n",
+                report,
+                count=1,
+            )
+
+        if re.search(r"(?im)^-\s*Did the agent identify a beneficiary\?:", report):
+            report = re.sub(
+                r"(?im)^-\s*Did the agent identify a beneficiary\?:.*$",
+                "- Did the agent identify a beneficiary? NO",
+                report,
+                count=1,
+            )
+        else:
+            report = re.sub(
+                r"(?im)^SEARCHABLE ANSWERS:\s*",
+                "SEARCHABLE ANSWERS:\n- Did the agent identify a beneficiary? NO\n",
+                report,
+                count=1,
+            )
+
+    # Absolute final alignment for callback/no-sale coverage cases.
+    # If the report itself says existing coverage was asked, coverage was not confirmed,
+    # and callback autofail triggered on a Needs early-end no-sale call, the explicit
+    # coverage autofail line must be present.
+    needs_callback_coverage_report_pattern = bool(
+        re.search(r"(?im)^CALL STAGE REACHED:\s*Needs\s*$", report)
+        and re.search(r"(?im)^EARLY END:\s*YES\s*$", report)
+        and re.search(r"(?im)^-\s*Policy sold:\s*NO\s*$|^-\s*Was the policy sold\?\s*NO\s*$", report)
+        and re.search(r"(?im)^-\s*Callback set:\s*YES\s*$", report)
+        and re.search(r"(?im)^-\s*Existing coverage asked:\s*YES\s*$|^-\s*Did the agent ask about existing coverage\?\s*YES\s*$", report)
+        and re.search(r"(?im)^-\s*Did the agent confirm current coverage\?\s*NO\s*$", report)
+    )
+
+    if needs_callback_coverage_report_pattern:
+        if re.search(r"(?im)^-\s*Existing coverage mentioned but not confirmed:", report):
+            report = re.sub(
+                r"(?im)^-\s*Existing coverage mentioned but not confirmed:.*$",
+                "- Existing coverage mentioned but not confirmed: YES",
+                report,
+                count=1,
+            )
+        elif re.search(r"(?im)^AUTOMATIC FAIL CHECKS:\s*", report):
+            report = re.sub(
+                r"(?im)^AUTOMATIC FAIL CHECKS:\s*",
+                "AUTOMATIC FAIL CHECKS:\n- Existing coverage mentioned but not confirmed: YES\n",
+                report,
+                count=1,
+            )
+        else:
+            report = report.rstrip() + "\n\nAUTOMATIC FAIL CHECKS:\n- Existing coverage mentioned but not confirmed: YES\n"
+
+        if re.search(r"(?im)^-\s*Reason:", report):
+            if not re.search(r"(?im)^-\s*Reason:.*Existing coverage mentioned but not confirmed", report):
+                report = re.sub(
+                    r"(?im)^-\s*Reason:\s*(.*)$",
+                    r"- Reason: \1; Existing coverage mentioned but not confirmed",
+                    report,
+                    count=1,
+                )
+        elif re.search(r"(?im)^-\s*Automatic fail triggered:\s*YES\s*$", report):
+            report = re.sub(
+                r"(?im)^-\s*Automatic fail triggered:\s*YES\s*$",
+                "- Automatic fail triggered: YES\n- Reason: Callback set without allowed exception; Existing coverage mentioned but not confirmed",
+                report,
+                count=1,
+            )
+
+    # Final simple alignment: callback/no-sale Needs call where existing coverage
+    # was asked and not confirmed must carry the explicit coverage autofail line.
+    if (
+        "CALL STAGE REACHED: Needs" in report
+        and "EARLY END: YES" in report
+        and "- Callback set: YES" in report
+        and "Did the agent confirm current coverage? NO" in report
+        and (
+            "Existing coverage asked: YES" in report
+            or "Did the agent ask about existing coverage? YES" in report
+        )
+    ):
+        if "Existing coverage mentioned but not confirmed: YES" not in report:
+            if "AUTOMATIC FAIL CHECKS:" in report:
+                report = report.replace(
+                    "AUTOMATIC FAIL CHECKS:\n",
+                    "AUTOMATIC FAIL CHECKS:\n- Existing coverage mentioned but not confirmed: YES\n",
+                    1,
+                )
+            else:
+                report = report.rstrip() + "\n\nAUTOMATIC FAIL CHECKS:\n- Existing coverage mentioned but not confirmed: YES\n"
+
+        if "- Reason:" not in report:
+            report = report.replace(
+                "- Automatic fail triggered: YES",
+                "- Automatic fail triggered: YES\n- Reason: Callback set without allowed exception; Existing coverage mentioned but not confirmed",
+                1,
+            )
+        elif "Existing coverage mentioned but not confirmed" not in report.split("- Reason:", 1)[1].split("\n", 1)[0]:
+            report = re.sub(
+                r"(?im)^-\s*Reason:\s*(.*)$",
+                r"- Reason: \1; Existing coverage mentioned but not confirmed",
+                report,
+                count=1,
+            )
+
+    return report
+
 def _final_cleanup_quotes_not_application(report, transcript):
     """
     If quotes/options were reached but application collection did not actually
@@ -9733,6 +10215,8 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _final_cleanup_summary_stage_contradictions(report)
     report = _final_cleanup_needs_stage_fields(report, transcript)
     report = _final_cleanup_false_quotes_stage(report, transcript)
+    report = _final_cleanup_callback_existing_coverage_no_sale(report, transcript)
+    report = _final_enforce_callback_needs_coverage_line(report)
     report = _final_cleanup_quotes_not_application(report, transcript)
     report = _final_cleanup_clean_lcr_unreached_rapport(report, transcript)
     report = _final_cleanup_clean_health_needs_hangup(report, transcript)
@@ -9886,6 +10370,7 @@ def audit(transcript, progress_callback=None, call_name=None):
         progress_callback(AI_DONE_PROGRESS, "Saving audit report")
 
     report = _final_enforce_existing_coverage_autofail_pass_no(report)
+    report = _final_enforce_callback_needs_coverage_line(report)
     return report
 
 
