@@ -7572,6 +7572,112 @@ def _extract_first_real_flow_miss(report):
     return None
 
 
+
+
+def _transcript_reached_quotes_or_options(transcript):
+    """
+    True only when the agent actually presents quote/option/pricing choices.
+
+    Do not count generic setup language like "I'll give you the exact cost over
+    the phone" as Quotes. That language is common in the opening/benefit setup
+    and does not mean options were presented.
+    """
+    t = transcript or ""
+    if not t.strip():
+        return False
+
+    real_quote_patterns = [
+        r"(?is)\b(option\s*(?:one|1)|first option|option\s*(?:two|2)|second option|option\s*(?:three|3)|third option)\b",
+        r"(?is)\b(?:your|the)\s+(?:three\s+)?options\s+(?:are|would be|will be)\b",
+        r"(?is)\bI(?:'m| am)\s+going\s+to\s+(?:show|give|present)\s+you\s+(?:the\s+)?(?:three\s+)?options\b",
+        r"(?is)\b(?:monthly\s+premium|premium\s+would\s+be|premium\s+is|draft\s+would\s+be)\b",
+        r"(?is)\b(?:that|it|this|the plan)\s+would\s+be\s+(?:only\s+)?(?:\$?\[MONEY\]|\$?\d+).{0,40}\b(?:month|monthly|per month)\b",
+        r"(?is)\b(?:\$?\[MONEY\]|\$?\d+).{0,30}\b(?:a month|per month|monthly)\b",
+        r"(?is)\b(?:quote|quotes)\s+(?:are|would be|came back|for)\b",
+        r"(?is)\b(?:benefit amount|coverage amount|face amount)\s+(?:of|is|would be)\s+(?:\$?\[MONEY\]|\$?\d+)\b",
+    ]
+
+    return any(re.search(p, t) for p in real_quote_patterns)
+
+
+def _transcript_has_generic_quote_teaser_without_quotes(transcript):
+    """
+    True when the agent only teased that prices/costs could be given later/right now,
+    without actually presenting options, premiums, benefit amounts, or monthly costs.
+    """
+    t = transcript or ""
+    if not t.strip():
+        return False
+
+    generic_teaser = bool(re.search(
+        r"(?is)\b("
+        r"give you (?:the )?(?:exact )?(?:cost|price|quote)|"
+        r"show you (?:the )?(?:exact )?(?:cost|price|quote)|"
+        r"go over (?:the )?(?:cost|price|quote)|"
+        r"see what (?:the )?(?:cost|price|quote) would be|"
+        r"find out what (?:the )?(?:cost|price|quote) would be"
+        r")\b",
+        t,
+    ))
+
+    return generic_teaser and not _transcript_reached_quotes_or_options(transcript)
+
+
+def _final_cleanup_false_quotes_stage(report, transcript):
+    """
+    Downgrade Quotes back to Needs only for the narrow false-positive pattern:
+    the transcript reached Needs and contains generic quote/cost teaser language,
+    but no real option, premium, benefit amount, or monthly price presentation.
+    """
+    if not report:
+        return report
+
+    if not re.search(r"(?im)^CALL STAGE REACHED:\s*Quotes\s*$", report):
+        return report
+
+    if not _transcript_reached_needs_section(transcript):
+        return report
+
+    if not _transcript_has_generic_quote_teaser_without_quotes(transcript):
+        return report
+
+    report = re.sub(
+        r"(?im)^CALL STAGE REACHED:\s*Quotes\s*$",
+        "CALL STAGE REACHED: Needs",
+        report,
+        count=1,
+    )
+    report = re.sub(
+        r"(?im)^- Final stage supporting sale:\s*Quotes\s*$",
+        "- Final stage supporting sale: Needs",
+        report,
+        count=1,
+    )
+
+    report = re.sub(
+        r"(?i)call ended before application completion; no banking verification or disclosures completed",
+        "call ended during needs discovery before quotes, application, banking verification, or disclosures were completed",
+        report,
+    )
+
+    report = re.sub(
+        r"(?i)after quotes but before application",
+        "after needs discovery but before quotes or application",
+        report,
+    )
+    report = re.sub(
+        r"(?i)reached quotes but the call ended before application",
+        "reached needs discovery but the call ended before quotes or application",
+        report,
+    )
+    report = re.sub(
+        r"(?i)the agent reached quotes",
+        "the agent reached needs discovery",
+        report,
+    )
+
+    return report
+
 def _final_cleanup_false_health_disqualification_after_clean_screen(report, transcript):
     """Remove stale health-DNQ wording when transcript health screening was clean."""
     if not report or not _transcript_has_clean_health_screening_no_dq(transcript):
@@ -8201,6 +8307,7 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _decode_report_html_entities(report)
     report = _final_cleanup_summary_stage_contradictions(report)
     report = _final_cleanup_needs_stage_fields(report, transcript)
+    report = _final_cleanup_false_quotes_stage(report, transcript)
     report = _final_cleanup_promote_biggest_miss_from_flow_misses(report, transcript)
     report = _restore_safe_business_terms(report)
     return report

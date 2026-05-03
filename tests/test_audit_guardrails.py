@@ -1535,3 +1535,72 @@ run_case(
 )
 
 print("Needs consistency and false health-disqualification cleanup tests passed.")
+
+false_quotes_from_needs_report = """SCORE: 75
+RISK: MEDIUM
+PASS: YES
+CALL STAGE REACHED: Quotes
+EARLY END: YES
+NOT REACHED:
+- Application information
+- Banking
+- Disclosures
+
+COMPLIANCE FAILURES: None
+
+SCRIPT / FLOW MISSES:
+- Early refusal call: agent did not attempt calm call control when the prospect expressed confusion and affordability concern.
+
+SEARCHABLE ANSWERS:
+- Was the policy sold? NO
+
+AUTOMATIC FAIL CHECKS:
+- Callback set: NO
+- Automatic fail triggered: NO
+- Reason: None
+
+SALE OUTCOME:
+- Policy sold: NO
+- Evidence: Call ended before application completion; no banking verification or disclosures completed
+- Final stage supporting sale: Quotes
+
+BIGGEST MISS:
+- None
+
+SUMMARY:
+The agent reached quotes but the call ended before application.
+"""
+
+false_quotes_from_needs_transcript = """Agent: These plans cover burial or cremation expenses.
+Agent: I will be able to give you the exact cost right now over the phone.
+Agent: Okay, we answered no to all the health questions.
+Agent: Have you ever had to pay for somebody's funeral?
+Prospect: Yes.
+Agent: Who passed away in your life?
+Prospect: My brother.
+Agent: Burial or cremation?
+Prospect: Cremation.
+Agent: Since you have no coverage, your family would need to come up with that money.
+Prospect: I cannot afford anything right now.
+Agent: I understand.
+Prospect: Bye.
+Agent: Hello, are you there?
+"""
+
+run_case(
+    "generic exact-cost intro should not upgrade Needs call to Quotes",
+    false_quotes_from_needs_report,
+    false_quotes_from_needs_transcript,
+    must_contain=[
+        "CALL STAGE REACHED: Needs",
+        "- Final stage supporting sale: Needs",
+        "before quotes",
+    ],
+    must_not_contain=[
+        "CALL STAGE REACHED: Quotes",
+        "- Final stage supporting sale: Quotes",
+        "reached quotes",
+    ],
+)
+
+print("False Quotes-stage cleanup tests passed.")
