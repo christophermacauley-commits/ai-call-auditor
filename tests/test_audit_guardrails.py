@@ -10,11 +10,7 @@ def check(name, condition, output):
         raise AssertionError(f"{name} failed:\n{output}")
 
 def run_case(name, report, transcript, must_contain=(), must_not_contain=()):
-    out = watcher.enforce_final_audit_consistency(report, transcript)
-    out = watcher.enforce_pass_logic(out)
-    out = watcher.enforce_risk_for_automatic_fail(out)
-    if hasattr(watcher, "_final_enforce_callback_needs_coverage_line"):
-        out = watcher._final_enforce_callback_needs_coverage_line(out)
+    out = watcher.finalize_audit_report(report, transcript)
     out = watcher.redact_report_text(out)
 
     for s in must_contain:
