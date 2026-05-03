@@ -1,0 +1,277 @@
+{
+  "description": "Human-approved golden call expectations. These checks focus on key audit truth first: disposition, stage, sold status, autofail, risk, and major contradictions.",
+  "version": 1,
+  "cases": [
+    {
+      "id": "ashley_short_test_call",
+      "match": "Ashley_short_test_call_20260502_105546",
+      "expected_risk": [
+        "LOW",
+        "NONE"
+      ],
+      "must_not_contain": [
+        "3 and 1 Method incomplete",
+        "3 and 1",
+        "Product benefits explained: NO",
+        "Three options presented: NO",
+        "BIGGEST MISS:\\n- None"
+      ],
+      "must_contain_any": [
+        "confident tonality",
+        "sharp and professional",
+        "proper tonality",
+        "professional tonality"
+      ],
+      "notes": "Short clean call. Do not grade unreached rapport/3-and-1/product/closing. Coaching should focus only on confident professional tonality if anything."
+    },
+    {
+      "id": "prospect_stopped_responding",
+      "match": "prospect_stop_responding",
+      "expected_risk": [
+        "LOW",
+        "NONE"
+      ],
+      "must_not_contain": [
+        "Product benefits explained: NO",
+        "Three options presented: NO",
+        "Application info collected: NO",
+        "low scores for parts of the script that were not reached"
+      ],
+      "notes": "If agent followed all required process up to the stop point, score/risk should not be punished for unreached future sections."
+    },
+    {
+      "id": "sold_confirmed_coverage_lookup",
+      "match": "sold_confirmed_credit_union",
+      "expected_policy_sold": "YES",
+      "must_not_contain": [
+        "credit union",
+        "Credit union",
+        "Prospect had a disqualifying health condition",
+        "Agent appropriately stopped after identifying disqualification",
+        "Clarify and verify existing active coverage thoroughly with the carrier/provider"
+      ],
+      "notes": "Agent confirmed existing coverage through agency lookup/SSN/policy number; no carrier call required. Rename call later because no credit union was mentioned."
+    },
+    {
+      "id": "no_income_lcr",
+      "match": "no_income_lcr",
+      "expected_disposition": "LCR",
+      "expected_policy_sold": "NO",
+      "expected_risk": [
+        "NONE",
+        "LOW"
+      ],
+      "must_not_contain": [
+        "Product benefits explained: NO",
+        "Three options presented: NO",
+        "Application info collected: NO"
+      ],
+      "notes": "Clean no-income/affordability LCR should be fair, no risk or low risk, and should not grade unreached future sections."
+    },
+    {
+      "id": "confirmed_age_over_80",
+      "match": "Confirmed_age_over_80",
+      "expected_disposition": "AGE",
+      "expected_policy_sold": "NO",
+      "expected_risk": [
+        "NONE",
+        "LOW"
+      ],
+      "must_not_contain": [
+        "Product benefits explained: NO",
+        "Three options presented: NO",
+        "Application info collected: NO"
+      ],
+      "notes": "Confirmed over-age disqualification. Product explanation/closing should not be graded."
+    },
+    {
+      "id": "confirmed_lcr_2",
+      "match": "confirmed_lcr_2",
+      "expected_disposition": "LCR",
+      "expected_policy_sold": "NO",
+      "expected_risk": [
+        "NONE",
+        "LOW"
+      ],
+      "must_not_contain": [
+        "3 and 1 Method incomplete",
+        "agent shared personal rapport information",
+        "Product benefits explained: NO"
+      ],
+      "notes": "Clean LCR should not mention 3-and-1 misses if rapport was not fairly reached."
+    },
+    {
+      "id": "lead_hung_up_before_confirming_coverage",
+      "match": "lead_hung_up_before_confirming_coverage",
+      "expected_policy_sold": "NO",
+      "expected_stage": "Needs",
+      "expected_final_supporting_stage": "Needs",
+      "must_not_contain": [
+        "Prospect had a disqualifying health condition",
+        "Agent appropriately stopped after identifying disqualification",
+        "The call ended because the prospect was not eligible",
+        "continuing the sale was not appropriate"
+      ],
+      "notes": "Clean health screen / existing coverage / hangup style lead. Should not become health disqualification."
+    },
+    {
+      "id": "needs_reached_lead_hung_up",
+      "match": "needs_reached_lead_hung_up",
+      "expected_policy_sold": "NO",
+      "expected_stage": "Needs",
+      "expected_final_supporting_stage": "Needs",
+      "must_not_contain": [
+        "Agent appropriately stopped after identifying disqualification",
+        "Prospect had a disqualifying health condition",
+        "The call ended because the prospect was not eligible",
+        "continuing the sale was not appropriate"
+      ],
+      "notes": "Needs reached; should not become health disqualification cleanup."
+    },
+    {
+      "id": "sold_did_confirm_coverage",
+      "match": "sold_did_confirm_coverage",
+      "expected_policy_sold": "YES",
+      "expected_risk": [
+        "LOW",
+        "NONE"
+      ],
+      "must_not_contain": [
+        "Clarify and verify existing active coverage thoroughly with the carrier/provider",
+        "RISK: MEDIUM",
+        "Prospect had a disqualifying health condition"
+      ],
+      "notes": "Coverage was confirmed; compliance/sales process scores should be higher and risk should not be medium."
+    },
+    {
+      "id": "sold_did_not_confirm_coverage",
+      "match": "sold_did_not_confirm_coverage",
+      "expected_policy_sold": "YES",
+      "expected_autofail": "YES",
+      "must_contain": [
+        "Client chose an option: YES",
+        "Existing coverage mentioned but not confirmed: YES",
+        "Automatic fail triggered: YES"
+      ],
+      "notes": "Client chose an option. Existing coverage was not confirmed and should trigger autofail.",
+      "must_not_contain": []
+    },
+    {
+      "id": "hung_up_at_quotes",
+      "match": "hung_up_at_quotes_20260503_113632",
+      "expected_stage": "Quotes",
+      "notes": "User said this looks good. Keep as a true quotes-stage no-sale case.",
+      "must_not_contain": []
+    },
+    {
+      "id": "bootc",
+      "match": "bootc_20260503_114439",
+      "expected_disposition": "BOOTC",
+      "expected_risk": [
+        "NONE",
+        "LOW"
+      ],
+      "must_contain_any": [
+        "confident tonality",
+        "proper tonality",
+        "sharp and professional",
+        "answering the call with confidence"
+      ],
+      "notes": "Should be BOOTC, not LEAD. Risk none/low. Coaching should be confident/professional opening tonality.",
+      "must_not_contain": []
+    },
+    {
+      "id": "call_back_set",
+      "match": "call_back_set_20260503_114315",
+      "expected_autofail": "YES",
+      "must_contain": [
+        "Callback set: YES",
+        "Existing coverage mentioned but not confirmed: YES",
+        "Automatic fail triggered: YES",
+        "Beneficiary identified: NO"
+      ],
+      "must_not_contain": [
+        "&quot;",
+        "&#x27;",
+        "&amp;"
+      ],
+      "notes": "Callback set and existing coverage not confirmed should both trigger. Report should not contain escaped HTML entities."
+    },
+    {
+      "id": "hung_up_while_confirming_coverage",
+      "match": "hung_up_while_confirming_coverage_20260503_114211",
+      "expected_stage": "Needs",
+      "expected_policy_sold": "NO",
+      "must_contain": [
+        "Health questions completed: YES"
+      ],
+      "must_contain_any": [
+        "Existing coverage mentioned but not confirmed: PARTIAL",
+        "Existing coverage mentioned but not confirmed: IN PROCESS",
+        "agent was in the middle of calling to confirm coverage"
+      ],
+      "must_not_contain": [
+        "Cool Down completed: YES",
+        "Cooldown completed: YES"
+      ],
+      "notes": "Agent was in process of confirming coverage when prospect hung up. Coverage should be partial/in process, not a simple completed fail. Cool down only applies after sale."
+    },
+    {
+      "id": "u90_poor_call_control",
+      "match": "u90_poor_call_control_20260503_114821",
+      "expected_disposition": "U90",
+      "must_contain_any": [
+        "confident tonality",
+        "proper tonality",
+        "sharp and professional",
+        "answering the call with confidence"
+      ],
+      "must_not_contain": [
+        "Avoid ending the call abruptly; try to build rapport or clarify prospect needs before concluding"
+      ],
+      "notes": "Under 110 seconds should be U90. Coaching should focus on confident/proper tonality."
+    },
+    {
+      "id": "decent_call_control",
+      "match": "decent_call_control_20260503_120958",
+      "must_not_contain": [
+        "no call control attempt",
+        "without proper call control",
+        "3 and 1 Method incomplete",
+        "3 and 1",
+        "rapport was not reached"
+      ],
+      "notes": "Agent attempted call control: not paying today, informational call. Do not grade 3-and-1 if rapport not reached."
+    },
+    {
+      "id": "good_call_control",
+      "match": "good_call_control2_20260503_123301",
+      "must_not_contain": [
+        "no call control attempt",
+        "without proper call control"
+      ],
+      "must_contain_any": [
+        "flow back into the script",
+        "redirect back into the script",
+        "call control could use work",
+        "avoid asking another question after the control statement"
+      ],
+      "notes": "Agent attempted good call control. Coaching can say to flow back into script instead of asking another exit question."
+    },
+    {
+      "id": "call_control_2",
+      "match": "good_call_control_20260503_121951",
+      "must_not_contain": [
+        "no call control attempt",
+        "without proper call control"
+      ],
+      "notes": "Agent attempted call control: 'I can assure you this will take just a moment here.'"
+    }
+  ],
+  "global_must_not_contain": [
+    "&quot;",
+    "&#x27;",
+    "&amp;",
+    "BIGGEST MISS:\\nSUMMARY:"
+  ]
+}
