@@ -2259,3 +2259,82 @@ run_case(
 )
 
 print("Confirmed existing-coverage cleanup tests passed.")
+
+sold_existing_coverage_not_confirmed_should_autofail_report = """SCORE: 85
+RISK: MEDIUM
+PASS: AT RISK
+CALL STAGE REACHED: Peace of Mind
+EARLY END: NO
+
+COMPLIANCE FAILURES: None
+
+SCRIPT / FLOW MISSES:
+- None
+
+TASK CHECKLIST:
+- Existing coverage asked: YES
+- Three options presented: YES
+
+SEARCHABLE ANSWERS:
+- Did the agent confirm current coverage? NO
+- Did the agent call an insurance company to confirm current coverage? NO
+- Did the client choose an option? NO
+- Was the policy sold? YES
+
+AUTOMATIC FAIL CHECKS:
+- Callback set: NO
+- Existing coverage mentioned but not confirmed: NO
+- Automatic fail triggered: NO
+- Reason: None
+
+SALE OUTCOME:
+- Policy sold: YES
+- Evidence: Application, banking authorization, disclosures, and voice-signature/application completion language were completed.
+- Final stage supporting sale: Third Party Underwriting
+
+COACHING:
+- None
+
+BIGGEST MISS:
+- None
+"""
+
+sold_existing_coverage_not_confirmed_transcript = """Agent: Do you have any type of final expense or life insurance in place, or will this be your only policy?
+Prospect: I have some coverage already.
+Agent: Do you know how much coverage you have or how much your premium is?
+Prospect: I am not sure.
+Agent: Since you do already have [NUMBER] dollars of coverage in place, that is a great place to start.
+Agent: I am going to share three affordable options with you.
+Agent: The first option is [MONEY] a month. The second option is [MONEY]. The third and final option is [MONEY].
+Prospect: I cannot afford those.
+Agent: We can go with that lowest check amount and just put that in place.
+Agent: So I think we should just go with the lowest check option.
+Agent: What address do you want us to send your policy to?
+Agent: I am going to read over these disclosures and then we will do a voice signature.
+Agent: Do you agree that the application was completed over the telephone?
+Prospect: Yes.
+Agent: Do you authorize the company to draft the premiums from the account?
+Prospect: Yes.
+"""
+
+run_case(
+    "sold existing coverage not confirmed should autofail",
+    sold_existing_coverage_not_confirmed_should_autofail_report,
+    sold_existing_coverage_not_confirmed_transcript,
+    must_contain=[
+        "RISK: HIGH",
+        "PASS: AT RISK",
+        "- Did the client choose an option? YES",
+        "- Client chose an option: YES",
+        "- Existing coverage mentioned but not confirmed: YES",
+        "- Automatic fail triggered: YES",
+        "Existing coverage mentioned but not confirmed before completing the sale",
+    ],
+    must_not_contain=[
+        "- Existing coverage mentioned but not confirmed: NO",
+        "- Automatic fail triggered: NO",
+        "- Reason: None",
+    ],
+)
+
+print("Sold existing-coverage-not-confirmed autofail tests passed.")

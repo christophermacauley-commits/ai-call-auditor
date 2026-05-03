@@ -522,54 +522,296 @@ def _transcript_shows_existing_coverage_confirmed(transcript):
     call, agency/internal lookup, SSN/policy-number lookup, or clear policy-check
     conversation.
 
-    If this is true, the report should not coach the agent to verify coverage
-    again or treat existing coverage as a risk.
+    Avoid treating generic application disclosures, MIB language, Social Security
+    payment talk, or the new carrier name as confirmation of OLD/current coverage.
     """
     t = transcript or ""
     if not t.strip():
         return False
 
+    current_coverage_context = _transcript_mentions_current_existing_coverage(t)
+    if not current_coverage_context:
+        return False
+
     carrier_policy_check = bool(re.search(
         r"(?is)\b("
         r"policy checkup|policy check|"
-        r"called? (?:the )?(?:insurance company|carrier|provider)|"
+        r"called? (?:the )?(?:insurance company|carrier|provider) (?:to|for|about)|"
         r"with (?:the )?(?:other )?insurance company|"
         r"questions about my policy|"
-        r"policy owner|individual coverage|"
-        r"view your policy details|"
         r"mutual of omaha|"
-        r"policy provisions|"
-        r"we were just going over (?:her|his|your) life insurance policy"
+        r"we were just going over (?:her|his|your) life insurance policy .*? with (?:your|the) .*?company|"
+        r"we were just going over .*? policy .*? with your guys'? company|"
+        r"view your policy details"
         r")\b",
         t,
     ))
 
     internal_lookup = bool(re.search(
         r"(?is)\b("
-        r"social security number|ssn|last four digits|policy number|"
         r"i can look it up|i(?:'ll| will) look it up|"
         r"look(?:ed)? (?:it|you|that|the policy) up|"
         r"does a .* policy .* sound familiar|"
         r"i can see .* coverage|"
+        r"i can see how important .* coverage .* to you|"
         r"putting that coverage in place|"
-        r"i can see how important it is to you"
+        r"policy number .* (?:look|verify|confirm)|"
+        r"using .* (?:social security number|ssn) .* (?:look|verify|confirm)"
         r")\b",
         t,
     ))
 
-    current_coverage_context = bool(re.search(
+    return carrier_policy_check or internal_lookup
+def _transcript_mentions_current_existing_coverage(transcript):
+    """
+    True when the prospect appears to have current active life/final-expense coverage.
+
+    Important: the agent merely asking "do you have coverage now or will this be
+    your only policy?" is NOT enough. We need an affirmative/current-coverage
+    answer or the agent later acknowledging existing coverage is in place.
+    """
+    t = transcript or ""
+    if not t.strip():
+        return False
+
+    current_coverage_acknowledged = bool(re.search(
         r"(?is)\b("
-        r"do you have any (?:type|kind|form)? ?(?:of )?(?:final expense plan|life insurance|coverage)|"
-        r"will this be your only policy|"
+        r"since you do already have .* coverage in place|"
+        r"you do already have .* coverage|"
+        r"already have .* coverage|"
+        r"coverage in place|"
+        r"other policy|other insurance|existing coverage|current coverage|"
         r"how much coverage do you have|"
+        r"how much .* premium|"
         r"what company .* policy|"
-        r"other policy|other insurance|existing coverage|current coverage"
+        r"what company .* coverage"
         r")\b",
         t,
     ))
 
-    return current_coverage_context and (carrier_policy_check or internal_lookup)
+    affirmative_after_coverage_question = bool(re.search(
+        r"(?is)"
+        r"(do you have .*?(?:life insurance|final expense|coverage).*?now|"
+        r"do you have .*?policy.*?now|"
+        r"will this be your only policy)"
+        r".{0,320}"
+        r"(prospect|client|customer|member)\s*:\s*"
+        r"(yes|yeah|i do|i have|i've got|i already have|not my only|no,? i have|"
+        r"i think i have|i have one|some coverage|a policy|one policy)\b",
+        t,
+    ))
 
+    return current_coverage_acknowledged or affirmative_after_coverage_question
+def _transcript_shows_client_chose_option(transcript):
+    """
+    True when the call moved from presented options into a selected option,
+    even if the client did not literally say 'I choose option X'.
+    """
+    t = transcript or ""
+    if not t.strip():
+        return False
+
+    explicit_choice = bool(re.search(
+        r"(?is)\b("
+        r"which option|what option|"
+        r"go with (?:the )?(?:lowest|middle|highest|first|second|third|final)|"
+        r"we(?:'ll| will) go with|"
+        r"put that in place|"
+        r"lowest check option|"
+        r"that one|sounds good|let'?s do that"
+        r")\b",
+        t,
+    ))
+
+    application_after_options = bool(re.search(
+        r"(?is)three affordable options.*?"
+        r"(what'?s a good address|send your policy|application|disclosures|voice signature|"
+        r"banking information|account number|routing number|submit(?:ting)? your application)",
+        t,
+    ))
+
+    return explicit_choice or application_after_options
+
+
+
+
+def _final_enforce_existing_coverage_autofail_pass_no(report):
+    """
+    Final safety pass: sold-call existing-coverage autofail is a hard fail.
+
+    Some later cleanup/invariant logic may leave PASS as AT RISK on sold reports.
+    If the final report says this existing-coverage autofail triggered, force PASS: NO.
+    """
+    if not report:
+        return report
+
+    has_existing_coverage_autofail = bool(re.search(
+        r"(?is)"
+        r"Existing coverage mentioned but not confirmed:\s*YES.*?"
+        r"Automatic fail triggered:\s*YES|"
+        r"Automatic fail triggered:\s*YES.*?"
+        r"Existing coverage mentioned but not confirmed:\s*YES|"
+        r"Existing coverage mentioned but not confirmed before completing the sale",
+        report,
+    ))
+
+    if has_existing_coverage_autofail:
+        report = re.sub(r"(?im)^PASS:\s*.*$", "PASS: NO", report, count=1)
+
+    return report
+
+def _final_cleanup_sold_existing_coverage_not_confirmed(report, transcript):
+    """
+    Sold call + current existing coverage mentioned + no confirmation evidence
+    should trigger the existing-coverage automatic fail.
+
+    This is separate from confirmed-coverage cleanup, which clears the failure
+    when carrier/provider/internal lookup evidence exists.
+    """
+    if not report:
+        return report
+
+    sold_yes = bool(re.search(r"(?im)^- Policy sold:\s*YES\s*$|^- Was the policy sold\?\s*YES\s*$", report))
+    if not sold_yes:
+        return report
+
+    if not _transcript_mentions_current_existing_coverage(transcript):
+        return report
+
+    if _transcript_shows_existing_coverage_confirmed(transcript):
+        return report
+
+    client_chose = _transcript_shows_client_chose_option(transcript)
+
+    # Report-level signals can also tell us confirmation did not happen.
+    report_says_not_confirmed = bool(re.search(
+        r"(?is)Did the agent confirm current coverage\?\s*NO|"
+        r"Did the agent call an insurance company to confirm current coverage\?\s*NO",
+        report,
+    ))
+
+    if not report_says_not_confirmed:
+        # Do not trigger this autofail from transcript inference alone. Older sold-call
+        # fixtures and IVR/provider prompts can contain policy/insurance wording without
+        # proving current existing coverage was unconfirmed. Require explicit report-level
+        # non-confirmation evidence before applying this sold-call autofail.
+        return report
+
+    if client_chose:
+        if re.search(r"(?im)^-\s*Did the client choose an option\?:", report):
+            report = re.sub(
+                r"(?im)^-\s*Did the client choose an option\?:\s*NO\s*$",
+                "- Did the client choose an option? YES",
+                report,
+            )
+        elif re.search(r"(?im)^SEARCHABLE ANSWERS:\s*", report):
+            report = re.sub(
+                r"(?im)^SEARCHABLE ANSWERS:\s*",
+                "SEARCHABLE ANSWERS:\n- Did the client choose an option? YES\n",
+                report,
+                count=1,
+            )
+
+        if re.search(r"(?im)^-\s*Client chose an option:", report):
+            report = re.sub(
+                r"(?im)^-\s*Client chose an option:\s*NO\s*$",
+                "- Client chose an option: YES",
+                report,
+            )
+        else:
+            report = re.sub(
+                r"(?im)^TASK CHECKLIST:\s*",
+                "TASK CHECKLIST:\n- Client chose an option: YES\n",
+                report,
+                count=1,
+            )
+
+    # Ensure existing coverage autofail check is present and YES.
+    if re.search(r"(?im)^-\s*Existing coverage mentioned but not confirmed:", report):
+        report = re.sub(
+            r"(?im)^-\s*Existing coverage mentioned but not confirmed:\s*(YES|NO|PARTIAL|IN PROCESS).*$",
+            "- Existing coverage mentioned but not confirmed: YES",
+            report,
+        )
+    else:
+        report = re.sub(
+            r"(?im)^AUTOMATIC FAIL CHECKS:\s*",
+            "AUTOMATIC FAIL CHECKS:\n- Existing coverage mentioned but not confirmed: YES\n",
+            report,
+            count=1,
+        )
+
+    report = re.sub(
+        r"(?im)^-\s*Automatic fail triggered:\s*NO\s*$",
+        "- Automatic fail triggered: YES",
+        report,
+        count=1,
+    )
+    report = re.sub(
+        r"(?im)^-\s*Reason:\s*None\s*$",
+        "- Reason: Existing coverage mentioned but not confirmed before completing the sale",
+        report,
+        count=1,
+    )
+
+    report = re.sub(r"(?im)^RISK:\s*(LOW|MEDIUM)\s*$", "RISK: HIGH", report, count=1)
+    report = re.sub(r"(?im)^PASS:\s*(YES|AT RISK)\s*$", "PASS: NO", report, count=1)
+
+    # Some later cleanup/invariant logic may preserve AT RISK wording on sold
+    # reports. This autofail must always be a hard fail.
+    if re.search(r"(?im)^-\s*Automatic fail triggered:\s*YES\s*$", report) and re.search(
+        r"(?is)Existing coverage mentioned but not confirmed before completing the sale",
+        report,
+    ):
+        report = re.sub(r"(?im)^PASS:\s*.*$", "PASS: NO", report, count=1)
+
+    # Add clear compliance/coaching language if absent.
+    if not re.search(r"(?is)Existing coverage mentioned but not confirmed before completing the sale", report):
+        if re.search(r"(?im)^COMPLIANCE FAILURES:\s*(?:None|- None)?\s*$", report):
+            report = re.sub(
+                r"(?im)^COMPLIANCE FAILURES:\s*(?:None|- None)?\s*$",
+                "COMPLIANCE FAILURES:\n- Existing coverage mentioned but not confirmed before completing the sale.",
+                report,
+                count=1,
+            )
+        elif re.search(r"(?im)^COMPLIANCE FAILURES:\s*", report):
+            report = re.sub(
+                r"(?im)^COMPLIANCE FAILURES:\s*",
+                "COMPLIANCE FAILURES:\n- Existing coverage mentioned but not confirmed before completing the sale.\n",
+                report,
+                count=1,
+            )
+
+    if re.search(r"(?im)^BIGGEST MISS:\s*(?:- None)?\s*$", report):
+        report = re.sub(
+            r"(?im)^BIGGEST MISS:\s*(?:- None)?\s*$",
+            "BIGGEST MISS:\n- Existing coverage was mentioned but not confirmed before completing the sale.",
+            report,
+            count=1,
+        )
+
+    if re.search(r"(?im)^COACHING:\s*(?:- None)?\s*$", report):
+        report = re.sub(
+            r"(?im)^COACHING:\s*(?:- None)?\s*$",
+            "COACHING:\n- Confirm current existing coverage with the carrier/provider or valid lookup evidence before completing a sold application.",
+            report,
+            count=1,
+        )
+    elif re.search(r"(?im)^COACHING:\s*", report):
+        report = re.sub(
+            r"(?im)^COACHING:\s*",
+            "COACHING:\n- Confirm current existing coverage with the carrier/provider or valid lookup evidence before completing a sold application.\n",
+            report,
+            count=1,
+        )
+
+    if re.search(r"(?im)^-\s*Existing coverage mentioned but not confirmed:\s*YES\s*$", report) and re.search(
+        r"(?im)^-\s*Automatic fail triggered:\s*YES\s*$",
+        report,
+    ):
+        report = re.sub(r"(?im)^PASS:\s*.*$", "PASS: NO", report, count=1)
+
+    return report
 
 def _final_cleanup_confirmed_existing_coverage(report, transcript):
     """
@@ -9303,6 +9545,7 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _final_cleanup_bootc_u90_report(report, transcript)
     report = _final_cleanup_u90_tonality_coaching(report, transcript)
     report = _final_cleanup_call_control_attempt(report, transcript)
+    report = _final_cleanup_sold_existing_coverage_not_confirmed(report, transcript)
     report = _final_cleanup_confirmed_existing_coverage(report, transcript)
     report = _final_cleanup_promote_biggest_miss_from_flow_misses(report, transcript)
     report = _restore_safe_business_terms(report)
@@ -9447,6 +9690,7 @@ def audit(transcript, progress_callback=None, call_name=None):
     if progress_callback:
         progress_callback(AI_DONE_PROGRESS, "Saving audit report")
 
+    report = _final_enforce_existing_coverage_autofail_pass_no(report)
     return report
 
 
