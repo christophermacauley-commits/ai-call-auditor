@@ -47,6 +47,42 @@ DB_FILE = "calls.db"
 PORT = 5050
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
 OPENAI_QA_MODEL = os.getenv("OPENAI_QA_MODEL", OPENAI_MODEL)
+
+GOLDEN_CASES_FILE = "golden_cases/golden18.json"
+
+
+def golden_call_names():
+    """Names/prefixes for test fixture calls that should not appear in normal dashboard workflows."""
+    try:
+        with open(GOLDEN_CASES_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        return set()
+
+    names = set()
+    for case in data.get("cases", []):
+        match = str(case.get("match") or "").strip()
+        if match:
+            names.add(match)
+    return names
+
+
+def is_golden_call_name(call_name):
+    call_name = str(call_name or "").strip()
+    if not call_name:
+        return False
+
+    for golden in golden_call_names():
+        if call_name == golden or call_name.startswith(golden):
+            return True
+    return False
+
+
+def protect_golden_call_redirect(call_name, target="/"):
+    if is_golden_call_name(call_name):
+        return redirect(f"{target}?error=Golden%20test%20fixture%20calls%20are%20protected.")
+    return None
+
 ASK_CONTEXT_CHAR_LIMIT = 14000
 AUDIO_EXTENSIONS = (".mp3", ".wav", ".m4a")
 STATUS_LABELS = {
@@ -242,13 +278,17 @@ def display_processing_state(call_name, transcript_exists, state):
     return "Queued", 0, "Waiting for watcher"
 
 
-def get_calls():
+def get_calls(include_golden=False):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute("SELECT * FROM calls ORDER BY timestamp DESC")
     rows = c.fetchall()
     conn.close()
-    return rows
+
+    if include_golden:
+        return rows
+
+    return [row for row in rows if not is_golden_call_name(row[1])]
 
 
 def get_call(call_id):
@@ -3735,6 +3775,10 @@ def view_call(call_id):
 @app.route("/call/<int:call_id>/rename", methods=["POST"])
 @login_required
 def rename_call(call_id):
+    call = get_call(call_id)
+    if call and is_golden_call_name(call[1]):
+        return redirect(f"/call/{call_id}?rename_error=Golden%20test%20fixture%20calls%20are%20protected.")
+
     new_call_name = request.form.get("new_call_name") or ""
     ok, message = rename_call_everywhere(call_id, new_call_name)
 
@@ -4211,6 +4255,10 @@ def upload_transcript():
 def delete_processing():
     call_name = request.form.get("call_name")
 
+    protected = protect_golden_call_redirect(call_name)
+    if protected:
+        return protected
+
     if call_name:
         remove_file(os.path.join(TRANSCRIPTS_FOLDER, f"{call_name}.txt"))
         remove_file(os.path.join(REPORTS_FOLDER, f"{call_name}_report.txt"))
@@ -4240,6 +4288,10 @@ def delete_call(call_id):
 
     if call:
         call_name = call[1]
+
+        protected = protect_golden_call_redirect(call_name, target=f"/call/{call_id}")
+        if protected:
+            return protected
 
         conn = sqlite3.connect(DB_FILE)
         c = conn.cursor()
