@@ -221,7 +221,6 @@ run_case(
     ivr_callback_transcript,
     must_contain=[
         "- Callback set: NO",
-        "- Objection occurred without proper call control: NO",
         "- Automatic fail triggered: NO",
         "- Reason: None",
     ],
@@ -619,8 +618,90 @@ run_case(
     must_not_contain=[
         "PASS: NO",
         "Automatic fail triggered: YES",
+        "Objection occurred without proper call control: YES",
         "Early refusal call",
     ],
 )
 
 print("Disqualification fairness tests passed.")
+
+disqualification_coaching_cleanup_report = """SCORE: 40
+RISK: HIGH
+PASS: NO
+CALL STAGE REACHED: Who I Am / What I Do
+EARLY END: YES
+NOT REACHED:
+- Health questions
+- Product benefits
+- Three options
+
+COMPLIANCE FAILURES:
+- None
+
+SCRIPT / FLOW MISSES:
+- Attempt calm call control early when prospect expresses disinterest.
+- Maintain confident and clear communication.
+- Avoid abrupt ending.
+- DNQ condition identified but agent did not attempt to redirect or handle per process beyond immediate stop.
+
+TASK CHECKLIST:
+- Recording disclosure: YES
+- Agent introduction: YES
+- Fact Finding / Warm-up: NOT REACHED
+- Health questions completed: NO
+
+SEARCHABLE ANSWERS:
+- Was the policy sold? NO
+
+AUTOMATIC FAIL CHECKS:
+- Callback set: NO
+- Objection occurred without proper call control: YES
+- Automatic fail triggered: YES
+- Reason: Objection occurred without proper call control
+
+SALE OUTCOME:
+- Policy sold: NO
+- Evidence: Call ended before application or enrollment; no sale completion evidence
+- Final stage supporting sale: Who I Am / What I Do
+
+COACHING:
+- Attempt calm call control early when prospect expresses disinterest.
+- Avoid abrupt ending.
+
+SUMMARY:
+The call is scored low due to lack of progression, poor objection handling, and early disengagement.
+
+BIGGEST MISS:
+- Agent did not attempt calm call control.
+"""
+
+disqualification_coaching_cleanup_transcript = """Agent: Are you working or retired?
+Prospect: I don't have any income right now.
+Agent: I don't want to sell you a policy if you don't have any income. I don't want to take food off your table.
+Agent: I hope you have an amazing day.
+"""
+
+run_case(
+    "disqualification coaching should not blame agent",
+    disqualification_coaching_cleanup_report,
+    disqualification_coaching_cleanup_transcript,
+    must_contain=[
+        "SCORE: 90",
+        "RISK: MEDIUM",
+        "PASS: YES",
+        "- Automatic fail triggered: NO",
+        "- Reason: None",
+        "Agent appropriately stopped after identifying disqualification / inability to proceed.",
+        "BIGGEST MISS:\n- None",
+    ],
+    must_not_contain=[
+        "Attempt calm call control",
+        "Maintain confident and clear communication",
+        "Avoid abrupt ending",
+        "did not attempt to redirect",
+        "poor objection handling",
+        "Agent did not attempt calm call control",
+    ],
+)
+
+print("Disqualification coaching cleanup test passed.")

@@ -343,6 +343,84 @@ def set_processing_state(call_name, filename, status, progress=0, message=None, 
     conn.close()
 
 
+
+
+VALID_DISPOSITIONS = {"SOLD", "U90", "LCR", "BOOTC", "LEAD", "AGE"}
+
+def report_says_policy_sold_for_disposition(report):
+    return bool(re.search(
+        r"(?im)^- Policy sold:\s*YES\b|^- Was the policy sold\?\s*YES\b",
+        report or "",
+    ))
+
+def detect_auto_disposition(call_name, transcript, report, duration_seconds=None):
+    """
+    Operational disposition only.
+    This must not change score/risk/pass/report logic.
+    """
+    combined = ((transcript or "") + "\n" + (report or "")).lower()
+
+    if report_says_policy_sold_for_disposition(report):
+        return "SOLD", "Report indicates policy sold."
+
+    if re.search(
+        r"\b(over\s*80|older than\s*80|too old|outside (?:the )?age range|age limit|cannot qualify due to age|you have to be younger)\b",
+        combined,
+        re.I,
+    ):
+        return "AGE", "Age-related disqualification detected."
+
+    if re.search(
+        r"\b(did not qualify|does not qualify|not qualify|declined|knockout|terminal|hospice|nursing home|oxygen|dialysis|cancer treatment|heart failure|stroke|copd|kidney failure|organ failure)\b",
+        combined,
+        re.I,
+    ):
+        return "LCR", "Health-related disqualification language detected."
+
+    if re.search(
+        r"\b(no income|don't have any income|do not have any income|not at all.*income|working on my disability|take food off your table|can't afford it|cannot afford it)\b",
+        combined,
+        re.I | re.S,
+    ):
+        return "LCR", "No-income / affordability disqualification language detected."
+
+    # BOOTC should stay conservative until duration/first-seconds support is added.
+    opening_only = bool(re.search(
+        r"(?im)^CALL STAGE REACHED:\s*Opening / Handoff\b",
+        report or "",
+    ))
+
+    meaningful_agent_start = bool(re.search(
+        r"(?is)"
+        r"(call (?:may|will) be recorded|recorded for quality|"
+        r"state licensed|license number|field underwriter|"
+        r"fact finding|warm-up|warm up|3 and 1|"
+        r"were you born|are you still working|beneficiary|"
+        r"health questions|medications|height|weight|"
+        r"product benefits|three options|application)",
+        combined,
+    ))
+
+    early_text = combined[:1800]
+    pq_or_handoff_early = "pq:" in early_text or "handoff" in early_text or "transfer" in early_text
+    early_hangup = bool(re.search(
+        r"\b(hung up|hang up|disconnected|stopped responding|are you there|can you hear me|bye-bye|bye)\b",
+        early_text,
+    ))
+
+    if opening_only and pq_or_handoff_early and early_hangup and not meaningful_agent_start:
+        return "BOOTC", "Prospect disconnected during PQ/handoff before the selling agent meaningfully started."
+
+    if duration_seconds is not None:
+        try:
+            if int(duration_seconds) < 110:
+                return "U90", "Call duration was under 110 seconds."
+        except Exception:
+            pass
+
+    return "LEAD", "No sold, age, health-disqualification, BOOTC, or U90 indicator detected."
+
+
 def save_to_db(call_name, transcript, report, score, risk):
     ensure_db()
 
@@ -350,14 +428,44 @@ def save_to_db(call_name, transcript, report, score, risk):
     transcript = redact_sensitive_transcript(transcript or "")
     report = redact_report_text(report or "")
 
+    auto_disposition, disposition_reason = detect_auto_disposition(
+        call_name,
+        transcript,
+        report,
+        duration_seconds=None,
+    )
+    final_disposition = auto_disposition
+
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
 
     c.execute("DELETE FROM calls WHERE call_name=?", (call_name,))
     c.execute("""
-        INSERT INTO calls (call_name, transcript, report, score, risk)
-        VALUES (?, ?, ?, ?, ?)
-    """, (call_name, transcript, report, score, risk))
+        INSERT INTO calls (
+            call_name,
+            transcript,
+            report,
+            score,
+            risk,
+            auto_disposition,
+            manual_disposition,
+            final_disposition,
+            disposition_reason,
+            duration_seconds
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        call_name,
+        transcript,
+        report,
+        score,
+        risk,
+        auto_disposition,
+        None,
+        final_disposition,
+        disposition_reason,
+        None,
+    ))
 
     conn.commit()
     conn.close()
@@ -7268,19 +7376,50 @@ def _final_cleanup_disqualification_no_agent_fault(report, transcript):
         if score is not None and score < 90:
             report = re.sub(r"(?im)^SCORE:\s*\d+\b", "SCORE: 90", report, count=1)
 
-    # Remove unfair call-control / future-stage misses for an appropriate disqualification end.
+    # Remove unfair call-control / future-stage coaching for an appropriate disqualification end.
+    # These calls should not coach the agent to push/redirect/continue selling after AGE/LCR/no-income.
     unfair_phrases = [
         "Early refusal call",
         "did not attempt calm call control",
+        "Attempt calm call control",
         "Objection occurred without proper call control",
         "prospect ended call before warm-up",
         "lack of progression",
         "poor objection handling",
         "no further progression possible",
         "Fact Finding / Warm-up not reached, so no rapport",
+        "Maintain confident and clear communication",
+        "Avoid abrupt ending",
+        "agent did not attempt to redirect",
+        "did not attempt to redirect",
+        "handle per process beyond immediate stop",
+        "redirect or handle",
+        "should have attempted call control",
+        "should have attempted to continue",
+        "continue the sales process",
+        "move the call forward",
+        "failed to progress",
     ]
     for phrase in unfair_phrases:
         report = _text_remove_lines_containing(report, phrase)
+
+    # Add/replace fair coaching so the report explains what happened without blaming the agent.
+    fair_note = f"Agent appropriately stopped after identifying disqualification / inability to proceed. {reason}"
+
+    if re.search(r"(?ims)^COACHING:\s*.*?(?=^SUMMARY:|^SCORING BREAKDOWN:|^BIGGEST MISS:|^OPENAI COST ESTIMATE:|\Z)", report):
+        report = re.sub(
+            r"(?ims)^COACHING:\s*.*?(?=^SUMMARY:|^SCORING BREAKDOWN:|^BIGGEST MISS:|^OPENAI COST ESTIMATE:|\Z)",
+            "COACHING:\n- " + fair_note + "\n\n",
+            report,
+            count=1,
+        )
+    elif re.search(r"(?ims)^TASK CHECKLIST:", report):
+        report = re.sub(
+            r"(?ims)(^TASK CHECKLIST:)",
+            "COACHING:\n- " + fair_note + "\n\n\1",
+            report,
+            count=1,
+        )
 
     # Keep outcome clear.
     report = re.sub(
@@ -7299,10 +7438,33 @@ def _final_cleanup_disqualification_no_agent_fault(report, transcript):
     )
 
     # Summary cleanup for obvious contradiction.
+    fair_summary = (
+        "The call ended because the prospect was not eligible / could not reasonably proceed. "
+        "The agent appropriately stopped after identifying the disqualification / inability to proceed. "
+        "Future sales stages were not reached because continuing the sale was not appropriate."
+    )
+
     report = re.sub(
         r"(?i)The call is scored low due to lack of progression, poor objection handling, and early disengagement\.",
-        "The call ended because the prospect was not eligible / could not reasonably proceed; future sales stages were not reached.",
+        fair_summary,
         report,
+    )
+
+    # Replace stale generated summaries that describe quotes/application/close on disqualification calls.
+    if re.search(r"(?ims)^SUMMARY:\s*", report):
+        report = re.sub(
+            r"(?ims)^SUMMARY:\s*.*?(?=^OPENAI COST ESTIMATE:|\Z)",
+            "SUMMARY:\n" + fair_summary + "\n",
+            report,
+            count=1,
+        )
+
+    # If a TASK CHECKLIST header got stripped by earlier cleanup, restore it before checklist-style bullets.
+    report = re.sub(
+        r"(?ims)(COACHING:\n- .*?\n\n)(- Recording disclosure:)",
+        r"\1TASK CHECKLIST:\n\2",
+        report,
+        count=1,
     )
 
     return report
