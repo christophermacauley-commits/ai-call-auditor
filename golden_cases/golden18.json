@@ -41,11 +41,9 @@
     },
     {
       "id": "sold_confirmed_coverage_lookup",
-      "match": "sold_confirmed_credit_union",
+      "match": "sold_confirmed_internal_lookup",
       "expected_policy_sold": "YES",
       "must_not_contain": [
-        "credit union",
-        "Credit union",
         "Prospect had a disqualifying health condition",
         "Agent appropriately stopped after identifying disqualification",
         "Clarify and verify existing active coverage thoroughly with the carrier/provider"
