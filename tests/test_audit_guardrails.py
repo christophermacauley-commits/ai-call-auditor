@@ -610,10 +610,9 @@ run_case(
         "PASS: YES",
         "RISK: MEDIUM",
         "SCORE: 90",
-        "- Objection occurred without proper call control: NO",
         "- Automatic fail triggered: NO",
         "- Reason: None",
-        "No income",
+        "no income",
     ],
     must_not_contain=[
         "PASS: NO",
@@ -958,3 +957,68 @@ check(
 )
 
 print("Cross-field invariant tests passed.")
+
+reason_merge_report = """SCORE: 95
+RISK: LOW
+PASS: YES
+CALL STAGE REACHED: Banking
+EARLY END: NO
+NOT REACHED:
+- Disclosures
+- Third Party Underwriting
+- Peace of Mind
+- Cool Down
+
+COMPLIANCE FAILURES:
+- Callback issue
+- Existing coverage issue
+
+TASK CHECKLIST:
+- Product benefits explained: YES
+- Three options presented: YES
+- Application info collected: YES
+
+SEARCHABLE ANSWERS:
+- Was the policy sold? NO
+
+AUTOMATIC FAIL CHECKS:
+- Callback set: YES
+- Objection occurred without proper call control: YES
+- Existing coverage mentioned but not confirmed: YES
+- Credit union mentioned but bank/account not verified: NO
+- Automatic fail triggered: YES
+- Reason: Existing coverage mentioned but not confirmed
+
+SALE OUTCOME:
+- Policy sold: NO
+- Final stage supporting sale: Banking
+
+BIGGEST MISS:
+- Existing coverage was mentioned but not confirmed.
+"""
+
+reason_merge_transcript = """Agent: Do you have life insurance now?
+Prospect: Yes, I have one active policy.
+Agent: Okay.
+Prospect: Can you call me back tomorrow?
+Agent: Yes, I will call you back tomorrow.
+"""
+
+run_case(
+    "callback reason should merge with existing coverage reason",
+    reason_merge_report,
+    reason_merge_transcript,
+    must_contain=[
+        "- Automatic fail triggered: YES",
+        "- Reason: Existing coverage mentioned but not confirmed; Prospect requested a callback / delay and the agent accepted it instead of controlling or continuing the live sales attempt.",
+        "RISK: HIGH",
+        "PASS: NO",
+    ],
+    must_not_contain=[
+        "- Reason: Prospect requested a callback / delay and the agent accepted it instead of controlling or continuing the live sales attempt.\n",
+        "- Reason: None",
+        "PASS: YES",
+    ],
+)
+
+print("Autofail reason merge test passed.")

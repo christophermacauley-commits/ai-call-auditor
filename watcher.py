@@ -6363,6 +6363,80 @@ def _has_real_callback_autofail_evidence(report, transcript):
 
 
 
+
+
+def _normalize_autofail_reason_text(reason):
+    """Normalize one automatic-fail reason fragment for safe display/merging."""
+    reason = (reason or "").strip()
+    reason = re.sub(r"\s+", " ", reason)
+    return reason
+
+
+def _merge_autofail_reason(report, new_reason):
+    """
+    Merge an automatic-fail reason without losing prior causes.
+
+    Rules:
+    - If Reason is missing, insert it after Automatic fail triggered.
+    - If Reason is blank / None / placeholder, replace with new reason.
+    - If Reason already contains this reason, leave it unchanged.
+    - Otherwise append using '; '.
+    """
+    if not report:
+        return report
+
+    new_reason = _normalize_autofail_reason_text(new_reason)
+    if not new_reason:
+        return report
+
+    placeholder_re = re.compile(
+        r"^(none|automatic fail triggered(?: \(see automatic fail checks\))?)$",
+        re.I,
+    )
+
+    def repl(m):
+        existing = _normalize_autofail_reason_text(m.group(1))
+        if not existing or placeholder_re.match(existing):
+            return f"- Reason: {new_reason}"
+
+        # Preserve existing reason if it already contains the new reason.
+        if new_reason.lower() in existing.lower():
+            return m.group(0)
+
+        return f"- Reason: {existing}; {new_reason}"
+
+    if re.search(r"(?im)^- Reason:\s*(.*)$", report):
+        return re.sub(r"(?im)^- Reason:\s*(.*)$", repl, report, count=1)
+
+    return re.sub(
+        r"(?im)^- Automatic fail triggered:\s*(?:YES|NO|UNCLEAR)\b.*$",
+        lambda m: m.group(0) + f"\n- Reason: {new_reason}",
+        report,
+        count=1,
+    )
+
+
+def _set_autofail_reason(report, reason, merge=True):
+    """
+    Set or merge the Reason line.
+    Use merge=True for real automatic-fail causes.
+    Use merge=False only when intentionally clearing to 'None' or replacing a false positive.
+    """
+    reason = _normalize_autofail_reason_text(reason)
+    if merge and reason and reason.lower() != "none":
+        return _merge_autofail_reason(report, reason)
+
+    if re.search(r"(?im)^- Reason:\s*.*$", report):
+        return re.sub(r"(?im)^- Reason:\s*.*$", f"- Reason: {reason}", report, count=1)
+
+    return re.sub(
+        r"(?im)^- Automatic fail triggered:\s*(?:YES|NO|UNCLEAR)\b.*$",
+        lambda m: m.group(0) + f"\n- Reason: {reason}",
+        report,
+        count=1,
+    )
+
+
 def _set_callback_fields(report, callback_set=None, objection_no_control=None, autofail=None, reason=None):
     """
     Shared helper for callback/autofail report-field rewrites.
@@ -6407,20 +6481,12 @@ def _set_callback_fields(report, callback_set=None, objection_no_control=None, a
         )
 
     if reason is not None:
-        if re.search(r"(?im)^- Reason:\s*.*$", report):
-            report = re.sub(
-                r"(?im)^- Reason:\s*.*$",
-                f"- Reason: {reason}",
-                report,
-                count=1,
-            )
-        else:
-            report = re.sub(
-                r"(?im)^- Automatic fail triggered:\s*(?:YES|NO|UNCLEAR)\b.*$",
-                lambda m: m.group(0) + f"\n- Reason: {reason}",
-                report,
-                count=1,
-            )
+        # Merge real autofail causes; replace only when clearing to None.
+        report = _set_autofail_reason(
+            report,
+            reason,
+            merge=bool(reason and str(reason).strip().lower() != "none"),
+        )
 
     return report
 
