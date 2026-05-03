@@ -353,11 +353,280 @@ def report_says_policy_sold_for_disposition(report):
         report or "",
     ))
 
+
+
+def _transcript_has_meaningful_agent_start(transcript):
+    """
+    True when the agent got beyond answering/opening and meaningfully started
+    the sales process. Used to separate BOOTC from normal LEAD.
+    """
+    t = transcript or ""
+    if not t.strip():
+        return False
+
+    return bool(re.search(
+        r"(?is)\b("
+        r"my name is|i'm calling|i am calling|reason for my call|"
+        r"benefits? you requested|state regulated|final expense|whole life|"
+        r"who would be your beneficiary|beneficiary|"
+        r"married|single|children|kids|work|retired|where are you located|"
+        r"do you currently have|existing coverage|life insurance|"
+        r"health questions|stroke|heart attack|copd|cancer|diabetes|kidney|"
+        r"burial|cremation|funeral|final expenses|"
+        r"options|quote|premium|application"
+        r")\b",
+        t,
+    ))
+
+
+def _transcript_suggests_bootc(transcript):
+    """
+    BOOTC when the call ends before the agent meaningfully starts the sales process.
+
+    This should outrank U90 for short pre-start calls.
+    """
+    t = transcript or ""
+    if not t.strip():
+        return False
+
+    words = re.findall(r"\w+", t)
+    early = t[:1800]
+
+    meaningful = bool(re.search(
+        r"(?is)\b("
+        r"reason for my call|benefits? you requested|state regulated|final expense|whole life|"
+        r"call (?:may|will) be recorded|recorded for quality|license number|field underwriter|"
+        r"who would be your beneficiary|beneficiary|"
+        r"do you currently have|existing coverage|life insurance|"
+        r"health questions|stroke|heart attack|copd|cancer|diabetes|kidney|"
+        r"burial|cremation|funeral|final expenses|"
+        r"options|quote|premium|application"
+        r")\b",
+        early,
+    ))
+
+    stop_or_no_start = bool(re.search(
+        r"(?is)\b("
+        r"stop calling|take me off|wrong number|not interested|no thank you|"
+        r"bye|hung up|disconnected|line went dead|are you there|can you hear me|hello\?"
+        r")\b",
+        early,
+    ))
+
+    # Very short transcript with no meaningful sales marker is BOOTC even if the
+    # exact hangup wording varies.
+    if len(words) <= 80 and not meaningful:
+        return True
+
+    return stop_or_no_start and not meaningful
+def _transcript_duration_seconds_from_text(transcript):
+    """
+    Best-effort duration detector from transcript/report metadata when present.
+    Returns None if not available.
+    """
+    t = transcript or ""
+    patterns = [
+        r"(?is)\bduration(?:_seconds| seconds)?\s*[:=]\s*(\d{1,5})\b",
+        r"(?is)\bcall duration\s*[:=]\s*(\d{1,5})\s*(?:sec|seconds?)\b",
+        r"(?is)\bduration\s*[:=]\s*(\d{1,2}):(\d{2})\b",
+    ]
+
+    for p in patterns:
+        m = re.search(p, t)
+        if not m:
+            continue
+        if len(m.groups()) == 1:
+            return int(m.group(1))
+        if len(m.groups()) == 2:
+            return int(m.group(1)) * 60 + int(m.group(2))
+
+    return None
+
+
+def _transcript_suggests_u90(transcript):
+    """
+    U90 when the call is under the app's short-call threshold and no stronger
+    disposition applies.
+    """
+    duration = _transcript_duration_seconds_from_text(transcript)
+    if duration is not None:
+        return duration < 110
+
+    # Fallback for transcript fixtures / reports without explicit duration:
+    # very short transcript with early refusal/disconnect.
+    t = transcript or ""
+    words = re.findall(r"\w+", t)
+    short_text = len(words) < 220
+    early_stop = bool(re.search(
+        r"(?is)\b(not interested|bye|hung up|disconnected|stop calling|wrong number|are you there|hello\?)\b",
+        t,
+    ))
+    return short_text and early_stop and _transcript_has_meaningful_agent_start(t)
+
+
+def _final_cleanup_bootc_u90_report(report, transcript):
+    """
+    Normalize report language/coaching for BOOTC and U90 style calls.
+    DB disposition is handled separately by detect_auto_disposition; this keeps
+    report risk/coaching aligned.
+    """
+    if not report:
+        return report
+
+    # BOOTC should only apply when the report itself has not already reached
+    # a meaningful sales-process stage. If the audit reached Fact Finding,
+    # Medical / Health, Needs, Quotes, etc., do not downgrade it to BOOTC.
+    current_stage_rank = _current_report_stage_rank(report)
+    meaningful_report_stage = current_stage_rank >= _stage_rank_for_cleanup("Fact Finding / Warm-up")
+
+    is_bootc = _transcript_suggests_bootc(transcript) and not meaningful_report_stage
+    is_u90 = (not is_bootc) and _transcript_suggests_u90(transcript)
+
+    if not (is_bootc or is_u90):
+        return report
+
+    if not re.search(r"(?im)^- Automatic fail triggered:\s*YES\s*$", report):
+        report = re.sub(r"(?im)^RISK:\s*(MEDIUM|HIGH)\s*$", "RISK: LOW", report, count=1)
+
+    if is_bootc:
+        report = re.sub(
+            r"(?im)^CALL STAGE REACHED:\s*.*$",
+            "CALL STAGE REACHED: BOOTC",
+            report,
+            count=1,
+        )
+
+    tonality = "Use confident tonality and a sharp, professional opening so the call starts with control and credibility."
+
+    if re.search(r"(?im)^COACHING:\s*", report):
+        if not re.search(r"(?i)confident tonality|proper tonality|sharp and professional|answering the call with confidence", report):
+            report = re.sub(
+                r"(?im)^COACHING:\s*",
+                "COACHING:\n- " + tonality + "\n",
+                report,
+                count=1,
+            )
+    else:
+        report = report.rstrip() + "\n\nCOACHING:\n- " + tonality + "\n"
+
+    report = re.sub(
+        r"(?i)Avoid ending the call abruptly; try to build rapport or clarify prospect needs before concluding\.?",
+        tonality,
+        report,
+    )
+
+    return report
+
+
+
+def _get_audio_duration_seconds_for_call(call_name):
+    """
+    Best-effort audio duration lookup for disposition detection.
+
+    Reprocessing from transcript often loses duration_seconds. This checks the
+    saved audio files so U90 can still be detected.
+    """
+    if not call_name:
+        return None
+
+    folders = []
+    for name in ["UPLOAD_FOLDER", "PROCESSED_CALLS_FOLDER"]:
+        value = globals().get(name)
+        if value:
+            folders.append(value)
+
+    # Common local folders used by this app across versions.
+    folders.extend(["calls", "processed_calls", "uploads"])
+
+    exts = list(globals().get("AUDIO_EXTENSIONS", [".wav", ".mp3", ".m4a"]))
+
+    seen = set()
+    candidates = []
+    for folder in folders:
+        for ext in exts:
+            p = os.path.join(folder, f"{call_name}{ext}")
+            if p not in seen:
+                candidates.append(p)
+                seen.add(p)
+
+    for candidate in candidates:
+        if not os.path.exists(candidate):
+            continue
+
+        if candidate.lower().endswith(".wav"):
+            try:
+                import wave
+                with wave.open(candidate, "rb") as wf:
+                    frames = wf.getnframes()
+                    rate = wf.getframerate()
+                    if rate:
+                        return int(round(frames / float(rate)))
+            except Exception:
+                pass
+
+        try:
+            import subprocess
+            out = subprocess.check_output(
+                ["afinfo", candidate],
+                stderr=subprocess.DEVNULL,
+                text=True,
+            )
+            m = re.search(r"estimated duration:\\s*([0-9.]+)\\s*sec", out, re.I)
+            if m:
+                return int(round(float(m.group(1))))
+        except Exception:
+            pass
+
+        try:
+            import subprocess
+            out = subprocess.check_output(
+                [
+                    "ffprobe",
+                    "-v", "error",
+                    "-show_entries", "format=duration",
+                    "-of", "default=noprint_wrappers=1:nokey=1",
+                    candidate,
+                ],
+                stderr=subprocess.DEVNULL,
+                text=True,
+            ).strip()
+            if out:
+                return int(round(float(out)))
+        except Exception:
+            pass
+
+    return None
+
 def detect_auto_disposition(call_name, transcript, report, duration_seconds=None):
     """
     Operational disposition only.
     This must not change score/risk/pass/report logic.
     """
+    report_stage = ""
+    m_stage = re.search(r"(?im)^CALL STAGE REACHED:\s*(.+?)\s*$", report or "")
+    if m_stage:
+        report_stage = m_stage.group(1).strip()
+
+    report_stage_bootc = report_stage.upper() == "BOOTC"
+    report_stage_pre_start = report_stage.lower() in {"pq / handoff", "opening", "opening / handoff", "processing failed"}
+
+    if duration_seconds is None:
+        duration_seconds = _get_audio_duration_seconds_for_call(call_name)
+
+    very_short_transcript = len(re.findall(r"\w+", transcript or "")) <= 100
+
+    # BOOTC outranks U90 when the report/transcript show the call ended before
+    # the selling agent meaningfully started. A very short PQ/Handoff or Opening
+    # call should not be labeled U90 just because it is also under 110 seconds.
+    if report_stage_bootc or (_transcript_suggests_bootc(transcript) and report_stage_pre_start):
+        return "BOOTC", "Call ended before the agent meaningfully started the sales process."
+
+    if report_stage_pre_start and very_short_transcript:
+        return "BOOTC", "Call ended before the agent meaningfully started the sales process."
+
+    if _transcript_suggests_u90(transcript):
+        return "U90", "Call duration was under the short-call threshold."
+
     combined = ((transcript or "") + "\n" + (report or "")).lower()
 
     if report_says_policy_sold_for_disposition(report):
@@ -437,6 +706,28 @@ def detect_auto_disposition(call_name, transcript, report, duration_seconds=None
 def save_to_db(call_name, transcript, report, score, risk):
     ensure_db()
 
+    # Preserve existing duration_seconds when reprocessing from a saved transcript.
+    # Reprocess scripts usually do not pass audio duration, but the original DB row
+    # may already have it. Without preserving it, U90 detection can incorrectly
+    # fall back to LEAD.
+    existing_duration_seconds = None
+    try:
+        conn_lookup = sqlite3.connect(DB_FILE)
+        c_lookup = conn_lookup.cursor()
+        row = c_lookup.execute(
+            "SELECT duration_seconds FROM calls WHERE call_name=? ORDER BY id DESC LIMIT 1",
+            (call_name,),
+        ).fetchone()
+        conn_lookup.close()
+        if row and row[0] is not None:
+            existing_duration_seconds = row[0]
+    except Exception:
+        try:
+            conn_lookup.close()
+        except Exception:
+            pass
+        existing_duration_seconds = None
+
     # Privacy safety at the database boundary.
     transcript = redact_sensitive_transcript(transcript or "")
     report = redact_report_text(report or "")
@@ -445,7 +736,7 @@ def save_to_db(call_name, transcript, report, score, risk):
         call_name,
         transcript,
         report,
-        duration_seconds=None,
+        duration_seconds=existing_duration_seconds,
     )
     final_disposition = auto_disposition
 
@@ -477,7 +768,7 @@ def save_to_db(call_name, transcript, report, score, risk):
         None,
         final_disposition,
         disposition_reason,
-        None,
+        existing_duration_seconds,
     ))
 
     conn.commit()
@@ -8693,6 +8984,7 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _final_cleanup_false_quotes_stage(report, transcript)
     report = _final_cleanup_clean_health_needs_hangup(report, transcript)
     report = _final_cleanup_clean_early_unreached_sections(report, transcript)
+    report = _final_cleanup_bootc_u90_report(report, transcript)
     report = _final_cleanup_promote_biggest_miss_from_flow_misses(report, transcript)
     report = _restore_safe_business_terms(report)
     return report

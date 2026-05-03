@@ -1809,3 +1809,153 @@ run_case(
 )
 
 print("Clean health Needs/hangup false-DNQ cleanup tests passed.")
+
+bootc_should_not_be_lead_report = """SCORE: 85
+RISK: MEDIUM
+PASS: YES
+CALL STAGE REACHED: Opening
+EARLY END: YES
+NOT REACHED:
+- Remaining sales process
+
+COMPLIANCE FAILURES:
+- None
+
+SCRIPT / FLOW MISSES:
+- None
+
+TASK CHECKLIST:
+- Agent introduction: NOT REACHED
+
+SEARCHABLE ANSWERS:
+- Was the policy sold? NO
+
+AUTOMATIC FAIL CHECKS:
+- Callback set: NO
+- Automatic fail triggered: NO
+- Reason: None
+
+SALE OUTCOME:
+- Policy sold: NO
+- Final stage supporting sale: None
+
+COACHING:
+- Avoid ending the call abruptly; try to build rapport or clarify prospect needs before concluding.
+
+BIGGEST MISS:
+- None
+"""
+
+bootc_should_not_be_lead_transcript = """Agent: Hello?
+Prospect: Stop calling me.
+Agent: Hello, are you there?
+"""
+
+run_case(
+    "BOOTC call should get low risk and tonality coaching",
+    bootc_should_not_be_lead_report,
+    bootc_should_not_be_lead_transcript,
+    must_contain=[
+        "RISK: LOW",
+        "CALL STAGE REACHED: BOOTC",
+        "confident tonality",
+    ],
+    must_not_contain=[
+        "Avoid ending the call abruptly; try to build rapport or clarify prospect needs before concluding",
+        "RISK: MEDIUM",
+    ],
+)
+
+u90_short_call_should_get_tonality_report = """SCORE: 80
+RISK: MEDIUM
+PASS: YES
+CALL STAGE REACHED: Who I Am / What I Do
+EARLY END: YES
+NOT REACHED:
+- Fact Finding / Warm-up
+- Health questions
+
+COMPLIANCE FAILURES:
+- None
+
+SCRIPT / FLOW MISSES:
+- None
+
+TASK CHECKLIST:
+- Agent introduction: YES
+
+SEARCHABLE ANSWERS:
+- Was the policy sold? NO
+
+AUTOMATIC FAIL CHECKS:
+- Callback set: NO
+- Automatic fail triggered: NO
+- Reason: None
+
+SALE OUTCOME:
+- Policy sold: NO
+- Final stage supporting sale: Who I Am / What I Do
+
+COACHING:
+- Avoid ending the call abruptly; try to build rapport or clarify prospect needs before concluding.
+
+BIGGEST MISS:
+- None
+"""
+
+u90_short_call_should_get_tonality_transcript = """duration_seconds: 65
+Agent: Hi, my name is Ashley and I'm calling about the benefits you requested.
+Prospect: I am not interested.
+Agent: I understand.
+Prospect: Bye.
+"""
+
+run_case(
+    "U90 short call should get low risk and tonality coaching",
+    u90_short_call_should_get_tonality_report,
+    u90_short_call_should_get_tonality_transcript,
+    must_contain=[
+        "RISK: LOW",
+        "confident tonality",
+    ],
+    must_not_contain=[
+        "Avoid ending the call abruptly; try to build rapport or clarify prospect needs before concluding",
+        "RISK: MEDIUM",
+    ],
+)
+
+print("BOOTC/U90 disposition cleanup tests passed.")
+
+# Direct disposition tests for DB/reprocess edge cases.
+bootc_report_for_disposition = """SCORE: 85
+RISK: LOW
+PASS: YES
+CALL STAGE REACHED: BOOTC
+EARLY END: YES
+
+SEARCHABLE ANSWERS:
+- Was the policy sold? NO
+
+AUTOMATIC FAIL CHECKS:
+- Callback set: NO
+- Automatic fail triggered: NO
+- Reason: None
+"""
+
+bootc_disp, _ = watcher.detect_auto_disposition(
+    "bootc_fixture",
+    "Agent: Hello? Prospect: Stop calling me. Agent: Are you there?",
+    bootc_report_for_disposition,
+    duration_seconds=45,
+)
+check("BOOTC report stage outranks U90 disposition", bootc_disp == "BOOTC", bootc_disp)
+
+u90_disp, _ = watcher.detect_auto_disposition(
+    "u90_fixture",
+    "Agent: Hi, my name is Ashley and I am calling about the benefits you requested. Prospect: Not interested. Agent: I understand.",
+    "SCORE: 80\nRISK: LOW\nPASS: YES\nCALL STAGE REACHED: Who I Am / What I Do\n- Policy sold: NO\n- Automatic fail triggered: NO\n",
+    duration_seconds=65,
+)
+check("duration_seconds under 110 triggers U90 disposition", u90_disp == "U90", u90_disp)
+
+print("BOOTC/U90 database disposition priority tests passed.")
