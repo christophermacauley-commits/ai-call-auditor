@@ -3028,6 +3028,32 @@ def _transcript_shopping_not_current_coverage(transcript):
     return asked and no_current_shopping
 
 
+
+
+def _transcript_reached_needs_section(transcript):
+    """
+    Needs section reached when the agent discusses funeral cost, burial/cremation,
+    who passed away, family burden, or impact of no coverage.
+    """
+    t = transcript or ""
+    if not t.strip():
+        return False
+
+    return bool(re.search(
+        r"(?is)\b("
+        r"who (?:passed away|has passed)|"
+        r"have you ever had to pay for (?:a|somebody'?s) funeral|"
+        r"burial or cremation|"
+        r"cremation|burial|funeral cost|funeral expenses|"
+        r"how much .* funeral|how much .* cremation|"
+        r"with no coverage|since you have no coverage|"
+        r"your family (?:would|will|is going to) (?:need|have to)|"
+        r"leave (?:your )?(?:family|kids|children|beneficiary) with|"
+        r"final expenses"
+        r")\b",
+        t,
+    ))
+
 def _transcript_application_info_started(transcript):
     """Application Information reached when the agent begins application data collection."""
     t = (transcript or "").lower()
@@ -5993,6 +6019,40 @@ def _ensure_autofail_line(report, label, value):
     return report
 
 
+
+
+def _prospect_disconnected_before_coverage_verification(transcript):
+    """
+    Existing coverage should not become an automatic fail if the prospect
+    disconnected/refused before the agent had a fair chance to call/verify coverage.
+    """
+    t = transcript or ""
+    if not t.strip():
+        return False
+
+    coverage_mentioned = bool(re.search(
+        r"(?is)\b(i have life insurance|already have life insurance|already got life insurance|"
+        r"have coverage|already have coverage|government insurance|insurance through the government|"
+        r"policy already|existing policy)\b",
+        t,
+    ))
+
+    disconnect_or_hard_refusal = bool(re.search(
+        r"(?is)\b(hung up|disconnected|stopped responding|call ended|line went dead|"
+        r"are you there|hello\?|hello, are you there|not interested|don't need|do not need|"
+        r"i already have|i'm good|im good|bye)\b",
+        t,
+    ))
+
+    agent_attempted_coverage_call = bool(re.search(
+        r"(?is)\b(call (?:the )?(?:company|carrier|insurance company)|"
+        r"three way|3 way|verify (?:that|the) coverage|confirm (?:that|the) coverage|"
+        r"policy check|carrier call|let'?s call)\b",
+        t,
+    ))
+
+    return coverage_mentioned and disconnect_or_hard_refusal and not agent_attempted_coverage_call
+
 def _final_cleanup_no_autofail_consistency(report, transcript):
     """
     Final guardrail: if sold call has no callback, no uncontrolled objection,
@@ -6005,8 +6065,36 @@ def _final_cleanup_no_autofail_consistency(report, transcript):
     coverage_confirmed = bool(re.search(r"(?im)^- Did the agent confirm current coverage\?\s*YES\b", report)) or _transcript_existing_coverage_confirmed_by_carrier(transcript)
     bank_not_cu = bool(re.search(r"(?im)^- Credit union mentioned but bank/account not verified:\s*NO\b", report)) or _transcript_actual_bank_not_credit_union(transcript)
 
-    if coverage_confirmed:
+    coverage_disconnect_before_verify = _prospect_disconnected_before_coverage_verification(transcript)
+
+    if coverage_confirmed or coverage_disconnect_before_verify:
         report = _ensure_autofail_line(report, "Existing coverage mentioned but not confirmed", "NO")
+        if coverage_disconnect_before_verify:
+            report = _text_remove_lines_containing(report, "Existing coverage mentioned but not confirmed")
+            report = _ensure_autofail_line(report, "Existing coverage mentioned but not confirmed", "NO")
+
+            # If the only automatic-fail basis was stale unresolved coverage,
+            # clear the automatic-fail result too. A prospect hangup/refusal before
+            # verification is not the same as the agent skipping required verification.
+            no_callback = bool(re.search(r"(?im)^- Callback set:\s*NO\b", report))
+            no_objection = bool(re.search(r"(?im)^- Objection occurred without proper call control:\s*NO\b", report))
+            no_existing = bool(re.search(r"(?im)^- Existing coverage mentioned but not confirmed:\s*NO\b", report))
+            no_cu = (
+                not re.search(r"(?im)^- Credit union mentioned but bank/account not verified:", report)
+                or bool(re.search(r"(?im)^- Credit union mentioned but bank/account not verified:\s*NO\b", report))
+            )
+
+            if no_callback and no_objection and no_existing and no_cu:
+                report = re.sub(r"(?im)^- Automatic fail triggered:\s*YES\b.*$", "- Automatic fail triggered: NO", report, count=1)
+                report = _set_autofail_reason(report, "None", merge=False)
+                report = re.sub(r"(?im)^PASS:\s*NO\s*$", "PASS: YES", report, count=1)
+                report = re.sub(r"(?im)^RISK:\s*HIGH\s*$", "RISK: MEDIUM", report, count=1)
+                report = re.sub(
+                    r"(?ims)^BIGGEST MISS:\s*.*?(?=^SUMMARY:|^TRANSCRIPT NOTE|^OPENAI COST ESTIMATE:|\Z)",
+                    "BIGGEST MISS:\n- Prospect disconnected/refused before the agent could verify existing coverage.\n\n",
+                    report,
+                    count=1,
+                )
 
     if bank_not_cu:
         report = _ensure_autofail_line(report, "Credit union mentioned but bank/account not verified", "NO")
@@ -7828,6 +7916,17 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _final_cleanup_sold_call_completion_evidence(report, transcript)
     report = _final_cleanup_peace_of_mind_after_sale(report, transcript)
     report = _final_cleanup_disqualification_no_agent_fault(report, transcript)
+    # Transcript-supported stage upgrade: funeral-cost / burial-cremation / no-coverage
+    # impact questions mean the call reached the Needs section, not just Medical / Health.
+    if _transcript_reached_needs_section(transcript):
+        report = re.sub(
+            r"(?im)^CALL STAGE REACHED:\s*Medical / Health\s*$",
+            "CALL STAGE REACHED: Needs",
+            report,
+            count=1,
+        )
+        report = _text_remove_lines_containing(report, "Needs section")
+        report = _text_remove_lines_containing(report, "Need section")
     report = _rewrite_not_reached_reason(report, transcript)
     report = _compress_not_reached_block(report)
     report = _final_cleanup_protect_major_biggest_miss(report, transcript)

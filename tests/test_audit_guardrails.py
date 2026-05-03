@@ -1201,3 +1201,119 @@ run_case(
 )
 
 print("False LCR detection tests passed.")
+
+coverage_hangup_before_verify_report = """SCORE: 80
+RISK: HIGH
+PASS: YES
+CALL STAGE REACHED: Medical / Health
+EARLY END: YES
+NOT REACHED:
+- Product benefits
+- Three options
+- Application information
+
+COMPLIANCE FAILURES:
+- Existing coverage mentioned but not confirmed.
+
+TASK CHECKLIST:
+- Existing coverage checked: NO
+- Health questions completed: PARTIAL
+
+SEARCHABLE ANSWERS:
+- Was the policy sold? NO
+
+AUTOMATIC FAIL CHECKS:
+- Callback set: NO
+- Objection occurred without proper call control: NO
+- Existing coverage mentioned but not confirmed: YES
+- Automatic fail triggered: NO
+- Reason: None
+
+SALE OUTCOME:
+- Policy sold: NO
+- Final stage supporting sale: Medical / Health
+
+BIGGEST MISS:
+- Existing coverage was mentioned but not properly confirmed.
+"""
+
+coverage_hangup_before_verify_transcript = """Prospect: I have life insurance already.
+Agent: Okay, who is that through?
+Prospect: Through the government. I don't need any more.
+Agent: I understand. Let me explain why I was calling.
+Prospect: Bye.
+Agent: Hello? Are you there?
+"""
+
+run_case(
+    "existing coverage hangup before verify should not autofail",
+    coverage_hangup_before_verify_report,
+    coverage_hangup_before_verify_transcript,
+    must_contain=[
+        "- Existing coverage mentioned but not confirmed: NO",
+        "- Automatic fail triggered: NO",
+        "- Reason: None",
+    ],
+    must_not_contain=[
+        "- Existing coverage mentioned but not confirmed: YES",
+        "Existing coverage was mentioned but not properly confirmed.",
+        "PASS: NO",
+    ],
+)
+
+needs_stage_after_health_report = """SCORE: 85
+RISK: MEDIUM
+PASS: YES
+CALL STAGE REACHED: Medical / Health
+EARLY END: YES
+NOT REACHED:
+- Product benefits
+- Three options
+- Application information
+
+COMPLIANCE FAILURES: None
+
+TASK CHECKLIST:
+- Health questions completed: YES
+- Product benefits explained: NOT REACHED
+
+SEARCHABLE ANSWERS:
+- Was the policy sold? NO
+
+AUTOMATIC FAIL CHECKS:
+- Callback set: NO
+- Objection occurred without proper call control: NO
+- Automatic fail triggered: NO
+- Reason: None
+
+SALE OUTCOME:
+- Policy sold: NO
+- Final stage supporting sale: Medical / Health
+
+BIGGEST MISS:
+- Prospect stopped responding before the agent could continue.
+"""
+
+needs_stage_after_health_transcript = """Agent: Okay, we answered no to all the health questions.
+Agent: Have you ever had to pay for somebody's funeral?
+Prospect: Yes.
+Agent: Who passed away in your life?
+Prospect: My brother.
+Agent: Burial or cremation?
+Prospect: Cremation.
+Agent: Since you have no coverage, your family would need to come up with that money.
+"""
+
+run_case(
+    "funeral cost questions after health should reach needs",
+    needs_stage_after_health_report,
+    needs_stage_after_health_transcript,
+    must_contain=[
+        "CALL STAGE REACHED: Needs",
+    ],
+    must_not_contain=[
+        "CALL STAGE REACHED: Medical / Health",
+    ],
+)
+
+print("Coverage hangup and Needs-stage tests passed.")
