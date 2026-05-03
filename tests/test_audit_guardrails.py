@@ -1959,3 +1959,58 @@ u90_disp, _ = watcher.detect_auto_disposition(
 check("duration_seconds under 110 triggers U90 disposition", u90_disp == "U90", u90_disp)
 
 print("BOOTC/U90 database disposition priority tests passed.")
+
+u90_tonality_cleanup_report = """SCORE: 75
+RISK: HIGH
+PASS: YES
+CALL STAGE REACHED: Who I Am / What I Do
+EARLY END: YES
+
+COMPLIANCE FAILURES:
+- None
+
+SCRIPT / FLOW MISSES:
+- None
+
+SEARCHABLE ANSWERS:
+- Was the policy sold? NO
+
+AUTOMATIC FAIL CHECKS:
+- Callback set: NO
+- Automatic fail triggered: NO
+- Reason: None
+
+SALE OUTCOME:
+- Policy sold: NO
+- Final stage supporting sale: Who I Am / What I Do
+
+COACHING:
+- Avoid ending the call abruptly; try to build rapport or clarify prospect needs before concluding.
+
+BIGGEST MISS:
+- None
+"""
+
+u90_tonality_cleanup_transcript = """duration_seconds: 72
+Agent: Hi, my name is Ashley. I'm calling about the benefits you requested.
+Prospect: Not interested.
+Agent: I understand.
+Prospect: Bye.
+"""
+
+run_case(
+    "U90 short call should use confident tonality coaching",
+    u90_tonality_cleanup_report,
+    u90_tonality_cleanup_transcript,
+    must_contain=[
+        "RISK: LOW",
+        "confident tonality",
+        "sharp, professional opening",
+    ],
+    must_not_contain=[
+        "Avoid ending the call abruptly; try to build rapport or clarify prospect needs before concluding",
+        "RISK: HIGH",
+    ],
+)
+
+print("U90 tonality coaching cleanup tests passed.")

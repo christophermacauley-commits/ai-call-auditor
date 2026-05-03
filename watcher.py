@@ -464,6 +464,44 @@ def _transcript_suggests_u90(transcript):
     return short_text and early_stop and _transcript_has_meaningful_agent_start(t)
 
 
+
+
+def _final_cleanup_u90_tonality_coaching(report, transcript):
+    """
+    U90 / very short calls should not get vague 'avoid ending abruptly' coaching.
+    Use the business-preferred coaching: confident, sharp, professional tonality.
+    """
+    if not report:
+        return report
+
+    is_u90_style = _transcript_suggests_u90(transcript)
+    if not is_u90_style:
+        return report
+
+    tonality = "Answer the call with confident tonality and a sharp, professional opening so the call starts with control and credibility."
+
+    report = re.sub(
+        r"(?i)Avoid ending the call abruptly; try to build rapport or clarify prospect needs before concluding\.?",
+        tonality,
+        report,
+    )
+
+    if not re.search(r"(?i)confident tonality|proper tonality|sharp and professional|answering the call with confidence|answer the call with confident", report):
+        if re.search(r"(?im)^COACHING:\s*", report):
+            report = re.sub(
+                r"(?im)^COACHING:\s*",
+                "COACHING:\n- " + tonality + "\n",
+                report,
+                count=1,
+            )
+        else:
+            report = report.rstrip() + "\n\nCOACHING:\n- " + tonality + "\n"
+
+    if not re.search(r"(?im)^- Automatic fail triggered:\s*YES\s*$", report):
+        report = re.sub(r"(?im)^RISK:\s*(MEDIUM|HIGH)\s*$", "RISK: LOW", report, count=1)
+
+    return report
+
 def _final_cleanup_bootc_u90_report(report, transcript):
     """
     Normalize report language/coaching for BOOTC and U90 style calls.
@@ -8985,6 +9023,7 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _final_cleanup_clean_health_needs_hangup(report, transcript)
     report = _final_cleanup_clean_early_unreached_sections(report, transcript)
     report = _final_cleanup_bootc_u90_report(report, transcript)
+    report = _final_cleanup_u90_tonality_coaching(report, transcript)
     report = _final_cleanup_promote_biggest_miss_from_flow_misses(report, transcript)
     report = _restore_safe_business_terms(report)
     return report
