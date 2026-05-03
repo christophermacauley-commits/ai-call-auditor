@@ -1463,7 +1463,7 @@ run_case(
         "CALL STAGE REACHED: Needs",
         "- Final stage supporting sale: Needs",
         "BIGGEST MISS:\n- 3 and 1 Method incomplete",
-        "after needs discovery",
+        "needs discovery",
     ],
     must_not_contain=[
         "- Final stage supporting sale: Medical / Health",
@@ -1732,3 +1732,80 @@ run_case(
 )
 
 print("Clean early/unreached-section cleanup tests passed.")
+
+clean_health_needs_hangup_should_not_be_dq_report = """SCORE: 85
+RISK: MEDIUM
+PASS: YES
+CALL STAGE REACHED: Medical / Health
+EARLY END: YES
+NOT REACHED:
+- Product benefits
+- Three options
+
+COMPLIANCE FAILURES:
+- None
+
+SCRIPT / FLOW MISSES:
+- None
+
+TASK CHECKLIST:
+- Health questions completed: YES
+- Product benefits explained: NOT REACHED
+
+SEARCHABLE ANSWERS:
+- Was the policy sold? NO
+
+AUTOMATIC FAIL CHECKS:
+- Callback set: NO
+- Automatic fail triggered: NO
+- Reason: None
+
+SALE OUTCOME:
+- Policy sold: NO
+- Evidence: Prospect had a disqualifying health condition.
+- Final stage supporting sale: Medical / Health
+
+COACHING:
+- Agent appropriately stopped after identifying disqualification / inability to proceed. Prospect had a disqualifying health condition.
+
+SUMMARY:
+The call ended because the prospect was not eligible / could not reasonably proceed. Future sales stages were not reached because continuing the sale was not appropriate.
+
+BIGGEST MISS:
+- None
+"""
+
+clean_health_needs_hangup_transcript = """Agent: Any stroke, heart attack, COPD, kidney failure, cancer, diabetes, oxygen, or nursing home?
+Prospect: No.
+Agent: Everything was no, so you are in really good shape.
+Agent: Have you ever had to pay for somebody's funeral?
+Prospect: Yes.
+Agent: Who passed away?
+Prospect: My brother.
+Agent: Burial or cremation?
+Prospect: Cremation.
+Agent: Since you have no coverage, your family would need to come up with that money.
+Prospect: I do not need anything else.
+Agent: I understand.
+Prospect: Bye.
+"""
+
+run_case(
+    "clean health screen plus Needs should not become health disqualification",
+    clean_health_needs_hangup_should_not_be_dq_report,
+    clean_health_needs_hangup_transcript,
+    must_contain=[
+        "CALL STAGE REACHED: Needs",
+        "- Final stage supporting sale: Needs",
+        "health screening cleanly",
+        "reached needs discovery",
+    ],
+    must_not_contain=[
+        "Prospect had a disqualifying health condition",
+        "Agent appropriately stopped after identifying disqualification",
+        "continuing the sale was not appropriate",
+        "The call ended because the prospect was not eligible",
+    ],
+)
+
+print("Clean health Needs/hangup false-DNQ cleanup tests passed.")

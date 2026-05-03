@@ -3033,7 +3033,8 @@ def _transcript_shopping_not_current_coverage(transcript):
 def _transcript_reached_needs_section(transcript):
     """
     Needs section reached when the agent discusses funeral cost, burial/cremation,
-    who passed away, family burden, or impact of no coverage.
+    who passed away, family burden, impact of no coverage, beneficiary/final
+    expenses, or similar need-discovery questions after the opening/health screen.
     """
     t = transcript or ""
     if not t.strip():
@@ -3042,18 +3043,22 @@ def _transcript_reached_needs_section(transcript):
     return bool(re.search(
         r"(?is)\b("
         r"who (?:passed away|has passed)|"
-        r"have you ever had to pay for (?:a|somebody'?s) funeral|"
+        r"lost (?:your|a|someone|anyone)|"
+        r"have you ever had to pay for (?:a|somebody'?s|someone'?s) funeral|"
         r"burial or cremation|"
-        r"cremation|burial|funeral cost|funeral expenses|"
+        r"cremation|burial|funeral cost|funeral costs|funeral expenses|"
+        r"final expense|final expenses|"
         r"how much .* funeral|how much .* cremation|"
-        r"with no coverage|since you have no coverage|"
-        r"your family (?:would|will|is going to) (?:need|have to)|"
-        r"leave (?:your )?(?:family|kids|children|beneficiary) with|"
-        r"final expenses"
+        r"what would .* cost|cost of (?:a )?(?:funeral|cremation|burial)|"
+        r"with no coverage|since you have no coverage|without coverage|"
+        r"your family (?:would|will|is going to) (?:need|have to|be responsible)|"
+        r"leave (?:your )?(?:family|kids|children|beneficiary|loved ones) with|"
+        r"who would (?:take care of|pay for|handle)|"
+        r"beneficiary|"
+        r"make sure (?:your )?(?:family|kids|children|loved ones) (?:are|is) (?:protected|covered|taken care of)"
         r")\b",
         t,
     ))
-
 def _transcript_application_info_started(transcript):
     """Application Information reached when the agent begins application data collection."""
     t = (transcript or "").lower()
@@ -7520,8 +7525,8 @@ def _transcript_has_clean_health_screening_no_dq(transcript):
 
     This prevents stale report text like "disqualifying health condition" from
     re-triggering LCR/fair-disqualification cleanup when the actual health screen
-    was clean and the call ended for another reason, such as existing coverage or
-    refusal.
+    was clean and the call ended for another reason, such as existing coverage,
+    refusal, or hangup.
     """
     t = (transcript or "").lower()
     if not t:
@@ -7530,28 +7535,40 @@ def _transcript_has_clean_health_screening_no_dq(transcript):
     clean_summary = bool(re.search(
         r"answered\s+no\s+to\s+(?:all|the)\s+health\s+questions|"
         r"no\s+to\s+all\s+(?:of\s+)?(?:the\s+)?health\s+questions|"
+        r"everything\s+(?:was|is)\s+no|"
+        r"all\s+(?:those|of those|the)\s+(?:were|are)\s+no|"
         r"you(?:'re| are)\s+in\s+(?:really\s+)?good\s+shape|"
-        r"health(?:-screening| screening)?\s+(?:looked|looks)\s+(?:good|clean)",
+        r"you\s+are\s+in\s+good\s+health|"
+        r"health(?:-screening| screening)?\s+(?:looked|looks)\s+(?:good|clean)|"
+        r"so\s+(?:that|this)\s+(?:looks|looked)\s+good",
         t,
     ))
 
+    # Many transcripts have repeated agent health questions followed by Prospect: No.
     repeated_clean_no = len(re.findall(
         r"(?is)(stroke|heart\s+attack|heart\s+disease|copd|emphysema|"
-        r"kidney|renal|dialysis|oxygen|cancer|diabetes|terminal|hospice).{0,120}"
-        r"(?:prospect|client|customer)\s*:\s*(?:no|nope|never)\b",
-        t,
+        r"kidney|renal|dialysis|oxygen|cancer|diabetes|terminal|hospice|"
+        r"nursing\s+home|wheelchair|hospital).{0,180}"
+        r"(?:prospect|client|customer|member)\s*:\s*(?:no|nope|never|nah)\b",
+        transcript or "",
     )) >= 2
 
+    # Also catch compressed role-labeled transcripts where the answer follows directly.
+    repeated_inline_no = len(re.findall(
+        r"(?is)(stroke|heart\s+attack|heart\s+disease|copd|emphysema|"
+        r"kidney|renal|dialysis|oxygen|cancer|diabetes|terminal|hospice|"
+        r"nursing\s+home|wheelchair|hospital).{0,120}\b(no|nope|never|nah)\b",
+        transcript or "",
+    )) >= 3
+
     explicit_health_dq = bool(re.search(
-        r"(?is)(because of that|based on that|with that condition|unfortunately|sorry).{0,220}"
+        r"(?is)(because of that|based on that|with that condition|due to that|unfortunately|sorry).{0,260}"
         r"(do(?:es)? not qualify|won't qualify|would not qualify|can't qualify|cannot qualify|"
-        r"not able to qualify|unable to qualify|not eligible|declined|knockout)",
-        t,
+        r"not able to qualify|unable to qualify|not eligible|declined|knockout|knock out)",
+        transcript or "",
     ))
 
-    return (clean_summary or repeated_clean_no) and not explicit_health_dq
-
-
+    return (clean_summary or repeated_clean_no or repeated_inline_no) and not explicit_health_dq
 def _extract_first_real_flow_miss(report):
     """Return the first substantive SCRIPT / FLOW miss, or None."""
     m = re.search(
@@ -7876,6 +7893,69 @@ def _remove_unreached_future_coaching_and_biggest_miss(report, stage_rank):
                 new_body = "- Use confident tonality and a sharp, professional opening so the call starts with control and credibility."
 
         report = report[:m.start()] + f"{header}:\n{new_body}\n\n" + report[m.end():]
+
+    return report
+
+
+
+def _final_cleanup_clean_health_needs_hangup(report, transcript):
+    """
+    Clean health screen + Needs language means the call should not be summarized
+    as a health disqualification just because stale report text says so.
+    """
+    if not report:
+        return report
+
+    if not _transcript_has_clean_health_screening_no_dq(transcript):
+        return report
+
+    if not _transcript_reached_needs_section(transcript):
+        return report
+
+    # Normalize stage.
+    report = re.sub(
+        r"(?im)^CALL STAGE REACHED:\s*Medical / Health\s*$",
+        "CALL STAGE REACHED: Needs",
+        report,
+        count=1,
+    )
+    report = re.sub(
+        r"(?im)^- Final stage supporting sale:\s*Medical / Health\s*$",
+        "- Final stage supporting sale: Needs",
+        report,
+        count=1,
+    )
+
+    # Remove stale health-disqualification/fair-DNQ cleanup language.
+    stale_phrases = [
+        "Prospect had a disqualifying health condition",
+        "Agent appropriately stopped after identifying disqualification",
+        "The call ended because the prospect was not eligible",
+        "continuing the sale was not appropriate",
+        "prospect was not eligible / could not reasonably proceed",
+    ]
+    for phrase in stale_phrases:
+        report = _text_remove_lines_containing(report, phrase)
+
+    replacement_evidence = (
+        "Prospect answered the health screening cleanly and the call reached needs discovery, "
+        "but the call ended before quotes, application, banking, or enrollment completion."
+    )
+    report = re.sub(
+        r"(?im)^- Evidence:\s*.*(?:disqualifying health condition|not eligible|could not reasonably proceed).*$",
+        f"- Evidence: {replacement_evidence}",
+        report,
+    )
+
+    if re.search(r"(?ims)^SUMMARY:\s*.*?(?=^OPENAI COST ESTIMATE:|\Z)", report):
+        report = re.sub(
+            r"(?ims)^SUMMARY:\s*.*?(?=^OPENAI COST ESTIMATE:|\Z)",
+            "SUMMARY:\nThe prospect answered the health screening cleanly and the call reached needs discovery, but the call ended before quotes, application, banking, or enrollment completion.\n",
+            report,
+            count=1,
+        )
+    else:
+        report = report.rstrip() + "\n\nSUMMARY:\nThe prospect answered the health screening cleanly and the call reached needs discovery, but the call ended before quotes, application, banking, or enrollment completion.\n"
 
     return report
 
@@ -8611,6 +8691,7 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _final_cleanup_summary_stage_contradictions(report)
     report = _final_cleanup_needs_stage_fields(report, transcript)
     report = _final_cleanup_false_quotes_stage(report, transcript)
+    report = _final_cleanup_clean_health_needs_hangup(report, transcript)
     report = _final_cleanup_clean_early_unreached_sections(report, transcript)
     report = _final_cleanup_promote_biggest_miss_from_flow_misses(report, transcript)
     report = _restore_safe_business_terms(report)
