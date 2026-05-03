@@ -705,3 +705,256 @@ run_case(
 )
 
 print("Disqualification coaching cleanup test passed.")
+
+# -------------------------------------------------------------------
+# Cross-field invariants before further cleanup/refactor work
+# -------------------------------------------------------------------
+
+autofail_unsold_report = """SCORE: 92
+RISK: LOW
+PASS: YES
+CALL STAGE REACHED: Quotes
+EARLY END: NO
+NOT REACHED:
+- Application information
+- Payment date
+- Banking/payment setup
+- Disclosures
+- Third Party Underwriting
+- Peace of Mind
+- Cool Down
+
+COMPLIANCE FAILURES:
+- Callback accepted without proper call control
+
+TASK CHECKLIST:
+- Product benefits explained: YES
+- Three options presented: YES
+
+SEARCHABLE ANSWERS:
+- Was the policy sold? NO
+
+AUTOMATIC FAIL CHECKS:
+- Callback set: YES
+- Objection occurred without proper call control: YES
+- Automatic fail triggered: YES
+- Reason: Prospect requested a callback / delay and the agent accepted it instead of controlling or continuing the live sales attempt.
+
+SALE OUTCOME:
+- Policy sold: NO
+- Final stage supporting sale: Quotes
+
+BIGGEST MISS:
+- Agent accepted a callback / delay instead of controlling the objection.
+"""
+
+autofail_unsold_transcript = """Agent: We can get this done today.
+Prospect: Can you call me back tomorrow?
+Agent: Yes, I can call you back tomorrow.
+"""
+
+run_case(
+    "autofail unsold should be pass no risk high",
+    autofail_unsold_report,
+    autofail_unsold_transcript,
+    must_contain=[
+        "RISK: HIGH",
+        "PASS: NO",
+        "- Automatic fail triggered: YES",
+        "- Policy sold: NO",
+    ],
+    must_not_contain=[
+        "PASS: AT RISK",
+        "PASS: YES",
+        "RISK: LOW",
+    ],
+)
+
+autofail_sold_report = """SCORE: 92
+RISK: LOW
+PASS: YES
+CALL STAGE REACHED: Peace of Mind
+EARLY END: NO
+NOT REACHED:
+- Cool Down
+
+COMPLIANCE FAILURES:
+- Callback accepted without proper call control
+
+TASK CHECKLIST:
+- Application info collected: YES
+- Banking/payment setup explained: YES
+- Disclosures completed: YES
+
+SEARCHABLE ANSWERS:
+- Was the policy sold? YES
+
+AUTOMATIC FAIL CHECKS:
+- Callback set: YES
+- Objection occurred without proper call control: YES
+- Automatic fail triggered: YES
+- Reason: Prospect requested a callback / delay and the agent accepted it instead of controlling or continuing the live sales attempt.
+
+SALE OUTCOME:
+- Policy sold: YES
+- Final stage supporting sale: Peace of Mind
+
+BIGGEST MISS:
+- Agent accepted a callback / delay instead of controlling the objection.
+"""
+
+autofail_sold_transcript = """Agent: The application process was completed over the telephone.
+Agent: I understand this application and all other documents have been read to me for my review and voice signature.
+Prospect: Yes.
+Agent: Okay, you're good. We're not going to forget about you.
+Prospect: Can you call me back tomorrow?
+Agent: Yes, I can call you back tomorrow.
+"""
+
+run_case(
+    "autofail sold should be at risk high",
+    autofail_sold_report,
+    autofail_sold_transcript,
+    must_contain=[
+        "RISK: HIGH",
+        "PASS: AT RISK",
+        "- Automatic fail triggered: YES",
+        "- Policy sold: YES",
+    ],
+    must_not_contain=[
+        "PASS: NO",
+        "RISK: LOW",
+    ],
+)
+
+clean_disqualification_report = """SCORE: 42
+RISK: HIGH
+PASS: NO
+CALL STAGE REACHED: Medical / Health
+EARLY END: YES
+NOT REACHED:
+- Product benefits
+- Three options
+- Application information
+
+COMPLIANCE FAILURES:
+- None
+
+SCRIPT / FLOW MISSES:
+- Attempt calm call control early when prospect expressed disinterest.
+- Avoid abrupt ending.
+
+TASK CHECKLIST:
+- Health questions completed: PARTIAL
+- Product benefits explained: NO
+
+SEARCHABLE ANSWERS:
+- Was the policy sold? NO
+
+AUTOMATIC FAIL CHECKS:
+- Callback set: NO
+- Objection occurred without proper call control: YES
+- Automatic fail triggered: YES
+- Reason: Objection occurred without proper call control
+
+SALE OUTCOME:
+- Policy sold: NO
+- Evidence: Call ended before application or enrollment.
+- Final stage supporting sale: Medical / Health
+
+COACHING:
+- Attempt calm call control early when prospect expressed disinterest.
+
+SUMMARY:
+The call is scored low due to lack of progression, poor objection handling, and early disengagement.
+
+BIGGEST MISS:
+- Agent did not attempt calm call control.
+"""
+
+clean_disqualification_transcript = """Agent: Any kidney failure, oxygen, dialysis, hospice, or nursing home?
+Prospect: I have kidney failure.
+Agent: Unfortunately that means you would not qualify for the plans I have. I am sorry, but I hope you have a good day.
+"""
+
+run_case(
+    "clean health disqualification should score fairly",
+    clean_disqualification_report,
+    clean_disqualification_transcript,
+    must_contain=[
+        "SCORE: 90",
+        "RISK: MEDIUM",
+        "PASS: YES",
+        "- Automatic fail triggered: NO",
+        "- Reason: None",
+        "Agent appropriately stopped after identifying disqualification / inability to proceed.",
+        "BIGGEST MISS:\n- None",
+    ],
+    must_not_contain=[
+        "PASS: NO",
+        "RISK: HIGH",
+        "Attempt calm call control",
+        "poor objection handling",
+        "Agent did not attempt calm call control",
+    ],
+)
+
+not_reached_idempotent_report = """SCORE: 82
+RISK: MEDIUM
+PASS: YES
+CALL STAGE REACHED: Fact Finding / Warm-up
+EARLY END: YES
+NOT REACHED:
+- Health questions — not reached because the prospect stopped responding / disconnected before the agent could continue
+- Product benefits — not reached because the prospect stopped responding / disconnected before the agent could continue
+- Three options — not reached because the prospect stopped responding / disconnected before the agent could continue
+
+COMPLIANCE FAILURES: None
+
+TASK CHECKLIST:
+- Fact Finding / Warm-up: YES
+- Health questions completed: NOT REACHED
+
+SEARCHABLE ANSWERS:
+- Was the policy sold? NO
+
+AUTOMATIC FAIL CHECKS:
+- Callback set: NO
+- Objection occurred without proper call control: NO
+- Automatic fail triggered: NO
+- Reason: None
+
+SALE OUTCOME:
+- Policy sold: NO
+- Final stage supporting sale: Fact Finding / Warm-up
+
+BIGGEST MISS:
+- Prospect stopped responding / disconnected before the agent could continue.
+"""
+
+not_reached_idempotent_transcript = """Agent: Are you there?
+Prospect:
+Agent: Hello? I cannot hear you.
+"""
+
+out_once = run_case(
+    "not reached reason should not duplicate",
+    not_reached_idempotent_report,
+    not_reached_idempotent_transcript,
+    must_contain=[
+        "not reached because the prospect stopped responding / disconnected before the agent could continue",
+    ],
+    must_not_contain=[
+        "continue — not reached because",
+        "continue — not reached because the prospect stopped responding / disconnected before the agent could continue — not reached because",
+    ],
+)
+
+out_twice = watcher.enforce_final_audit_consistency(out_once, not_reached_idempotent_transcript)
+check(
+    "not reached reason idempotent on rerun",
+    "— not reached because the prospect stopped responding / disconnected before the agent could continue — not reached because" not in out_twice,
+    out_twice,
+)
+
+print("Cross-field invariant tests passed.")
