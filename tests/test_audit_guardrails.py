@@ -1420,3 +1420,118 @@ run_case(
 )
 
 print("Sold stale-disqualification and Needs final-stage regression tests passed.")
+
+
+needs_summary_and_biggest_miss_report = """SCORE: 85
+RISK: MEDIUM
+PASS: YES
+CALL STAGE REACHED: Needs
+EARLY END: YES
+NOT REACHED:
+- Product benefits
+
+COMPLIANCE FAILURES: None
+
+SCRIPT / FLOW MISSES:
+- 3 and 1 Method incomplete: agent asked rapport questions but did not provide meaningful personal self-disclosure tied to the prospect's answers.
+
+SEARCHABLE ANSWERS:
+- Was the policy sold? NO
+
+AUTOMATIC FAIL CHECKS:
+- Callback set: NO
+- Automatic fail triggered: NO
+- Reason: None
+
+SALE OUTCOME:
+- Policy sold: NO
+- Evidence: No application completion or banking/payment setup; call ended during health qualification
+- Final stage supporting sale: Medical / Health
+
+BIGGEST MISS:
+- None
+
+SUMMARY:
+The call ended before need discovery, quotes, or application stages, and no sale was completed.
+"""
+
+run_case(
+    "needs reports keep final stage summary and biggest miss consistent",
+    needs_summary_and_biggest_miss_report,
+    needs_stage_after_health_transcript,
+    must_contain=[
+        "CALL STAGE REACHED: Needs",
+        "- Final stage supporting sale: Needs",
+        "BIGGEST MISS:\n- 3 and 1 Method incomplete",
+        "after needs discovery",
+    ],
+    must_not_contain=[
+        "- Final stage supporting sale: Medical / Health",
+        "before need discovery",
+        "BIGGEST MISS:\n- None",
+    ],
+)
+
+false_health_dq_clean_screen_report = """SCORE: 90
+RISK: MEDIUM
+PASS: YES
+CALL STAGE REACHED: Needs
+EARLY END: YES
+NOT REACHED:
+- Product benefits
+
+COMPLIANCE FAILURES: None
+
+SCRIPT / FLOW MISSES:
+- None
+
+SEARCHABLE ANSWERS:
+- Was the policy sold? NO
+
+AUTOMATIC FAIL CHECKS:
+- Callback set: NO
+- Automatic fail triggered: NO
+- Reason: None
+
+SALE OUTCOME:
+- Policy sold: NO
+- Evidence: Prospect had a disqualifying health condition.
+- Final stage supporting sale: Medical / Health
+
+COACHING:
+- Agent appropriately stopped after identifying disqualification / inability to proceed. Prospect had a disqualifying health condition.
+
+BIGGEST MISS:
+- None
+
+SUMMARY:
+The call ended because the prospect was not eligible / could not reasonably proceed. Future sales stages were not reached because continuing the sale was not appropriate.
+"""
+
+false_health_dq_clean_screen_transcript = """Agent: Stroke, heart attack, COPD, kidney failure, oxygen, cancer, or diabetes?
+Prospect: No.
+Agent: Everything was no, so you are in really good shape.
+Prospect: I already have coverage and I don't need any more.
+Agent: I understand.
+Prospect: Bye.
+Agent: Hello? Are you there?
+"""
+
+run_case(
+    "clean health screen should not become health disqualification cleanup",
+    false_health_dq_clean_screen_report,
+    false_health_dq_clean_screen_transcript,
+    must_contain=[
+        "CALL STAGE REACHED: Needs",
+        "- Final stage supporting sale: Needs",
+        "health screening cleanly",
+    ],
+    must_not_contain=[
+        "Prospect had a disqualifying health condition",
+        "Agent appropriately stopped after identifying disqualification",
+        "continuing the sale was not appropriate",
+        "call ended because the prospect was not eligible",
+    ],
+)
+
+print("Needs consistency and false health-disqualification cleanup tests passed.")

@@ -7513,6 +7513,202 @@ def _final_cleanup_summary_stage_contradictions(report):
 
 
 
+
+def _transcript_has_clean_health_screening_no_dq(transcript):
+    """
+    True when the transcript itself shows clean health knockout answers.
+
+    This prevents stale report text like "disqualifying health condition" from
+    re-triggering LCR/fair-disqualification cleanup when the actual health screen
+    was clean and the call ended for another reason, such as existing coverage or
+    refusal.
+    """
+    t = (transcript or "").lower()
+    if not t:
+        return False
+
+    clean_summary = bool(re.search(
+        r"answered\s+no\s+to\s+(?:all|the)\s+health\s+questions|"
+        r"no\s+to\s+all\s+(?:of\s+)?(?:the\s+)?health\s+questions|"
+        r"you(?:'re| are)\s+in\s+(?:really\s+)?good\s+shape|"
+        r"health(?:-screening| screening)?\s+(?:looked|looks)\s+(?:good|clean)",
+        t,
+    ))
+
+    repeated_clean_no = len(re.findall(
+        r"(?is)(stroke|heart\s+attack|heart\s+disease|copd|emphysema|"
+        r"kidney|renal|dialysis|oxygen|cancer|diabetes|terminal|hospice).{0,120}"
+        r"(?:prospect|client|customer)\s*:\s*(?:no|nope|never)\b",
+        t,
+    )) >= 2
+
+    explicit_health_dq = bool(re.search(
+        r"(?is)(because of that|based on that|with that condition|unfortunately|sorry).{0,220}"
+        r"(do(?:es)? not qualify|won't qualify|would not qualify|can't qualify|cannot qualify|"
+        r"not able to qualify|unable to qualify|not eligible|declined|knockout)",
+        t,
+    ))
+
+    return (clean_summary or repeated_clean_no) and not explicit_health_dq
+
+
+def _extract_first_real_flow_miss(report):
+    """Return the first substantive SCRIPT / FLOW miss, or None."""
+    m = re.search(
+        r"(?ims)^SCRIPT / FLOW MISSES:\s*(.*?)(?=^TASK CHECKLIST:|^PQ / HANDOFF:|^SEARCHABLE ANSWERS:|^AUTOMATIC FAIL CHECKS:|^SALE OUTCOME:|^SCORING BREAKDOWN:|^COACHING:|^BIGGEST MISS:|^SUMMARY:|^OPENAI COST ESTIMATE:|\Z)",
+        report or "",
+    )
+    if not m:
+        return None
+
+    for raw in m.group(1).splitlines():
+        line = re.sub(r"^\s*[-•]\s*", "", raw).strip()
+        if not line:
+            continue
+        if re.fullmatch(r"(?i)(none|n/a|not applicable)", line):
+            continue
+        return line.rstrip(" .") + "."
+
+    return None
+
+
+def _final_cleanup_false_health_disqualification_after_clean_screen(report, transcript):
+    """Remove stale health-DNQ wording when transcript health screening was clean."""
+    if not report or not _transcript_has_clean_health_screening_no_dq(transcript):
+        return report
+
+    stale_health = bool(re.search(
+        r"(?is)Prospect had a disqualifying health condition|"
+        r"Agent appropriately stopped after identifying disqualification|"
+        r"call ended because the prospect was not eligible|"
+        r"continuing the sale was not appropriate",
+        report,
+    ))
+    if not stale_health:
+        return report
+
+    report = _text_remove_lines_containing(report, "Prospect had a disqualifying health condition")
+    report = _text_remove_lines_containing(report, "Agent appropriately stopped after identifying disqualification")
+    report = _text_remove_lines_containing(report, "continuing the sale was not appropriate")
+
+    replacement_evidence = (
+        "Prospect answered the health screening cleanly, but the call did not continue "
+        "to application or enrollment completion."
+    )
+    if re.search(r"(?im)^- Evidence:\s*", report):
+        report = re.sub(
+            r"(?im)^- Evidence:\s*.*$",
+            f"- Evidence: {replacement_evidence}",
+            report,
+            count=1,
+        )
+
+    clean_summary = (
+        "The prospect answered the health screening cleanly, but the call ended before "
+        "application or enrollment completion. Future stages should be evaluated based "
+        "on the actual reason the call stopped, not as a health disqualification."
+    )
+    if re.search(r"(?ims)^SUMMARY:\s*.*?(?=^OPENAI COST ESTIMATE:|\Z)", report):
+        report = re.sub(
+            r"(?ims)^SUMMARY:\s*.*?(?=^OPENAI COST ESTIMATE:|\Z)",
+            "SUMMARY:\n" + clean_summary + "\n",
+            report,
+            count=1,
+        )
+    else:
+        report = report.rstrip() + "\n\nSUMMARY:\n" + clean_summary + "\n"
+
+    if re.search(r"(?ims)^COACHING:\s*(?=^BIGGEST MISS:|^SUMMARY:|^OPENAI COST ESTIMATE:|\Z)", report):
+        report = re.sub(
+            r"(?ims)^COACHING:\s*(?=^BIGGEST MISS:|^SUMMARY:|^OPENAI COST ESTIMATE:|\Z)",
+            "COACHING:\n- Review the call based on the actual stop reason; the transcript does not support a health disqualification.\n\n",
+            report,
+            count=1,
+        )
+
+    return report
+
+
+def _final_cleanup_needs_stage_fields(report, transcript):
+    """Keep Needs-stage reports internally consistent."""
+    if not report:
+        return report
+
+    reached_needs = bool(re.search(r"(?im)^CALL STAGE REACHED:\s*Needs?\b", report))
+    if not reached_needs and _transcript_reached_needs_section(transcript):
+        reached_needs = True
+
+    if not reached_needs:
+        return report
+
+    report = re.sub(
+        r"(?im)^- Final stage supporting sale:\s*Medical / Health\s*$",
+        "- Final stage supporting sale: Needs",
+        report,
+        count=1,
+    )
+
+    report = re.sub(
+        r"(?i)before need discovery, quotes, or application stages",
+        "after needs discovery but before quotes or application stages",
+        report,
+    )
+    report = re.sub(
+        r"(?i)call ended before need discovery,\s*",
+        "call ended after needs discovery but before ",
+        report,
+    )
+
+    return report
+
+
+def _final_cleanup_promote_biggest_miss_from_flow_misses(report, transcript=None):
+    """
+    BIGGEST MISS should not be blank/None when the report already lists real
+    agent-controllable SCRIPT / FLOW MISSES. Keep clean DNQ calls at None.
+    """
+    if not report:
+        return report
+
+    fair_dq = bool(re.search(
+        r"(?is)Agent appropriately stopped after identifying disqualification|"
+        r"call ended because the prospect was not eligible|"
+        r"continuing the sale was not appropriate",
+        report,
+    ))
+    if fair_dq:
+        return report
+
+    miss = _extract_first_real_flow_miss(report)
+    if not miss:
+        return report
+
+    biggest_is_empty = bool(re.search(
+        r"(?ims)^BIGGEST MISS:\s*(?:[-•]\s*)?(?:None|N/A|Not applicable)?\s*(?=^OBJECTIONS DETECTED:|^SUMMARY:|^TRANSCRIPT NOTE|^OPENAI COST ESTIMATE:|\Z)",
+        report,
+    ))
+    if not biggest_is_empty:
+        return report
+
+    if re.search(r"(?im)^BIGGEST MISS:\s*", report):
+        return re.sub(
+            r"(?ims)^BIGGEST MISS:\s*.*?(?=^OBJECTIONS DETECTED:|^SUMMARY:|^TRANSCRIPT NOTE|^OPENAI COST ESTIMATE:|\Z)",
+            f"BIGGEST MISS:\n- {miss}\n\n",
+            report,
+            count=1,
+        )
+
+    if re.search(r"(?im)^SUMMARY:\s*", report):
+        return re.sub(
+            r"(?im)^SUMMARY:\s*",
+            f"BIGGEST MISS:\n- {miss}\n\nSUMMARY:\n",
+            report,
+            count=1,
+        )
+
+    return report.rstrip() + f"\n\nBIGGEST MISS:\n- {miss}\n"
+
+
 def _detect_disqualification_no_agent_fault(report, transcript):
     """
     Detect calls that ended because the prospect was not eligible / could not proceed,
@@ -7554,6 +7750,9 @@ def _detect_disqualification_no_agent_fault(report, transcript):
         combined,
         re.I | re.S,
     ))
+
+    if _transcript_has_clean_health_screening_no_dq(transcript):
+        health_dq = False
 
     if age_dq:
         return "AGE", "Prospect was outside the eligible age range."
@@ -7975,6 +8174,7 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _final_cleanup_sold_call_completion_evidence(report, transcript)
     report = _final_cleanup_peace_of_mind_after_sale(report, transcript)
     report = _final_cleanup_disqualification_no_agent_fault(report, transcript)
+    report = _final_cleanup_false_health_disqualification_after_clean_screen(report, transcript)
     # Transcript-supported stage upgrade: funeral-cost / burial-cremation / no-coverage
     # impact questions mean the call reached the Needs section, not just Medical / Health.
     if _transcript_reached_needs_section(transcript):
@@ -7992,6 +8192,7 @@ def enforce_final_audit_consistency(report, transcript=None):
         )
         report = _text_remove_lines_containing(report, "Needs section")
         report = _text_remove_lines_containing(report, "Need section")
+    report = _final_cleanup_needs_stage_fields(report, transcript)
     report = _rewrite_not_reached_reason(report, transcript)
     report = _compress_not_reached_block(report)
     report = _final_cleanup_protect_major_biggest_miss(report, transcript)
@@ -7999,6 +8200,8 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _strip_embedded_transcript_from_report(report)
     report = _decode_report_html_entities(report)
     report = _final_cleanup_summary_stage_contradictions(report)
+    report = _final_cleanup_needs_stage_fields(report, transcript)
+    report = _final_cleanup_promote_biggest_miss_from_flow_misses(report, transcript)
     report = _restore_safe_business_terms(report)
     return report
 
