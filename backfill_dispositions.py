@@ -20,7 +20,21 @@ def detect_disposition(call_name, transcript, report, duration_seconds=None):
     if re.search(r"\b(over\s*80|older than\s*80|too old|outside (?:the )?age range|age limit|cannot qualify due to age)\b", text):
         return "AGE", "Age-related disqualification detected."
 
-    if re.search(r"\b(did not qualify|does not qualify|not qualify|declined|knockout|terminal|hospice|nursing home|oxygen|dialysis|cancer treatment|heart failure|stroke|copd|kidney failure|organ failure)\b", text):
+    # Health LCR requires an actual disqualification outcome, not the agent reading
+    # health-screening questions containing DNQ terms.
+    health_agent_dq = bool(re.search(
+        r"(?is)"
+        r"(unfortunately|sorry|based on that|because of that|with that condition|due to that|that means|"
+        r"after reviewing|from those answers).{0,220}"
+        r"(do(?:es)? not qualify|won't qualify|would not qualify|can't qualify|cannot qualify|"
+        r"not able to qualify|unable to qualify|can't help you|cannot help you|not eligible|declined|knockout)",
+        text,
+    ))
+
+    # Do not trust stale report wording alone for health LCR.
+    # Old reports may already contain "Prospect had a disqualifying health condition"
+    # from the former broad detector. Require transcript-supported agent DNQ language.
+    if health_agent_dq:
         return "LCR", "Health-related disqualification language detected."
 
     if re.search(r"\b(no income|don't have any income|do not have any income|not at all.*income|working on my disability|take food off your table|can't afford it|cannot afford it)\b", text):

@@ -370,11 +370,24 @@ def detect_auto_disposition(call_name, transcript, report, duration_seconds=None
     ):
         return "AGE", "Age-related disqualification detected."
 
-    if re.search(
-        r"\b(did not qualify|does not qualify|not qualify|declined|knockout|terminal|hospice|nursing home|oxygen|dialysis|cancer treatment|heart failure|stroke|copd|kidney failure|organ failure)\b",
+    # Health LCR disposition requires confirmed disqualification, not health-question wording.
+    health_agent_dq = bool(re.search(
+        r"(?is)"
+        r"(unfortunately|sorry|based on that|because of that|with that condition|due to that|that means|"
+        r"after reviewing|from those answers).{0,220}"
+        r"(do(?:es)? not qualify|won't qualify|would not qualify|can't qualify|cannot qualify|"
+        r"not able to qualify|unable to qualify|can't help you|cannot help you|not eligible|declined|knockout)",
         combined,
-        re.I,
-    ):
+    ))
+
+    health_report_dq = bool(re.search(
+        r"(?is)"
+        r"(prospect had a disqualifying health condition|health-related disqualification|"
+        r"disqualifying medical condition|declined due to health|medical disqualification)",
+        report or "",
+    ))
+
+    if health_agent_dq or health_report_dq:
         return "LCR", "Health-related disqualification language detected."
 
     if re.search(
@@ -2976,6 +2989,8 @@ def detect_agent_callback_from_transcript(transcript):
     ))
     agent_accepted = bool(re.search(
         r"(?is)(agent:\s*.*(?:i(?:'ll| will) call you back|i(?:'ll| will) give you a call back|"
+        r"(?:yes|yeah|yep|sure|okay|ok|absolutely|no problem)[,\s.]{0,20}i can call you back|"
+        r"i can call you back|i can give you a call back|"
         r"we(?:'ll| will) call you back|we can do this later|agreed to call back|scheduled a callback|set a callback))",
         tl,
     ))
@@ -6351,6 +6366,8 @@ def _has_real_callback_autofail_evidence(report, transcript):
     agent_accepted = bool(re.search(
         r"(?is)"
         r"(Agent:\s*.*(?:i(?:'ll| will) call you back|i(?:'ll| will) give you a call back|"
+        r"(?:yes|yeah|yep|sure|okay|ok|absolutely|no problem)[,\s.]{0,20}i can call you back|"
+        r"i can call you back|i can give you a call back|"
         r"we(?:'ll| will) call you back|we can do this later|agreed to call back|"
         r"scheduled a callback|set a callback)|"
         r"agent agreed to call back later|agreed to call back|accepted the callback|"
@@ -6575,6 +6592,9 @@ def _final_cleanup_callback_autofail_consistency(report, transcript):
         r"scheduled a callback|"
         r"i(?:'ll| will) call you back|"
         r"i(?:'ll| will) give you a call back|"
+        r"(?:yes|yeah|yep|sure|okay|ok|absolutely|no problem)[,\s.]{0,20}i can call you back|"
+        r"i can call you back|"
+        r"i can give you a call back|"
         r"we(?:'ll| will) call you back|"
         r"we can do this later|"
         r"instead of attempting call control|"
@@ -7360,12 +7380,23 @@ def _detect_disqualification_no_agent_fault(report, transcript):
         re.I,
     ))
 
+    # Health/LCR fairness cleanup must not trigger from the agent merely reading
+    # health-screening questions. Require an actual disqualification outcome.
     health_dq = bool(re.search(
-        r"(kidney failure|organ failure|congestive heart failure|terminal|hospice|nursing home|oxygen|dialysis|"
-        r"cancer treatment|did not qualify|does not qualify|won't be able to qualify|wouldn't be able to qualify|"
-        r"can't help you today|cannot help you today)",
+        r"(?is)"
+        r"(unfortunately|sorry|based on that|because of that|with that condition|due to that|that means|"
+        r"after reviewing|from those answers).{0,220}"
+        r"(do(?:es)? not qualify|won't qualify|would not qualify|can't qualify|cannot qualify|"
+        r"not able to qualify|unable to qualify|can't help you|cannot help you|not eligible|declined|knockout)",
         combined,
-        re.I,
+    ))
+
+    health_dq = health_dq or bool(re.search(
+        r"(?is)"
+        r"(do(?:es)? not qualify|won't qualify|would not qualify|can't qualify|cannot qualify|"
+        r"not able to qualify|unable to qualify|not eligible|declined|knockout).{0,180}"
+        r"(health|medical|condition|diagnosis|diagnosed|oxygen|dialysis|kidney|heart|copd|cancer|terminal|hospice)",
+        combined,
     ))
 
     no_income_dq = bool(re.search(
@@ -7496,12 +7527,22 @@ def _final_cleanup_disqualification_no_agent_fault(report, transcript):
     )
 
     # Biggest miss should not accuse the agent when the call ended due to disqualification.
-    report = re.sub(
-        r"(?ims)^BIGGEST MISS:\s*.*?(?=^OBJECTIONS DETECTED:|^SUMMARY:|^TRANSCRIPT NOTE|^OPENAI COST ESTIMATE:|\Z)",
-        "BIGGEST MISS:\n- None\n\n",
-        report,
-        count=1,
-    )
+    if re.search(r"(?im)^BIGGEST MISS:\s*", report):
+        report = re.sub(
+            r"(?ims)^BIGGEST MISS:\s*.*?(?=^OBJECTIONS DETECTED:|^SUMMARY:|^TRANSCRIPT NOTE|^OPENAI COST ESTIMATE:|\Z)",
+            "BIGGEST MISS:\n- None\n\n",
+            report,
+            count=1,
+        )
+    elif re.search(r"(?im)^SUMMARY:\s*", report):
+        report = re.sub(
+            r"(?im)^SUMMARY:\s*",
+            "BIGGEST MISS:\n- None\n\nSUMMARY:\n",
+            report,
+            count=1,
+        )
+    else:
+        report = report.rstrip() + "\n\nBIGGEST MISS:\n- None\n"
 
     # Summary cleanup for obvious contradiction.
     fair_summary = (
@@ -7519,8 +7560,8 @@ def _final_cleanup_disqualification_no_agent_fault(report, transcript):
     # Replace stale generated summaries that describe quotes/application/close on disqualification calls.
     if re.search(r"(?ims)^SUMMARY:\s*", report):
         report = re.sub(
-            r"(?ims)^SUMMARY:\s*.*?(?=^OPENAI COST ESTIMATE:|\Z)",
-            "SUMMARY:\n" + fair_summary + "\n",
+            r"(?ims)^SUMMARY:\s*.*?(?=^BIGGEST MISS:|^OPENAI COST ESTIMATE:|\Z)",
+            "SUMMARY:\n" + fair_summary + "\n\n",
             report,
             count=1,
         )
@@ -7532,6 +7573,18 @@ def _final_cleanup_disqualification_no_agent_fault(report, transcript):
         report,
         count=1,
     )
+
+    # Final disqualification-section safety: make sure BIGGEST MISS survives summary cleanup.
+    if not re.search(r"(?im)^BIGGEST MISS:\s*", report):
+        if re.search(r"(?im)^SUMMARY:\s*", report):
+            report = re.sub(
+                r"(?im)^SUMMARY:\s*",
+                "BIGGEST MISS:\n- None\n\nSUMMARY:\n",
+                report,
+                count=1,
+            )
+        else:
+            report = report.rstrip() + "\n\nBIGGEST MISS:\n- None\n"
 
     return report
 

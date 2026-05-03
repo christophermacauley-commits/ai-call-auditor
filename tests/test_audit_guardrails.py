@@ -1022,3 +1022,182 @@ run_case(
 )
 
 print("Autofail reason merge test passed.")
+
+false_lcr_health_questions_only_report = """SCORE: 72
+RISK: MEDIUM
+PASS: YES
+CALL STAGE REACHED: Medical / Health
+EARLY END: YES
+NOT REACHED:
+- Product benefits
+- Three options
+- Application information
+
+COMPLIANCE FAILURES: None
+
+SCRIPT / FLOW MISSES:
+- 3 and 1 Method incomplete
+
+TASK CHECKLIST:
+- Health questions completed: YES
+- Product benefits explained: NOT REACHED
+- Three options presented: NOT REACHED
+
+SEARCHABLE ANSWERS:
+- Was the policy sold? NO
+
+AUTOMATIC FAIL CHECKS:
+- Callback set: NO
+- Objection occurred without proper call control: NO
+- Automatic fail triggered: NO
+- Reason: None
+
+SALE OUTCOME:
+- Policy sold: NO
+- Evidence: Health questions were asked but no disqualification was confirmed.
+- Final stage supporting sale: Medical / Health
+
+BIGGEST MISS:
+- Prospect stopped responding / disconnected before the agent could continue.
+"""
+
+false_lcr_health_questions_only_transcript = """Agent: Have you had kidney failure, oxygen, dialysis, hospice, cancer, heart failure, COPD, or a terminal condition?
+Prospect: No.
+Agent: And we answered no to all of those health questions, right?
+Prospect: Yep.
+Agent: Perfect.
+Prospect: I am not really interested.
+"""
+
+out = watcher.enforce_final_audit_consistency(
+    false_lcr_health_questions_only_report,
+    false_lcr_health_questions_only_transcript,
+)
+
+check(
+    "health screening words alone should not trigger fair LCR rewrite",
+    "Prospect had a disqualifying health condition" not in out
+    and "Agent appropriately stopped after identifying disqualification" not in out
+    and "SCORE: 90" not in out,
+    out,
+)
+
+false_lcr_condition_but_agent_continues_report = """SCORE: 76
+RISK: MEDIUM
+PASS: YES
+CALL STAGE REACHED: Medical / Health
+EARLY END: YES
+NOT REACHED:
+- Product benefits
+- Three options
+- Application information
+
+COMPLIANCE FAILURES: None
+
+SCRIPT / FLOW MISSES:
+- 3 and 1 Method incomplete
+
+TASK CHECKLIST:
+- Health questions completed: PARTIAL
+- Product benefits explained: NOT REACHED
+
+SEARCHABLE ANSWERS:
+- Was the policy sold? NO
+
+AUTOMATIC FAIL CHECKS:
+- Callback set: NO
+- Objection occurred without proper call control: NO
+- Automatic fail triggered: NO
+- Reason: None
+
+SALE OUTCOME:
+- Policy sold: NO
+- Evidence: Prospect mentioned COPD but agent continued asking follow-up questions and did not state disqualification.
+- Final stage supporting sale: Medical / Health
+
+BIGGEST MISS:
+- Prospect stopped responding / disconnected before the agent could continue.
+"""
+
+false_lcr_condition_but_agent_continues_transcript = """Agent: Is it used for COPD or emphysema?
+Prospect: COPD.
+Agent: When were you diagnosed with COPD?
+Prospect: A couple years ago.
+Agent: Okay, besides that, have you had a heart attack or cancer?
+Prospect: No.
+Agent: Okay, let's keep going.
+"""
+
+out = watcher.enforce_final_audit_consistency(
+    false_lcr_condition_but_agent_continues_report,
+    false_lcr_condition_but_agent_continues_transcript,
+)
+
+check(
+    "condition mention without stop should not trigger LCR rewrite",
+    "Prospect had a disqualifying health condition" not in out
+    and "Agent appropriately stopped after identifying disqualification" not in out
+    and "SCORE: 90" not in out,
+    out,
+)
+
+true_lcr_agent_states_no_qualify_report = """SCORE: 40
+RISK: HIGH
+PASS: NO
+CALL STAGE REACHED: Medical / Health
+EARLY END: YES
+NOT REACHED:
+- Product benefits
+- Three options
+
+COMPLIANCE FAILURES:
+- None
+
+SCRIPT / FLOW MISSES:
+- Attempt calm call control early when prospect expressed disinterest.
+
+TASK CHECKLIST:
+- Health questions completed: PARTIAL
+- Product benefits explained: NO
+
+SEARCHABLE ANSWERS:
+- Was the policy sold? NO
+
+AUTOMATIC FAIL CHECKS:
+- Callback set: NO
+- Objection occurred without proper call control: YES
+- Automatic fail triggered: YES
+- Reason: Objection occurred without proper call control
+
+SALE OUTCOME:
+- Policy sold: NO
+- Evidence: Call ended before application or enrollment.
+- Final stage supporting sale: Medical / Health
+
+BIGGEST MISS:
+- Agent did not attempt calm call control.
+"""
+
+true_lcr_agent_states_no_qualify_transcript = """Agent: Are you on dialysis?
+Prospect: Yes.
+Agent: Unfortunately, because of that condition you would not qualify for the plans I have. I am sorry, and I hope you have a good day.
+"""
+
+run_case(
+    "true health disqualification still scores fairly",
+    true_lcr_agent_states_no_qualify_report,
+    true_lcr_agent_states_no_qualify_transcript,
+    must_contain=[
+        "SCORE: 90",
+        "RISK: MEDIUM",
+        "PASS: YES",
+        "Prospect had a disqualifying health condition.",
+        "BIGGEST MISS:\n- None",
+    ],
+    must_not_contain=[
+        "Attempt calm call control",
+        "Objection occurred without proper call control: YES",
+    ],
+)
+
+print("False LCR detection tests passed.")
