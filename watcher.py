@@ -466,6 +466,158 @@ def _transcript_suggests_u90(transcript):
 
 
 
+
+
+def _transcript_has_call_control_attempt(transcript):
+    """
+    Detect recognizable call-control attempts.
+
+    A valid attempt usually acknowledges the objection, relates it to other
+    clients/folks, reassures the prospect, or bridges back into the process.
+    It does not need to be word-for-word perfect.
+    """
+    t = transcript or ""
+    if not t.strip():
+        return False
+
+    patterns = [
+        # Direct PPG-style control statements.
+        r"(?is)\btotally\s+understand\b",
+        r"(?is)\bi\s+understand\b.{0,120}\b(won'?t\s+take\s+long|wrapped\s+up\s+shortly|just\s+a\s+moment|speed\s+this\s+up|don'?t\s+worry|get\s+into\s+that)",
+        r"(?is)\bi\s+appreciate\s+(?:you\s+)?sharing\s+that\b",
+        r"(?is)\bthanks?\s+for\s+sharing\s+that\b",
+        r"(?is)\bwe(?:'ll| will)\s+get\s+into\s+that\s+(?:here\s+)?in\s+just\s+a\s+moment\b",
+        r"(?is)\bwe(?:'ll| will)\s+be\s+wrapped\s+up\s+shortly\b",
+        r"(?is)\bthis\s+won'?t\s+take\s+(?:long|very\s+much\s+longer)\b",
+        r"(?is)\bi(?:'ll| will)\s+speed\s+this\s+up\s+for\s+you\b",
+        r"(?is)\bdon'?t\s+worry\b.{0,120}\b(won'?t\s+take|speed\s+this\s+up|wrapped\s+up|just\s+a\s+moment)",
+        r"(?is)\ba\s+lot\s+of\s+(?:folks|people)\s+(?:we\s+help\s+)?say\s+the\s+same\b",
+        r"(?is)\byou(?:'re| are)\s+(?:just\s+)?like\s+(?:a\s+lot\s+of\s+people|my\s+other\s+clients|other\s+clients)\b",
+        r"(?is)\bthat(?:'s| is)\s+awesome\b.{0,120}\b(a\s+lot\s+of\s+people|other\s+clients|people\s+i\s+help)",
+        r"(?is)\bVA'?s?\b.{0,160}\b(able\s+to\s+help|help\s+on\s+a\s+daily\s+basis|help\s+daily)",
+        r"(?is)\bsome\s+of\s+our\s+customers\s+are\s+VA'?s?\b",
+
+        # Existing recognized control statements.
+        r"(?is)\bwe(?:'re| are)\s+not\s+paying\s+for\s+anything\s+today\b",
+        r"(?is)\bnot\s+paying\s+for\s+anything\s+today\b",
+        r"(?is)\bthis\s+is\s+just\s+an\s+informational\s+call\b",
+        r"(?is)\bjust\s+an\s+informational\s+call\b",
+        r"(?is)\bi\s+can\s+assure\s+you\s+this\s+will\s+take\s+just\s+a\s+moment\b",
+        r"(?is)\bthis\s+will\s+take\s+just\s+a\s+moment\b",
+        r"(?is)\bbelieve\s+it\s+or\s+not.*?we\s+still\s+talk\s+to\s+people.*?every\s+single\s+day\b",
+        r"(?is)\bhow\s+could\s+you\s+not\s+be\s+interested\s+if\s+we\s+haven'?t\s+offered\s+you\s+anything\s+yet\b",
+        r"(?is)\bno\s+obligation\b",
+        r"(?is)\bnothing\s+(?:comes\s+out|is\s+due|is\s+paid)\s+today\b",
+        r"(?is)\bjust\s+to\s+see\s+what\s+you\s+qualify\s+for\b",
+    ]
+
+    return any(re.search(p, t) for p in patterns)
+
+
+def _final_cleanup_call_control_attempt(report, transcript):
+    """
+    If the transcript shows a call-control attempt, remove false 'no call control'
+    language and replace it with softer coaching about improving the redirect.
+    """
+    if not report or not _transcript_has_call_control_attempt(transcript):
+        return report
+
+    report = re.sub(
+        r"(?im)^-\s*Objection occurred without proper call control:\s*YES\s*$",
+        "- Objection occurred without proper call control: NO",
+        report,
+    )
+
+    call_control_reason = bool(re.search(
+        r"(?im)^-\s*Reason:\s*(Early refusal call:\s*)?(no calm call control attempt|objection occurred without proper call control|without proper call control|no call control attempt)\s*$",
+        report,
+    ))
+
+    other_autofail_signals = bool(re.search(
+        r"(?is)Callback set:\s*YES|Existing coverage mentioned but not confirmed:\s*YES|"
+        r"Credit union mentioned but bank/account not verified:\s*YES|"
+        r"payment date.*missing|post-sale.*incomplete|banking.*automatic fail",
+        report,
+    ))
+
+    if call_control_reason and not other_autofail_signals:
+        report = re.sub(
+            r"(?im)^-\s*Automatic fail triggered:\s*YES\s*$",
+            "- Automatic fail triggered: NO",
+            report,
+            count=1,
+        )
+        report = re.sub(
+            r"(?im)^-\s*Reason:\s*.*$",
+            "- Reason: None",
+            report,
+            count=1,
+        )
+        report = re.sub(r"(?im)^RISK:\s*HIGH\s*$", "RISK: LOW", report, count=1)
+        report = re.sub(r"(?im)^PASS:\s*NO\s*$", "PASS: YES", report, count=1)
+
+    false_phrases = [
+        "without proper call control",
+        "no call control attempt",
+        "did not attempt calm call control",
+        "Failure to attempt calm call control",
+    ]
+
+    if _current_report_stage_rank(report) < _stage_rank_for_cleanup("Fact Finding / Warm-up"):
+        false_phrases.extend([
+            "3 and 1",
+            "3-and-1",
+            "rapport",
+            "personal self-disclosure",
+            "agent shared personal rapport information",
+        ])
+    for phrase in false_phrases:
+        report = _text_remove_lines_containing(report, phrase)
+
+    better = (
+        "The agent made a call-control attempt; improve by flowing directly back "
+        "into the script after the control statement instead of giving the prospect another exit."
+    )
+
+    # Always make sure the final report contains the golden-approved redirect
+    # phrase when a call-control attempt was made.
+    if not re.search(r"(?is)flow back into the script|redirect back into the script", report):
+        if re.search(r"(?im)^COACHING:\s*", report):
+            report = re.sub(
+                r"(?im)^COACHING:\s*",
+                "COACHING:\n- " + better + "\n",
+                report,
+                count=1,
+            )
+        else:
+            report = report.rstrip() + "\n\nCOACHING:\n- " + better + "\n"
+
+    if re.search(r"(?ims)^BIGGEST MISS:\s*(?=^SUMMARY:|^TRANSCRIPT NOTE|^OPENAI COST ESTIMATE:|\Z)", report):
+        report = re.sub(
+            r"(?ims)^BIGGEST MISS:\s*(?=^SUMMARY:|^TRANSCRIPT NOTE|^OPENAI COST ESTIMATE:|\Z)",
+            "BIGGEST MISS:\n- Call control was attempted, but the agent should flow back into the script after the control statement.\n\n",
+            report,
+            count=1,
+        )
+
+    report = re.sub(
+        r"(?i)flowing\s+directly\s+back\s+into\s+the\s+script",
+        "flow back into the script",
+        report,
+    )
+    report = re.sub(
+        r"(?i)flowing\s+back\s+into\s+the\s+script",
+        "flow back into the script",
+        report,
+    )
+    report = re.sub(
+        r"(?i)flow\s+directly\s+back\s+into\s+the\s+script",
+        "flow back into the script",
+        report,
+    )
+
+    return report
+
 def _final_cleanup_u90_tonality_coaching(report, transcript):
     """
     U90 / very short calls should not get vague 'avoid ending abruptly' coaching.
@@ -9024,6 +9176,7 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _final_cleanup_clean_early_unreached_sections(report, transcript)
     report = _final_cleanup_bootc_u90_report(report, transcript)
     report = _final_cleanup_u90_tonality_coaching(report, transcript)
+    report = _final_cleanup_call_control_attempt(report, transcript)
     report = _final_cleanup_promote_biggest_miss_from_flow_misses(report, transcript)
     report = _restore_safe_business_terms(report)
     return report

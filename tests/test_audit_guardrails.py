@@ -2014,3 +2014,117 @@ run_case(
 )
 
 print("U90 tonality coaching cleanup tests passed.")
+
+call_control_attempt_should_not_be_no_attempt_report = """SCORE: 70
+RISK: HIGH
+PASS: NO
+CALL STAGE REACHED: Who I Am / What I Do
+EARLY END: YES
+
+COMPLIANCE FAILURES:
+- Early refusal call: agent did not attempt calm call control.
+
+SCRIPT / FLOW MISSES:
+- Objection occurred without proper call control.
+- Failure to attempt calm call control.
+
+TASK CHECKLIST:
+- Agent introduction: YES
+
+SEARCHABLE ANSWERS:
+- Was the policy sold? NO
+
+AUTOMATIC FAIL CHECKS:
+- Callback set: NO
+- Objection occurred without proper call control: YES
+- Automatic fail triggered: YES
+- Reason: Early refusal call: no calm call control attempt
+
+SALE OUTCOME:
+- Policy sold: NO
+- Final stage supporting sale: Who I Am / What I Do
+
+COACHING:
+- Agent did not attempt calm call control.
+
+BIGGEST MISS:
+- Failure to attempt calm call control.
+"""
+
+decent_call_control_transcript = """Agent: Hi, this is Ashley calling about the benefits.
+Prospect: I'm not interested.
+Agent: Totally understand! A lot of folks we help say the same. This won't take long at all—we'll be wrapped up shortly.
+Prospect: I still don't want it.
+"""
+
+run_case(
+    "call-control statement should count as an attempt",
+    call_control_attempt_should_not_be_no_attempt_report,
+    decent_call_control_transcript,
+    must_contain=[
+        "- Automatic fail triggered: NO",
+        "- Reason: None",
+        "flow back into the script",
+    ],
+    must_not_contain=[
+        "without proper call control",
+        "no calm call control attempt",
+        "did not attempt calm call control",
+        "Failure to attempt calm call control",
+        "RISK: HIGH",
+        "PASS: NO",
+    ],
+)
+
+weak_call_control_attempt_report = """SCORE: 80
+RISK: MEDIUM
+PASS: YES
+CALL STAGE REACHED: Who I Am / What I Do
+EARLY END: YES
+
+COMPLIANCE FAILURES:
+- None
+
+SCRIPT / FLOW MISSES:
+- Objection occurred without proper call control.
+
+SEARCHABLE ANSWERS:
+- Was the policy sold? NO
+
+AUTOMATIC FAIL CHECKS:
+- Callback set: NO
+- Objection occurred without proper call control: NO
+- Automatic fail triggered: NO
+- Reason: None
+
+SALE OUTCOME:
+- Policy sold: NO
+- Final stage supporting sale: Who I Am / What I Do
+
+COACHING:
+- Improve objection handling.
+
+BIGGEST MISS:
+- Objection occurred without proper call control.
+"""
+
+weak_call_control_transcript = """Prospect: I'm a VA client and I already have coverage.
+Agent: That's completely fine, some of our customers are VA's that we are able to help on a daily basis.
+Prospect: No thanks.
+"""
+
+run_case(
+    "weak call-control attempt should get redirect coaching not no-attempt language",
+    weak_call_control_attempt_report,
+    weak_call_control_transcript,
+    must_contain=[
+        "call-control attempt",
+        "flow back into the script",
+    ],
+    must_not_contain=[
+        "without proper call control",
+        "no call control attempt",
+    ],
+)
+
+print("Call-control attempt cleanup tests passed.")
