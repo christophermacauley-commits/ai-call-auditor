@@ -514,6 +514,132 @@ def _transcript_has_call_control_attempt(transcript):
     return any(re.search(p, t) for p in patterns)
 
 
+
+
+def _transcript_shows_existing_coverage_confirmed(transcript):
+    """
+    True when existing coverage was actually confirmed through a carrier/provider
+    call, agency/internal lookup, SSN/policy-number lookup, or clear policy-check
+    conversation.
+
+    If this is true, the report should not coach the agent to verify coverage
+    again or treat existing coverage as a risk.
+    """
+    t = transcript or ""
+    if not t.strip():
+        return False
+
+    carrier_policy_check = bool(re.search(
+        r"(?is)\b("
+        r"policy checkup|policy check|"
+        r"called? (?:the )?(?:insurance company|carrier|provider)|"
+        r"with (?:the )?(?:other )?insurance company|"
+        r"questions about my policy|"
+        r"policy owner|individual coverage|"
+        r"view your policy details|"
+        r"mutual of omaha|"
+        r"policy provisions|"
+        r"we were just going over (?:her|his|your) life insurance policy"
+        r")\b",
+        t,
+    ))
+
+    internal_lookup = bool(re.search(
+        r"(?is)\b("
+        r"social security number|ssn|last four digits|policy number|"
+        r"i can look it up|i(?:'ll| will) look it up|"
+        r"look(?:ed)? (?:it|you|that|the policy) up|"
+        r"does a .* policy .* sound familiar|"
+        r"i can see .* coverage|"
+        r"putting that coverage in place|"
+        r"i can see how important it is to you"
+        r")\b",
+        t,
+    ))
+
+    current_coverage_context = bool(re.search(
+        r"(?is)\b("
+        r"do you have any (?:type|kind|form)? ?(?:of )?(?:final expense plan|life insurance|coverage)|"
+        r"will this be your only policy|"
+        r"how much coverage do you have|"
+        r"what company .* policy|"
+        r"other policy|other insurance|existing coverage|current coverage"
+        r")\b",
+        t,
+    ))
+
+    return current_coverage_context and (carrier_policy_check or internal_lookup)
+
+
+def _final_cleanup_confirmed_existing_coverage(report, transcript):
+    """
+    If current/existing coverage was confirmed, remove contradictory coaching or
+    risk language saying the agent still needed to verify coverage.
+    """
+    if not report or not _transcript_shows_existing_coverage_confirmed(transcript):
+        return report
+
+    # Confirmed coverage means no existing-coverage autofail.
+    report = re.sub(
+        r"(?im)^-\s*Existing coverage mentioned but not confirmed:\s*YES\s*$",
+        "- Existing coverage mentioned but not confirmed: NO",
+        report,
+    )
+
+    # Remove coaching/miss/failure lines that contradict confirmed coverage.
+    coverage_false_phrases = [
+        "Clarify and verify existing active coverage thoroughly with the carrier/provider",
+        "verify existing active coverage thoroughly",
+        "existing coverage mentioned but not confirmed",
+        "coverage was not confirmed",
+        "did not verify current coverage",
+        "failed to verify current coverage",
+        "failed to confirm current coverage",
+        "should have called the carrier",
+        "should have called the provider",
+    ]
+    for phrase in coverage_false_phrases:
+        report = _text_remove_lines_containing(report, phrase)
+
+    # Sold call with confirmed coverage and no autofail should not remain MEDIUM/HIGH
+    # purely from stale coverage-coaching language.
+    sold_yes = bool(re.search(r"(?im)^- Policy sold:\s*YES\s*$|^- Was the policy sold\?\s*YES\s*$", report))
+    autofail_yes = bool(re.search(r"(?im)^-\s*Automatic fail triggered:\s*YES\s*$", report))
+    if sold_yes and not autofail_yes:
+        report = re.sub(r"(?im)^RISK:\s*(MEDIUM|HIGH)\s*$", "RISK: LOW", report, count=1)
+
+    # Sold calls must not retain stale health-DNQ language.
+    if sold_yes:
+        stale_health_phrases = [
+            "Prospect had a disqualifying health condition",
+            "Agent appropriately stopped after identifying disqualification",
+            "The call ended because the prospect was not eligible",
+            "prospect was not eligible / could not reasonably proceed",
+            "continuing the sale was not appropriate",
+        ]
+        for phrase in stale_health_phrases:
+            report = _text_remove_lines_containing(report, phrase)
+
+        report = re.sub(
+            r"(?im)^-\s*Evidence:\s*.*(?:disqualifying health condition|not eligible|could not reasonably proceed).*$",
+            "- Evidence: Policy was sold; existing coverage was confirmed through lookup or policy-check evidence, and the application/enrollment process continued.",
+            report,
+        )
+
+        if re.search(r"(?ims)^SUMMARY:\s*.*?(?=^OPENAI COST ESTIMATE:|\Z)", report):
+            report = re.sub(
+                r"(?ims)^SUMMARY:\s*.*?(?=^OPENAI COST ESTIMATE:|\Z)",
+                "SUMMARY:\nThe policy was sold. Existing coverage was confirmed through lookup or policy-check evidence, so coverage confirmation should not be treated as a miss or automatic-fail condition.\n",
+                report,
+                count=1,
+            )
+
+    # Clean up empty Coaching/Biggest Miss blocks if line removal emptied them.
+    report = re.sub(r"(?ims)^COACHING:\s*(?=^BIGGEST MISS:|^TOP 3 COACHING PRIORITIES:|^SUMMARY:|\Z)", "COACHING:\n- None\n\n", report)
+    report = re.sub(r"(?ims)^BIGGEST MISS:\s*(?=^SUMMARY:|^OPENAI COST ESTIMATE:|\Z)", "BIGGEST MISS:\n- None\n\n", report)
+
+    return report
+
 def _final_cleanup_call_control_attempt(report, transcript):
     """
     If the transcript shows a call-control attempt, remove false 'no call control'
@@ -9177,6 +9303,7 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _final_cleanup_bootc_u90_report(report, transcript)
     report = _final_cleanup_u90_tonality_coaching(report, transcript)
     report = _final_cleanup_call_control_attempt(report, transcript)
+    report = _final_cleanup_confirmed_existing_coverage(report, transcript)
     report = _final_cleanup_promote_biggest_miss_from_flow_misses(report, transcript)
     report = _restore_safe_business_terms(report)
     return report

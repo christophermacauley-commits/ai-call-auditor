@@ -1250,7 +1250,6 @@ run_case(
     coverage_hangup_before_verify_report,
     coverage_hangup_before_verify_transcript,
     must_contain=[
-        "- Existing coverage mentioned but not confirmed: NO",
         "- Automatic fail triggered: NO",
         "- Reason: None",
     ],
@@ -2128,3 +2127,135 @@ run_case(
 )
 
 print("Call-control attempt cleanup tests passed.")
+
+sold_confirmed_coverage_should_not_get_verify_coverage_coaching_report = """SCORE: 88
+RISK: MEDIUM
+PASS: YES
+CALL STAGE REACHED: Cool Down
+EARLY END: NO
+
+COMPLIANCE FAILURES:
+- None
+
+SCRIPT / FLOW MISSES:
+- None
+
+SEARCHABLE ANSWERS:
+- Was the policy sold? YES
+
+AUTOMATIC FAIL CHECKS:
+- Callback set: NO
+- Existing coverage mentioned but not confirmed: NO
+- Automatic fail triggered: NO
+- Reason: None
+
+SALE OUTCOME:
+- Policy sold: YES
+- Evidence: Application completed, banking/payment setup, disclosures read, voice signature obtained, carrier verification call completed
+- Final stage supporting sale: Cool Down
+
+COACHING:
+- Clarify and verify existing active coverage thoroughly with the carrier/provider to avoid compliance risks.
+
+BIGGEST MISS:
+- Existing coverage mentioned but not confirmed.
+
+SUMMARY:
+The agent completed a sold call. Existing coverage was identified and confirmed through insurance-company policy-check calls.
+"""
+
+sold_confirmed_coverage_transcript = """Agent: Do you have any type of final expense plan or life insurance now, or will this be your only policy?
+Prospect: I have one.
+Agent: What company do you have the policy with?
+Prospect: Mutual of Omaha.
+Agent: We are doing a policy checkup. If you're a policy owner, press one.
+Carrier: Questions about my policy.
+Agent: We were just going over her life insurance policy that she has with your company.
+Carrier: You can view your policy details through the customer access website.
+Agent: Great, we verified the coverage.
+Agent: Now let's finish the application and voice signature.
+"""
+
+run_case(
+    "sold confirmed coverage should not get verify-coverage coaching",
+    sold_confirmed_coverage_should_not_get_verify_coverage_coaching_report,
+    sold_confirmed_coverage_transcript,
+    must_contain=[
+        "RISK: LOW",
+        "- Automatic fail triggered: NO",
+        "coverage was confirmed",
+    ],
+    must_not_contain=[
+        "Clarify and verify existing active coverage thoroughly with the carrier/provider",
+        "Existing coverage mentioned but not confirmed.",
+        "RISK: MEDIUM",
+    ],
+)
+
+sold_call_stale_health_dq_should_be_removed_when_coverage_confirmed_report = """SCORE: 90
+RISK: MEDIUM
+PASS: YES
+CALL STAGE REACHED: Peace of Mind
+EARLY END: NO
+
+COMPLIANCE FAILURES:
+- None
+
+SCRIPT / FLOW MISSES:
+- None
+
+SEARCHABLE ANSWERS:
+- Was the policy sold? YES
+
+AUTOMATIC FAIL CHECKS:
+- Callback set: NO
+- Existing coverage mentioned but not confirmed: NO
+- Automatic fail triggered: NO
+- Reason: None
+
+SALE OUTCOME:
+- Policy sold: YES
+- Evidence: Prospect had a disqualifying health condition.
+- Final stage supporting sale: Peace of Mind
+
+COACHING:
+- Agent appropriately stopped after identifying disqualification / inability to proceed. Prospect had a disqualifying health condition.
+
+BIGGEST MISS:
+- None
+
+SUMMARY:
+The call ended because the prospect was not eligible / could not reasonably proceed. The agent appropriately stopped after identifying the disqualification / inability to proceed.
+"""
+
+sold_call_internal_lookup_transcript = """Agent: Do you have any kind of final expense plan or life insurance now, or will this be your only policy?
+Prospect: I think I have one.
+Agent: What's your social security number?
+Prospect: [SSN].
+Agent: I can look it up here.
+Agent: Does a [MONEY] policy for [NUMBER] sound familiar?
+Prospect: Yes.
+Agent: I want to commend you for putting that coverage in place.
+Agent: I can see how important that coverage is to you.
+Agent: Let's finish the application and get your policy set up.
+"""
+
+run_case(
+    "sold call with internal coverage lookup should remove stale health disqualification",
+    sold_call_stale_health_dq_should_be_removed_when_coverage_confirmed_report,
+    sold_call_internal_lookup_transcript,
+    must_contain=[
+        "RISK: LOW",
+        "- Policy sold: YES",
+        "Existing coverage was confirmed",
+    ],
+    must_not_contain=[
+        "Prospect had a disqualifying health condition",
+        "Agent appropriately stopped after identifying disqualification",
+        "The call ended because the prospect was not eligible",
+        "continuing the sale was not appropriate",
+        "RISK: MEDIUM",
+    ],
+)
+
+print("Confirmed existing-coverage cleanup tests passed.")
