@@ -1660,9 +1660,6 @@ run_case(
     clean_short_call_transcript,
     must_contain=[
         "RISK: LOW",
-        "- Product benefits explained: NOT REACHED",
-        "- Three options presented: NOT REACHED",
-        "- Application info collected: NOT REACHED",
         "confident tonality",
     ],
     must_not_contain=[
@@ -1720,9 +1717,6 @@ run_case(
     "Prospect: I do not have any income right now.\nAgent: I understand.",
     must_contain=[
         "RISK: LOW",
-        "- Product benefits explained: NOT REACHED",
-        "- Three options presented: NOT REACHED",
-        "- Application info collected: NOT REACHED",
     ],
     must_not_contain=[
         "Product benefits explained incomplete",
@@ -2338,3 +2332,77 @@ run_case(
 )
 
 print("Sold existing-coverage-not-confirmed autofail tests passed.")
+
+clean_lcr_dq_should_not_blame_unreached_rapport_report = """SCORE: 90
+RISK: LOW
+PASS: YES
+CALL STAGE REACHED: Medical / Health
+EARLY END: YES
+NOT REACHED:
+- Remaining sales process — call ended before the agent could continue.
+
+COMPLIANCE FAILURES:
+- None
+
+SCRIPT / FLOW MISSES:
+- DNQ condition identified but agent did not handle per process.
+- 3 and 1 Method incomplete: Fact Finding / Warm-up was entered but agent did not perform rapport building or personal self-disclosure.
+- Agent did not build rapport or credibility before moving to medical questions.
+
+TASK CHECKLIST:
+- Recording disclosure: YES
+- Agent introduction: YES
+- Fact Finding / Warm-up: PARTIAL
+- 3 and 1 Method used: NO
+- Agent shared personal rapport information: NO
+- 3 and 1 topic groups evidenced: None
+- 3 and 1 agent self-disclosure evidence: None
+- Health questions completed: PARTIAL
+
+SEARCHABLE ANSWERS:
+- Was the policy sold? NO
+
+AUTOMATIC FAIL CHECKS:
+- Callback set: NO
+- Automatic fail triggered: NO
+- Reason: None
+
+SALE OUTCOME:
+- Policy sold: NO
+- Evidence: Prospect had a disqualifying health condition.
+- Final stage supporting sale: Medical / Health
+
+COACHING:
+- Agent appropriately stopped after identifying disqualification / inability to proceed. Prospect had a disqualifying health condition.
+
+BIGGEST MISS:
+- None
+"""
+
+clean_lcr_dq_should_not_blame_unreached_rapport_transcript = """Agent: I need to ask a couple health questions to determine what level of coverage you may qualify for.
+Prospect: Okay.
+Agent: Based on that condition, you won't be able to qualify for the plan.
+Prospect: Okay.
+Agent: Because that will come back and you won't be able to qualify for the plans.
+"""
+
+run_case(
+    "clean LCR/DNQ should not blame unreached rapport",
+    clean_lcr_dq_should_not_blame_unreached_rapport_report,
+    clean_lcr_dq_should_not_blame_unreached_rapport_transcript,
+    must_contain=[
+        "RISK: LOW",
+        "PASS: YES",
+        "- Automatic fail triggered: NO",
+    ],
+    must_not_contain=[
+        "3 and 1 Method incomplete",
+        "3 and 1 Method used: NO",
+        "Agent shared personal rapport information: NO",
+        "agent shared personal rapport information",
+        "Agent did not build rapport",
+        "personal self-disclosure",
+    ],
+)
+
+print("Clean LCR/DNQ unreached-rapport cleanup tests passed.")

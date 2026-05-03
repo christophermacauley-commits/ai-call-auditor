@@ -8747,6 +8747,56 @@ def _remove_unreached_future_coaching_and_biggest_miss(report, stage_rank):
 
 
 
+
+
+def _final_cleanup_clean_lcr_unreached_rapport(report, transcript):
+    """
+    Clean LCR/DNQ early-stop calls should not be punished for 3-and-1 or rapport
+    when the call ended during qualification/medical eligibility before normal
+    rapport/fact-finding was fairly available.
+    """
+    if not report:
+        return report
+
+    clean_no_autofail = bool(re.search(r"(?im)^-\s*Automatic fail triggered:\s*NO\s*$", report))
+    no_sale = bool(re.search(r"(?im)^-\s*Policy sold:\s*NO\s*$|^- Was the policy sold\?\s*NO\s*$", report))
+    early_end = bool(re.search(r"(?im)^EARLY END:\s*YES\s*$", report))
+    lcr_or_dq = bool(re.search(
+        r"(?is)disqualifying health condition|DNQ condition|not able to qualify|won't be able to qualify|"
+        r"could not qualify|not eligible|inability to proceed",
+        (report or "") + "\n" + (transcript or ""),
+    ))
+
+    if not (clean_no_autofail and no_sale and early_end and lcr_or_dq):
+        return report
+
+    phrases = [
+        "3 and 1 Method incomplete",
+        "3 and 1 Method used: NO",
+        "Agent shared personal rapport information: NO",
+        "3 and 1 topic groups evidenced",
+        "3 and 1 agent self-disclosure evidence",
+        "Agent did not build rapport",
+        "rapport building",
+        "personal self-disclosure",
+        "agent shared personal rapport information",
+        "rapport or credibility",
+        "Product benefits explained: NO",
+        "Three options presented: NO",
+        "Application info collected: NO",
+        "Client chose an option: NO",
+    ]
+
+    for phrase in phrases:
+        report = _text_remove_lines_containing(report, phrase)
+
+    report = _cleanup_empty_sections_after_line_removal(report)
+
+    # If the task checklist now has an empty gap where rapport-only lines were,
+    # leave other legitimate reached-section checklist lines intact.
+
+    return report
+
 def _final_cleanup_clean_health_needs_hangup(report, transcript):
     """
     Clean health screen + Needs language means the call should not be summarized
@@ -9540,6 +9590,7 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _final_cleanup_summary_stage_contradictions(report)
     report = _final_cleanup_needs_stage_fields(report, transcript)
     report = _final_cleanup_false_quotes_stage(report, transcript)
+    report = _final_cleanup_clean_lcr_unreached_rapport(report, transcript)
     report = _final_cleanup_clean_health_needs_hangup(report, transcript)
     report = _final_cleanup_clean_early_unreached_sections(report, transcript)
     report = _final_cleanup_bootc_u90_report(report, transcript)
