@@ -9532,9 +9532,12 @@ def _final_cleanup_clean_early_unreached_sections(report, transcript):
 
 def _final_cleanup_false_quotes_stage(report, transcript):
     """
-    Downgrade Quotes back to Needs only for the narrow false-positive pattern:
-    the transcript reached Needs and contains generic quote/cost teaser language,
-    but no real option, premium, benefit amount, or monthly price presentation.
+    Downgrade Quotes back to Needs for narrow false-positive patterns:
+    1) transcript reached Needs and only contains generic quote/cost teaser language,
+       but no real option, premium, benefit amount, or monthly price presentation.
+    2) report says Quotes, but the report itself says product benefits/options
+       were not presented and the transcript shows existing-coverage / policy-checkup
+       work instead of an actual quote presentation.
     """
     if not report:
         return report
@@ -9542,10 +9545,40 @@ def _final_cleanup_false_quotes_stage(report, transcript):
     if not re.search(r"(?im)^CALL STAGE REACHED:\s*Quotes\s*$", report):
         return report
 
-    if not _transcript_reached_needs_section(transcript):
-        return report
+    generic_quote_false_positive = (
+        _transcript_reached_needs_section(transcript)
+        and _transcript_has_generic_quote_teaser_without_quotes(transcript)
+    )
 
-    if not _transcript_has_generic_quote_teaser_without_quotes(transcript):
+    report_denies_quotes = bool(
+        re.search(r"(?im)^-\s*Product benefits explained:\s*NO\s*$", report)
+        and re.search(r"(?im)^-\s*Three options presented:\s*NO\s*$", report)
+        and (
+            re.search(r"(?im)^-\s*Did the agent present options\?:\s*NO\s*$", report)
+            or re.search(r"(?im)^-\s*Client chose an option:\s*NO\s*$", report)
+        )
+    )
+
+    coverage_checkup_in_progress = bool(re.search(
+        r"(?is)"
+        r"policy checkup|"
+        r"give them a call|"
+        r"calling Transamerica|"
+        r"Thank you for calling Transamerica|"
+        r"policy owner|"
+        r"policy number|"
+        r"verify your identity|"
+        r"insurance company.*policy",
+        transcript or "",
+    ))
+
+    false_quotes_from_coverage_checkup = (
+        _transcript_reached_needs_section(transcript)
+        and report_denies_quotes
+        and coverage_checkup_in_progress
+    )
+
+    if not (generic_quote_false_positive or false_quotes_from_coverage_checkup):
         return report
 
     report = re.sub(
@@ -9555,31 +9588,79 @@ def _final_cleanup_false_quotes_stage(report, transcript):
         count=1,
     )
     report = re.sub(
-        r"(?im)^- Final stage supporting sale:\s*Quotes\s*$",
+        r"(?im)^-\s*Final stage supporting sale:\s*Quotes\s*$",
         "- Final stage supporting sale: Needs",
         report,
         count=1,
     )
 
-    report = re.sub(
-        r"(?i)call ended before application completion; no banking verification or disclosures completed",
-        "call ended during needs discovery before quotes, application, banking verification, or disclosures were completed",
-        report,
-    )
+    if false_quotes_from_coverage_checkup:
+        report = re.sub(
+            r"(?im)^-\s*Health questions completed:\s*(?:PARTIAL|NO)\s*$",
+            "- Health questions completed: YES",
+            report,
+            count=1,
+        )
+        report = re.sub(
+            r"(?im)^-\s*Did the agent complete health questions\?:\s*(?:PARTIAL|NO)\s*$",
+            "- Did the agent complete health questions? YES",
+            report,
+            count=1,
+        )
+
+        if re.search(r"(?im)^-\s*Existing coverage mentioned but not confirmed:", report):
+            report = re.sub(
+                r"(?im)^-\s*Existing coverage mentioned but not confirmed:.*$",
+                "- Existing coverage mentioned but not confirmed: IN PROCESS",
+                report,
+                count=1,
+            )
+        else:
+            report = re.sub(
+                r"(?im)^AUTOMATIC FAIL CHECKS:\s*$",
+                "AUTOMATIC FAIL CHECKS:\n- Existing coverage mentioned but not confirmed: IN PROCESS",
+                report,
+                count=1,
+            )
+
+        if not re.search(r"(?im)^-\s*Existing coverage mentioned but not confirmed:\s*(?:PARTIAL|IN PROCESS)\s*$", report):
+            report = re.sub(
+                r"(?im)^AUTOMATIC FAIL CHECKS:\s*$",
+                "AUTOMATIC FAIL CHECKS:\n- Existing coverage mentioned but not confirmed: IN PROCESS",
+                report,
+                count=1,
+            )
+
+        report = re.sub(
+            r"(?im)^-\s*Cool down completed:\s*YES\s*$",
+            "- Cool down completed: NOT REACHED",
+            report,
+            count=1,
+        )
 
     report = re.sub(
+        r"(?i)call ended before application completion; no banking verification or disclosures completed",
+        "call ended during needs discovery / existing-coverage review before quotes, application, banking verification, or disclosures were completed",
+        report,
+    )
+    report = re.sub(
         r"(?i)after quotes but before application",
-        "after needs discovery but before quotes or application",
+        "after needs discovery / existing-coverage review but before quotes or application",
         report,
     )
     report = re.sub(
         r"(?i)reached quotes but the call ended before application",
-        "reached needs discovery but the call ended before quotes or application",
+        "reached needs discovery / existing-coverage review but the call ended before quotes or application",
         report,
     )
     report = re.sub(
         r"(?i)the agent reached quotes",
-        "the agent reached needs discovery",
+        "the agent reached needs discovery / existing-coverage review",
+        report,
+    )
+    report = re.sub(
+        r"(?i)progressed the call through quotes",
+        "progressed the call through needs discovery and existing-coverage review",
         report,
     )
 
@@ -9671,6 +9752,41 @@ def _final_cleanup_needs_stage_fields(report, transcript):
         "call ended after needs discovery but before ",
         report,
     )
+
+    # Needs-stage coverage checkup in progress:
+    # carrier/provider call was attempted, but current coverage was not confirmed.
+    coverage_checkup_in_progress = bool(
+        re.search(r"(?im)^-\s*Did the agent call an insurance company to confirm current coverage\?:\s*YES\s*$", report)
+        and re.search(r"(?im)^-\s*Did the agent confirm current coverage\?:\s*NO\s*$", report)
+    )
+
+    coverage_checkup_in_progress = coverage_checkup_in_progress or bool(re.search(
+        r"(?is)"
+        r"policy checkup|"
+        r"Thank you for calling Transamerica|"
+        r"policy owner|"
+        r"policy number|"
+        r"verify your identity|"
+        r"carrier verification call attempted|"
+        r"insurance company to verify existing coverage",
+        (report or "") + "\n" + (transcript or ""),
+    ))
+
+    if coverage_checkup_in_progress:
+        if re.search(r"(?im)^-\s*Existing coverage mentioned but not confirmed:", report):
+            report = re.sub(
+                r"(?im)^-\s*Existing coverage mentioned but not confirmed:.*$",
+                "- Existing coverage mentioned but not confirmed: IN PROCESS",
+                report,
+                count=1,
+            )
+        else:
+            report = re.sub(
+                r"(?im)^AUTOMATIC FAIL CHECKS:\s*$",
+                "AUTOMATIC FAIL CHECKS:\n- Existing coverage mentioned but not confirmed: IN PROCESS",
+                report,
+                count=1,
+            )
 
     return report
 
@@ -10215,6 +10331,9 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _final_cleanup_summary_stage_contradictions(report)
     report = _final_cleanup_needs_stage_fields(report, transcript)
     report = _final_cleanup_false_quotes_stage(report, transcript)
+    # False-Quotes cleanup can downgrade Quotes -> Needs; run Needs cleanup again
+    # so Needs-stage checklist/coverage fields align after that stage correction.
+    report = _final_cleanup_needs_stage_fields(report, transcript)
     report = _final_cleanup_callback_existing_coverage_no_sale(report, transcript)
     report = _final_enforce_callback_needs_coverage_line(report)
     report = _final_cleanup_quotes_not_application(report, transcript)
@@ -10371,6 +10490,10 @@ def audit(transcript, progress_callback=None, call_name=None):
 
     report = _final_enforce_existing_coverage_autofail_pass_no(report)
     report = _final_enforce_callback_needs_coverage_line(report)
+    # Final stage-field alignment after audit-tail enforcement/evidence rewrites.
+    # This catches Needs-stage coverage-checkup reports where carrier verification
+    # was attempted but not completed.
+    report = _final_cleanup_needs_stage_fields(report, transcript)
     return report
 
 
