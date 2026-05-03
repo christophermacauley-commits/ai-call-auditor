@@ -2406,3 +2406,68 @@ run_case(
 )
 
 print("Clean LCR/DNQ unreached-rapport cleanup tests passed.")
+
+quotes_should_not_upgrade_to_application_report = """SCORE: 92
+RISK: LOW
+PASS: YES
+CALL STAGE REACHED: Application Information
+EARLY END: YES
+
+COMPLIANCE FAILURES: None
+
+SCRIPT / FLOW MISSES:
+- None
+
+TASK CHECKLIST:
+- Product benefits explained: YES
+- Three options presented: YES
+- Client chose an option: YES
+- Application info collected: PARTIAL
+
+SEARCHABLE ANSWERS:
+- Did the agent present options? YES
+- Did the client choose an option? YES
+- Was the policy sold? NO
+
+AUTOMATIC FAIL CHECKS:
+- Callback set: NO
+- Automatic fail triggered: NO
+- Reason: None
+
+SALE OUTCOME:
+- Policy sold: NO
+- Evidence: Application information was started after an attempted lowest-option close, but the prospect did not clearly commit and payment/banking were not reached.
+- Final stage supporting sale: Application Information
+
+SUMMARY:
+The agent progressed the call through Quotes. The call ended before application and banking stages.
+"""
+
+quotes_should_not_upgrade_to_application_transcript = """Agent: I'm going to share three affordable options with you.
+Agent: The first option you've qualified for is [MONEY] per month.
+Agent: The second option is [MONEY] per month.
+Agent: The third option is [MONEY] per month.
+Prospect: I got them.
+Agent: For me to send you a physical copy of all of this we would have to move forward with one of these options and I would have to fill out an application.
+Agent: So tell me, which option would you want your son to receive when that day comes?
+Prospect: I don't know. I have to go.
+"""
+
+run_case(
+    "quotes should not upgrade to application without application collection",
+    quotes_should_not_upgrade_to_application_report,
+    quotes_should_not_upgrade_to_application_transcript,
+    must_contain=[
+        "CALL STAGE REACHED: Quotes",
+        "- Final stage supporting sale: Quotes",
+        "- Application info collected: NOT REACHED",
+        "after quotes/options and before application or banking stages",
+    ],
+    must_not_contain=[
+        "CALL STAGE REACHED: Application Information",
+        "- Final stage supporting sale: Application Information",
+        "Application information was started",
+    ],
+)
+
+print("Quotes-not-application cleanup tests passed.")

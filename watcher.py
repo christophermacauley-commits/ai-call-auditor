@@ -8749,6 +8749,149 @@ def _remove_unreached_future_coaching_and_biggest_miss(report, stage_rank):
 
 
 
+
+
+def _transcript_reached_application_collection(transcript):
+    """
+    True only when the agent actually begins collecting application information
+    after quotes/options. Earlier DOB, health, checking-account, or qualification
+    questions do not count. Mentioning that an application would be needed is
+    not enough.
+    """
+    t = transcript or ""
+    if not t.strip():
+        return False
+
+    quote_markers = [
+        r"three affordable options",
+        r"first option",
+        r"second option",
+        r"third option",
+        r"which option",
+        r"qualified for .*? per month",
+    ]
+
+    quote_pos = None
+    for marker in quote_markers:
+        m = re.search(marker, t, flags=re.I | re.S)
+        if m and (quote_pos is None or m.start() < quote_pos):
+            quote_pos = m.start()
+
+    if quote_pos is None:
+        return False
+
+    after_quotes = t[quote_pos:]
+
+    # Hypothetical application language is still closing/quotes, not collection.
+    after_quotes = re.sub(
+        r"(?is)would have to .*?fill out an application",
+        "",
+        after_quotes,
+    )
+
+    return bool(re.search(
+        r"(?is)\b("
+        r"what(?:'s| is) (?:a )?good address|mail(?:ing)? address|send your policy (?:to|out to)|"
+        r"spell (?:your )?(?:first|last) name|"
+        r"social security number|ssn|"
+        r"who would you like (?:as|to be) (?:your )?beneficiary|beneficiary(?:'s)? date of birth|"
+        r"doctor(?:'s)? name|primary physician|"
+        r"application questions|start(?:ing)? (?:the )?application|fill(?:ing)? out (?:the )?application now|"
+        r"bank name|checking or savings|routing number|account number|"
+        r"read (?:over )?(?:these )?disclosures|voice signature"
+        r")\b",
+        after_quotes,
+    ))
+def _final_cleanup_quotes_not_application(report, transcript):
+    """
+    If quotes/options were reached but application collection did not actually
+    begin, do not upgrade the call stage to Application Information.
+
+    This handles both transcript evidence and report self-contradictions such as:
+    stage says Application Information, but sale outcome/summary says the call
+    ended before application and banking.
+    """
+    if not report:
+        return report
+
+    stage_application = bool(re.search(r"(?im)^CALL STAGE REACHED:\s*Application Information\s*$", report))
+    final_application = bool(re.search(r"(?im)^-\s*Final stage supporting sale:\s*Application Information\s*$", report))
+
+    if not (stage_application or final_application):
+        return report
+
+    sold_no = bool(re.search(r"(?im)^-\s*Policy sold:\s*NO\s*$|^-\s*Was the policy sold\?\s*NO\s*$", report))
+    report_says_before_application = bool(re.search(
+        r"(?is)"
+        r"ended before application|"
+        r"before application and banking|"
+        r"payment/banking (?:were|was) not reached|"
+        r"banking (?:was|were) not reached|"
+        r"call ended before application",
+        report,
+    ))
+
+    quotes_reached = bool(re.search(
+        r"(?is)\b("
+        r"three affordable options|first option|second option|third option|"
+        r"which option|qualified for .* per month|"
+        r"check for \[?MONEY\]?|per month|monthly"
+        r")\b",
+        (transcript or "") + "\n" + report,
+    ))
+
+    application_collection_after_quotes = _transcript_reached_application_collection(transcript)
+
+    # Strong report contradiction: no sale + report says before application/banking.
+    should_downgrade = sold_no and report_says_before_application
+
+    # Transcript path: quotes reached, but no post-quotes application collection.
+    should_downgrade = should_downgrade or (quotes_reached and not application_collection_after_quotes)
+
+    if not should_downgrade:
+        return report
+
+    report = re.sub(
+        r"(?im)^CALL STAGE REACHED:\s*Application Information\s*$",
+        "CALL STAGE REACHED: Quotes",
+        report,
+        count=1,
+    )
+    report = re.sub(
+        r"(?im)^-\s*Final stage supporting sale:\s*Application Information\s*$",
+        "- Final stage supporting sale: Quotes",
+        report,
+        count=1,
+    )
+
+    report = re.sub(
+        r"(?im)^-\s*Application info collected:\s*(?:YES|PARTIAL)\s*$",
+        "- Application info collected: NOT REACHED",
+        report,
+    )
+
+    report = re.sub(
+        r"(?i)Application information was started after an attempted lowest-option close, but\s*",
+        "",
+        report,
+    )
+    report = re.sub(
+        r"(?i)the call ended before application and banking stages",
+        "the call ended after quotes/options and before application or banking stages",
+        report,
+    )
+    report = re.sub(
+        r"(?i)ended before application and banking stages",
+        "ended after quotes/options and before application or banking stages",
+        report,
+    )
+    report = re.sub(
+        r"(?i)before application and banking",
+        "after quotes/options and before application or banking",
+        report,
+    )
+
+    return report
 def _final_cleanup_clean_lcr_unreached_rapport(report, transcript):
     """
     Clean LCR/DNQ early-stop calls should not be punished for 3-and-1 or rapport
@@ -9590,6 +9733,7 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _final_cleanup_summary_stage_contradictions(report)
     report = _final_cleanup_needs_stage_fields(report, transcript)
     report = _final_cleanup_false_quotes_stage(report, transcript)
+    report = _final_cleanup_quotes_not_application(report, transcript)
     report = _final_cleanup_clean_lcr_unreached_rapport(report, transcript)
     report = _final_cleanup_clean_health_needs_hangup(report, transcript)
     report = _final_cleanup_clean_early_unreached_sections(report, transcript)
