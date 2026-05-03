@@ -1,3 +1,10 @@
+SCRIPT USAGE POLICY
+- The script is a guide to intended flow, section purpose, stage anchors, and required process/compliance items — not a word-for-word grading standard.
+- Do not fail, penalize, or coach an agent solely because they paraphrased the script when the section's purpose was completed.
+- Exact wording matters only where this checklist, the rubric, or the audit prompt explicitly requires exact wording or a required disclosure/process statement.
+- Use script wording mainly to identify which stage was reached, whether required sections were skipped, whether required compliance/process steps were completed, and whether the agent preserved the intended sales flow.
+- If the agent accomplishes the script intent with equivalent language, credit the item unless a specific required phrase/process is missing.
+
 PQ / HANDOFF
 - PQ transfer occurred
 - PQ introduced themselves
