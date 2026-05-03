@@ -3556,7 +3556,7 @@ def update_call_disposition(call_id):
     if manual and manual not in VALID_DISPOSITIONS:
         manual = ""
 
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
 
     row = c.execute(
