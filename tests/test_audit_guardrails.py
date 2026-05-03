@@ -535,7 +535,7 @@ run_case(
     age_disqualification_transcript,
     must_contain=[
         "PASS: YES",
-        "RISK: MEDIUM",
+        "RISK: LOW",
         "SCORE: 90",
         "- Automatic fail triggered: NO",
         "- Reason: None",
@@ -608,7 +608,7 @@ run_case(
     no_income_lcr_transcript,
     must_contain=[
         "PASS: YES",
-        "RISK: MEDIUM",
+        "RISK: LOW",
         "SCORE: 90",
         "- Automatic fail triggered: NO",
         "- Reason: None",
@@ -686,7 +686,7 @@ run_case(
     disqualification_coaching_cleanup_transcript,
     must_contain=[
         "SCORE: 90",
-        "RISK: MEDIUM",
+        "RISK: LOW",
         "PASS: YES",
         "- Automatic fail triggered: NO",
         "- Reason: None",
@@ -882,7 +882,7 @@ run_case(
     clean_disqualification_transcript,
     must_contain=[
         "SCORE: 90",
-        "RISK: MEDIUM",
+        "RISK: LOW",
         "PASS: YES",
         "- Automatic fail triggered: NO",
         "- Reason: None",
@@ -1189,7 +1189,7 @@ run_case(
     true_lcr_agent_states_no_qualify_transcript,
     must_contain=[
         "SCORE: 90",
-        "RISK: MEDIUM",
+        "RISK: LOW",
         "PASS: YES",
         "Prospect had a disqualifying health condition.",
         "BIGGEST MISS:\n- None",
@@ -1604,3 +1604,131 @@ run_case(
 )
 
 print("False Quotes-stage cleanup tests passed.")
+
+clean_short_call_should_not_grade_unreached_sections_report = """SCORE: 85
+RISK: MEDIUM
+PASS: YES
+CALL STAGE REACHED: Who I Am / What I Do
+EARLY END: YES
+NOT REACHED:
+- Fact Finding / Warm-up
+- Product benefits
+- Three options
+
+COMPLIANCE FAILURES:
+- None
+
+SCRIPT / FLOW MISSES:
+- 3 and 1 Method incomplete: agent did not complete rapport.
+- Product benefits explained incomplete.
+- Three options presented incomplete.
+
+TASK CHECKLIST:
+- Agent introduction: YES
+- 3 and 1 Method used: NO
+- Product benefits explained: NO
+- Three options presented: NO
+- Application info collected: NO
+
+SEARCHABLE ANSWERS:
+- Was the policy sold? NO
+
+AUTOMATIC FAIL CHECKS:
+- Callback set: NO
+- Automatic fail triggered: NO
+- Reason: None
+
+SALE OUTCOME:
+- Policy sold: NO
+- Final stage supporting sale: Who I Am / What I Do
+
+COACHING:
+- Complete the 3 and 1 method next time.
+
+BIGGEST MISS:
+- 3 and 1 Method incomplete.
+"""
+
+clean_short_call_transcript = """Agent: Hi, this is Ashley calling about the benefits.
+Prospect: Not interested.
+Agent: I understand.
+Prospect: Bye.
+"""
+
+run_case(
+    "clean short call should not grade unreached future sections",
+    clean_short_call_should_not_grade_unreached_sections_report,
+    clean_short_call_transcript,
+    must_contain=[
+        "RISK: LOW",
+        "- Product benefits explained: NOT REACHED",
+        "- Three options presented: NOT REACHED",
+        "- Application info collected: NOT REACHED",
+        "confident tonality",
+    ],
+    must_not_contain=[
+        "3 and 1 Method incomplete",
+    ],
+)
+
+clean_disq_should_not_grade_future_sections_report = """SCORE: 90
+RISK: MEDIUM
+PASS: YES
+CALL STAGE REACHED: Who I Am / What I Do
+EARLY END: YES
+NOT REACHED:
+- Product benefits
+- Three options
+- Application information
+
+COMPLIANCE FAILURES:
+- None
+
+SCRIPT / FLOW MISSES:
+- Product benefits explained incomplete.
+- Three options presented incomplete.
+- Application info collected incomplete.
+
+TASK CHECKLIST:
+- Agent introduction: YES
+- Product benefits explained: NO
+- Three options presented: NO
+- Application info collected: NO
+
+SEARCHABLE ANSWERS:
+- Was the policy sold? NO
+
+AUTOMATIC FAIL CHECKS:
+- Callback set: NO
+- Automatic fail triggered: NO
+- Reason: None
+
+SALE OUTCOME:
+- Policy sold: NO
+- Evidence: Prospect had no income / affordability barrier, so the agent appropriately did not continue the sale.
+- Final stage supporting sale: Who I Am / What I Do
+
+COACHING:
+- Product benefits and closing need improvement.
+
+BIGGEST MISS:
+- Product benefits explained incomplete.
+"""
+
+run_case(
+    "clean disqualification should not grade unreached future sections",
+    clean_disq_should_not_grade_future_sections_report,
+    "Prospect: I do not have any income right now.\nAgent: I understand.",
+    must_contain=[
+        "RISK: LOW",
+        "- Product benefits explained: NOT REACHED",
+        "- Three options presented: NOT REACHED",
+        "- Application info collected: NOT REACHED",
+    ],
+    must_not_contain=[
+        "Product benefits explained incomplete",
+        "Three options presented incomplete",
+    ],
+)
+
+print("Clean early/unreached-section cleanup tests passed.")

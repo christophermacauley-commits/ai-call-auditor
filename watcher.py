@@ -7623,6 +7623,309 @@ def _transcript_has_generic_quote_teaser_without_quotes(transcript):
     return generic_teaser and not _transcript_reached_quotes_or_options(transcript)
 
 
+
+
+def _report_is_clean_unsold_no_autofail(report):
+    """True for unsold calls that should not be punished for unreached future stages."""
+    if not report:
+        return False
+
+    sold_yes = bool(re.search(r"(?im)^- Policy sold:\s*YES\s*$|^- Was the policy sold\?\s*YES\s*$", report))
+    autofail_yes = bool(re.search(r"(?im)^- Automatic fail triggered:\s*YES\s*$", report))
+    if sold_yes or autofail_yes:
+        return False
+
+    clean_stop = bool(re.search(
+        r"(?is)EARLY END:\s*YES|"
+        r"prospect stopped responding|disconnected before the agent could continue|"
+        r"outside the eligible age range|"
+        r"no income|affordability barrier|"
+        r"not eligible / could not reasonably proceed|"
+        r"disqualifying health condition",
+        report,
+    ))
+
+    return clean_stop
+
+
+def _stage_rank_for_cleanup(stage):
+    order = {
+        "PQ / Handoff": 0,
+        "Opening": 1,
+        "Who I Am / What I Do": 2,
+        "Fact Finding / Warm-up": 3,
+        "Warm-up": 3,
+        "Medical / Health": 4,
+        "Need": 5,
+        "Needs": 5,
+        "Features / Benefits": 6,
+        "Change Up": 7,
+        "Pre-Close": 8,
+        "Quotes": 9,
+        "Close": 10,
+        "Application Information": 11,
+        "Payment Date": 12,
+        "Banking": 13,
+        "Disclosures": 14,
+        "Third Party Underwriting": 15,
+        "Peace of Mind": 16,
+        "Cool Down": 17,
+    }
+    return order.get((stage or "").strip(), -1)
+
+
+def _current_report_stage_rank(report):
+    m = re.search(r"(?im)^CALL STAGE REACHED:\s*(.+?)\s*$", report or "")
+    if not m:
+        return -1
+    return _stage_rank_for_cleanup(m.group(1).strip())
+
+
+def _replace_task_no_with_not_reached(report, labels):
+    for label in labels:
+        report = re.sub(
+            rf"(?im)^(-\s*{re.escape(label)}:\s*)NO\s*$",
+            rf"\1NOT REACHED",
+            report,
+        )
+    return report
+
+
+def _remove_unreached_future_flow_misses(report, stage_rank):
+    """
+    Remove flow-miss lines that only criticize future unreached sections.
+
+    Important: limit this cleanup to the SCRIPT / FLOW MISSES section.
+    Do not remove TASK CHECKLIST rows like "Payment date explained: NOT REACHED",
+    because those rows are useful and existing guardrails expect them.
+    """
+    future_miss_patterns = [
+        "Product benefits",
+        "product explanation",
+        "features / benefits",
+        "Three options",
+        "options presented",
+        "Client choice",
+        "client chose",
+        "Application info",
+        "application information",
+        "Payment date",
+        "Banking/payment",
+        "banking/account",
+        "Routing number",
+        "Disclosures",
+        "Third Party Underwriting",
+        "Peace of Mind",
+        "Cool Down",
+        "closing",
+        "close",
+    ]
+
+    if stage_rank < _stage_rank_for_cleanup("Fact Finding / Warm-up"):
+        future_miss_patterns.extend([
+            "3 and 1",
+            "3-and-1",
+            "rapport",
+            "personal self-disclosure",
+            "agent shared personal rapport information",
+        ])
+
+    m = re.search(
+        r"(?ims)^SCRIPT / FLOW MISSES:\s*(.*?)(?=^TASK CHECKLIST:|^PQ / HANDOFF:|^SEARCHABLE ANSWERS:|^AUTOMATIC FAIL CHECKS:|^SALE OUTCOME:|^SCORING BREAKDOWN:|^COACHING:|^BIGGEST MISS:|^SUMMARY:|^OPENAI COST ESTIMATE:|\Z)",
+        report or "",
+    )
+    if not m:
+        return report
+
+    body = m.group(1)
+    kept_lines = []
+    for line in body.splitlines():
+        if any(p.lower() in line.lower() for p in future_miss_patterns):
+            continue
+        kept_lines.append(line)
+
+    new_body = "\n".join(kept_lines).strip()
+    if not new_body:
+        new_body = "- None"
+
+    return report[:m.start()] + "SCRIPT / FLOW MISSES:\n" + new_body + "\n\n" + report[m.end():]
+
+
+def _cleanup_empty_sections_after_line_removal(report):
+    """Normalize empty sections left after removing future-stage misses."""
+    section_headers = [
+        "COMPLIANCE FAILURES",
+        "SCRIPT / FLOW MISSES",
+    ]
+
+    for header in section_headers:
+        pattern = rf"(?ims)^({re.escape(header)}:\s*)(.*?)(?=^[A-Z][A-Z /?-]+:|^TASK CHECKLIST:|^SEARCHABLE ANSWERS:|^AUTOMATIC FAIL CHECKS:|^SALE OUTCOME:|^SCORING BREAKDOWN:|^COACHING:|^BIGGEST MISS:|^SUMMARY:|^OPENAI COST ESTIMATE:|\Z)"
+        m = re.search(pattern, report)
+        if not m:
+            continue
+        body = m.group(2)
+        real_lines = [
+            ln for ln in body.splitlines()
+            if ln.strip() and not re.fullmatch(r"\s*[-•]?\s*(None|N/A|Not applicable)\s*", ln.strip(), re.I)
+        ]
+        if not real_lines:
+            report = report[:m.start()] + f"{header}:\n- None\n\n" + report[m.end():]
+
+    return report
+
+
+def _ensure_tonality_coaching_for_clean_short_call(report, stage_rank):
+    """
+    Early calls that end before real coaching sections should get useful opening
+    tonality coaching instead of unreached script-section criticism.
+    """
+    if stage_rank > _stage_rank_for_cleanup("Who I Am / What I Do"):
+        return report
+
+    tonality = "Use confident tonality and a sharp, professional opening so the call starts with control and credibility."
+
+    if re.search(r"(?i)confident tonality|proper tonality|sharp and professional|professional tonality", report or ""):
+        return report
+
+    if re.search(r"(?im)^COACHING:\s*", report):
+        return re.sub(
+            r"(?im)^COACHING:\s*",
+            "COACHING:\n- " + tonality + "\n",
+            report,
+            count=1,
+        )
+
+    if re.search(r"(?im)^BIGGEST MISS:\s*", report):
+        return re.sub(
+            r"(?im)^BIGGEST MISS:\s*",
+            "COACHING:\n- " + tonality + "\n\nBIGGEST MISS:\n",
+            report,
+            count=1,
+        )
+
+    return report.rstrip() + "\n\nCOACHING:\n- " + tonality + "\n"
+
+
+
+
+def _remove_unreached_future_coaching_and_biggest_miss(report, stage_rank):
+    """
+    Remove coaching/biggest-miss items that criticize sections the agent did not
+    fairly reach. Keep useful early tonality coaching.
+    """
+    if not report:
+        return report
+
+    future_patterns = [
+        "Product benefits",
+        "product explanation",
+        "features / benefits",
+        "Three options",
+        "options presented",
+        "Client choice",
+        "client chose",
+        "Application info",
+        "application information",
+        "Payment date",
+        "Banking/payment",
+        "banking/account",
+        "Routing number",
+        "Disclosures",
+        "Third Party Underwriting",
+        "Peace of Mind",
+        "Cool Down",
+        "closing",
+        "close",
+    ]
+
+    if stage_rank < _stage_rank_for_cleanup("Fact Finding / Warm-up"):
+        future_patterns.extend([
+            "3 and 1",
+            "3-and-1",
+            "rapport",
+            "personal self-disclosure",
+            "agent shared personal rapport information",
+        ])
+
+    def line_is_future_unreached(line):
+        low = line.lower()
+        return any(p.lower() in low for p in future_patterns)
+
+    for header in ["COACHING", "BIGGEST MISS"]:
+        m = re.search(
+            rf"(?ims)^({header}:\s*)(.*?)(?=^OBJECTIONS DETECTED:|^SUMMARY:|^TRANSCRIPT NOTE|^OPENAI COST ESTIMATE:|^BIGGEST MISS:|^COACHING:|\Z)",
+            report,
+        )
+        if not m:
+            continue
+
+        body = m.group(2)
+        kept = []
+        for line in body.splitlines():
+            if line_is_future_unreached(line):
+                continue
+            kept.append(line)
+
+        new_body = "\n".join([ln for ln in kept if ln.strip()]).strip()
+
+        if header == "BIGGEST MISS":
+            if not new_body:
+                new_body = "- None"
+        else:
+            if not new_body:
+                new_body = "- Use confident tonality and a sharp, professional opening so the call starts with control and credibility."
+
+        report = report[:m.start()] + f"{header}:\n{new_body}\n\n" + report[m.end():]
+
+    return report
+
+def _final_cleanup_clean_early_unreached_sections(report, transcript):
+    """
+    Clean early stops and clean disqualifications should not be penalized for
+    future script sections that were never fairly reached.
+    """
+    if not _report_is_clean_unsold_no_autofail(report):
+        return report
+
+    stage_rank = _current_report_stage_rank(report)
+
+    # Clean unsold early/disqualification reports should not remain MEDIUM/HIGH
+    # risk unless a separate automatic fail exists.
+    report = re.sub(r"(?im)^RISK:\s*(MEDIUM|HIGH)\s*$", "RISK: LOW", report, count=1)
+
+    # Convert future unreached task checklist items from NO to NOT REACHED.
+    future_labels = [
+        "Product benefits explained",
+        "Three options presented",
+        "Client chose an option",
+        "Application info collected",
+        "Payment date explained",
+        "Banking/payment setup explained",
+        "Banking/account information requested or verified 3 times",
+        "Routing number requested or verified 3 times",
+        "Disclosures completed",
+        "Third Party Underwriting completed",
+        "Peace of Mind completed",
+        "Cool Down completed",
+        "Cooldown completed",
+    ]
+
+    if stage_rank < _stage_rank_for_cleanup("Fact Finding / Warm-up"):
+        future_labels.extend([
+            "3 and 1 Method used",
+            "3 and 1 agent self-disclosure evidence",
+            "Agent shared personal rapport information",
+        ])
+
+    report = _replace_task_no_with_not_reached(report, future_labels)
+    report = _remove_unreached_future_flow_misses(report, stage_rank)
+    report = _remove_unreached_future_coaching_and_biggest_miss(report, stage_rank)
+
+    report = _cleanup_empty_sections_after_line_removal(report)
+    report = _ensure_tonality_coaching_for_clean_short_call(report, stage_rank)
+
+    return report
+
 def _final_cleanup_false_quotes_stage(report, transcript):
     """
     Downgrade Quotes back to Needs only for the narrow false-positive pattern:
@@ -8308,6 +8611,7 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _final_cleanup_summary_stage_contradictions(report)
     report = _final_cleanup_needs_stage_fields(report, transcript)
     report = _final_cleanup_false_quotes_stage(report, transcript)
+    report = _final_cleanup_clean_early_unreached_sections(report, transcript)
     report = _final_cleanup_promote_biggest_miss_from_flow_misses(report, transcript)
     report = _restore_safe_business_terms(report)
     return report
