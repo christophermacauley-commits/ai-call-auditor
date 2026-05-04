@@ -1322,7 +1322,9 @@ def detect_auto_disposition(call_name, transcript, report, duration_seconds=None
         r"(?is)\b("
         r"over\s*80|older than\s*80|too old|outside (?:the )?age range|age limit|"
         r"cannot qualify due to age|can't qualify due to age|not able to qualify due to age|"
-        r"due to (?:your|the) age.{0,120}(?:not going to be able to qualify|not able to qualify|can't qualify|cannot qualify)|"
+        r"due to (?:your|the) age|"
+        r"need your age.{0,220}(?:unfortunately|due to your age)|"
+        r"agent disqualified prospect due to age|disqualified prospect due to age|"
         r"cutoff is \[NUMBER\]|cutoff age|age cutoff|up until age \[NUMBER\]"
         r")\b",
         combined,
@@ -10152,6 +10154,10 @@ def _final_cleanup_disqualification_no_agent_fault(report, transcript):
         "Fact Finding / Warm-up not reached, so no rapport",
         "Maintain confident and clear communication",
         "Avoid abrupt ending",
+        "Avoid ending the call abruptly",
+        "without attempting to reframe",
+        "offer alternative options",
+        "reframe or offer alternative options",
         "agent did not attempt to redirect",
         "did not attempt to redirect",
         "handle per process beyond immediate stop",
