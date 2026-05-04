@@ -2603,3 +2603,41 @@ run_fair_disqualification_cleanup_case(
 )
 
 print("Real-call fair disqualification cleanup tests passed.")
+
+# Real-call hold-only callback should not clear poor call-control finding.
+run_case(
+    "hold-only callback does not clear poor call control",
+    """SCORE: 78
+RISK: LOW
+PASS: YES
+CALL STAGE REACHED: Fact Finding / Warm-up
+EARLY END: YES
+
+AUTOMATIC FAIL CHECKS:
+- Callback set: NO
+- Objection occurred without proper call control: YES
+- Existing coverage mentioned but not confirmed: NO
+- Credit union mentioned but bank/account not verified: NO
+- Automatic fail triggered: YES
+- Reason: Objection occurred without proper call control
+
+SALE OUTCOME:
+- Policy sold: NO
+- Final stage supporting sale: None
+
+COACHING:
+- Improve call control.
+""",
+    Path("transcripts/health_questions_poor_call_control.txt").read_text(errors="ignore"),
+    must_contain=(
+        "PASS: NO",
+        "RISK: HIGH",
+        "- Objection occurred without proper call control: YES",
+        "- Automatic fail triggered: YES",
+    ),
+    must_not_contain=(
+        "The agent made a call-control attempt",
+        "flow back into the script after the control statement",
+    ),
+)
+print("Hold-only callback poor call-control regression test passed.")

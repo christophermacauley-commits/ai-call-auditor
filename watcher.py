@@ -887,12 +887,46 @@ def _final_cleanup_confirmed_existing_coverage(report, transcript):
 
     return report
 
+def _transcript_has_hold_only_callback_no_control(transcript):
+    """
+    Prospect asking to be left on hold, followed by agent waiting or scheduling a callback,
+    is not a real call-control / continuation attempt.
+    """
+    t = (transcript or "").lower()
+    if not t:
+        return False
+
+    hold_request = bool(re.search(
+        r"(?is)(you can just leave me on hold|leave me on hold|put me on hold|hold on)",
+        t,
+    ))
+    agent_only_waits_or_callback = bool(re.search(
+        r"(?is)(i['’]?ll wait here|i will wait here|what time works to call you back|what time works|call you back|call back)",
+        t,
+    ))
+    real_control_before_hold = bool(re.search(
+        r"(?is)(this (?:isn['’]?t|is not) going to take much longer|"
+        r"just (?:a few|couple) (?:more )?questions|"
+        r"we(?:'|’)re almost done|"
+        r"let(?:'|’)s finish this|"
+        r"i just need to finish|"
+        r"before we stop|"
+        r"real quick)",
+        t,
+    ))
+
+    return hold_request and agent_only_waits_or_callback and not real_control_before_hold
+
+
 def _final_cleanup_call_control_attempt(report, transcript):
     """
     If the transcript shows a call-control attempt, remove false 'no call control'
     language and replace it with softer coaching about improving the redirect.
     """
     if not report or not _transcript_has_call_control_attempt(transcript):
+        return report
+
+    if _transcript_has_hold_only_callback_no_control(transcript):
         return report
 
     report = re.sub(
