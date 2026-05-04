@@ -2671,3 +2671,31 @@ def run_u90_report_cleanup_case():
 
 run_u90_report_cleanup_case()
 print("Real-call clean U90 report cleanup test passed.")
+
+# Real-call sold clean report should not inherit stale call-control-attempt coaching.
+def run_sold_clean_no_stale_call_control_coaching_case():
+    from pathlib import Path
+    name = "sold_clean_call"
+    transcript = Path("transcripts", f"{name}.txt").read_text(errors="ignore")
+    report = Path("reports", f"{name}_report.txt").read_text(errors="ignore")
+    out = watcher.enforce_final_audit_consistency(report, transcript)
+    out = watcher.enforce_pass_logic(out)
+    out = watcher.enforce_risk_for_automatic_fail(out)
+    out = watcher.redact_report_text(out)
+
+    for s in (
+        "PASS: YES",
+        "RISK: LOW",
+    ):
+        check(f"{name} sold clean contains {s!r}", s in out, out)
+
+    for s in (
+        "The agent made a call-control attempt",
+        "flow back into the script after the control statement",
+        "giving the prospect another exit",
+        "Call control was attempted, but the agent should flow back into the script",
+    ):
+        check(f"{name} sold clean not contains {s!r}", s not in out, out)
+
+run_sold_clean_no_stale_call_control_coaching_case()
+print("Real-call sold clean stale call-control cleanup test passed.")

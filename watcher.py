@@ -927,11 +927,34 @@ def _final_cleanup_call_control_attempt(report, transcript):
     """
     If the transcript shows a call-control attempt, remove false 'no call control'
     language and replace it with softer coaching about improving the redirect.
+
+    Do not add call-control coaching to clean calls that never had a call-control
+    miss or objection-control autofail in the report.
     """
     if not report or not _transcript_has_call_control_attempt(transcript):
         return report
 
     if _transcript_has_hold_only_callback_no_control(transcript):
+        return report
+
+    had_call_control_problem = bool(re.search(
+        r"(?is)"
+        r"Objection occurred without proper call control:\s*YES|"
+        r"without proper call control|"
+        r"no call control attempt|"
+        r"did not attempt calm call control|"
+        r"Failure to attempt calm call control",
+        report,
+    ))
+    if not had_call_control_problem:
+        stale_call_control_phrases = [
+            "The agent made a call-control attempt",
+            "flow back into the script after the control statement",
+            "giving the prospect another exit",
+            "Call control was attempted, but the agent should flow back into the script",
+        ]
+        for phrase in stale_call_control_phrases:
+            report = _text_remove_lines_containing(report, phrase)
         return report
 
     report = re.sub(
