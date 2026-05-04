@@ -460,7 +460,8 @@ def _transcript_suggests_u90(transcript):
     short_text = len(words) < 320
     early_stop = bool(re.search(
         r"(?is)\b("
-        r"not interested|bye|bye-bye|hung up|disconnected|stop calling|wrong number|"
+        r"not interested|not interested in that|don'?t have time|do not have time|"
+        r"bye|bye-bye|hung up|disconnected|stop calling|wrong number|"
         r"are you there|hello\?|i thought it was something else|already handled|"
         r"already have (?:it|that) (?:handled|taken care of)"
         r")\b",
@@ -1153,7 +1154,31 @@ def _final_cleanup_bootc_u90_report(report, transcript):
             count=1,
         )
 
-    if is_u90 and clean_no_autofail:
+    if is_u90:
+        real_reason = ""
+        rm = re.search(r"(?im)^- Reason:\s*(.+)$", report or "")
+        if rm:
+            real_reason = rm.group(1).strip().lower()
+
+        call_control_only_autofail = bool(re.search(
+            r"(?im)^- Automatic fail triggered:\s*YES\b",
+            report,
+        )) and (
+            "objection occurred without proper call control" in real_reason
+            or "call control" in real_reason
+            or not real_reason
+        )
+
+        if clean_no_autofail or call_control_only_autofail:
+            report = _set_callback_fields(
+                report,
+                objection_no_control=False,
+                autofail=False,
+                reason="None",
+            )
+            report = re.sub(r"(?im)^RISK:\s*(LOW|MEDIUM|HIGH)\s*$", "RISK: LOW", report, count=1)
+            report = re.sub(r"(?im)^PASS:\s*(NO|AT RISK)\s*$", "PASS: YES", report, count=1)
+
         m = re.search(r"(?im)^SCORE:\s*(\d+)\b", report)
         if m:
             try:
