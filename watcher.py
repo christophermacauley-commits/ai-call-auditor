@@ -453,12 +453,17 @@ def _transcript_suggests_u90(transcript):
         return duration < 110
 
     # Fallback for transcript fixtures / reports without explicit duration:
-    # very short transcript with early refusal/disconnect.
+    # short transcript with early refusal/disconnect. Keep this conservative:
+    # require both an early-stop cue and meaningful agent start.
     t = transcript or ""
     words = re.findall(r"\w+", t)
-    short_text = len(words) < 220
+    short_text = len(words) < 320
     early_stop = bool(re.search(
-        r"(?is)\b(not interested|bye|hung up|disconnected|stop calling|wrong number|are you there|hello\?)\b",
+        r"(?is)\b("
+        r"not interested|bye|bye-bye|hung up|disconnected|stop calling|wrong number|"
+        r"are you there|hello\?|i thought it was something else|already handled|"
+        r"already have (?:it|that) (?:handled|taken care of)"
+        r")\b",
         t,
     ))
     return short_text and early_stop and _transcript_has_meaningful_agent_start(t)
@@ -1082,8 +1087,11 @@ def _final_cleanup_bootc_u90_report(report, transcript):
     if not (is_bootc or is_u90):
         return report
 
-    if not re.search(r"(?im)^- Automatic fail triggered:\s*YES\s*$", report):
+    clean_no_autofail = not re.search(r"(?im)^- Automatic fail triggered:\s*YES\s*$", report)
+
+    if clean_no_autofail:
         report = re.sub(r"(?im)^RISK:\s*(MEDIUM|HIGH)\s*$", "RISK: LOW", report, count=1)
+        report = re.sub(r"(?im)^PASS:\s*(NO|AT RISK)\s*$", "PASS: YES", report, count=1)
 
     if is_bootc:
         report = re.sub(
@@ -1092,6 +1100,38 @@ def _final_cleanup_bootc_u90_report(report, transcript):
             report,
             count=1,
         )
+
+    if is_u90 and clean_no_autofail:
+        m = re.search(r"(?im)^SCORE:\s*(\d+)\b", report)
+        if m:
+            try:
+                score = int(m.group(1))
+            except Exception:
+                score = None
+            if score is not None and score < 90:
+                report = re.sub(r"(?im)^SCORE:\s*\d+\b", "SCORE: 90", report, count=1)
+
+        # A clean U90 is too short to fairly penalize for full objection/call-control execution.
+        u90_remove_phrases = [
+            "Early refusal call",
+            "did not attempt calm call control",
+            "Attempt calm call control",
+            "calm call control",
+            "coverage already handled",
+            "early objection",
+            "despite early objections",
+            "poor objection handling",
+        ]
+        for phrase in u90_remove_phrases:
+            report = _text_remove_lines_containing(report, phrase)
+
+        if re.search(r"(?ims)^BIGGEST MISS:\s*(?=^SUMMARY:|^OPENAI COST ESTIMATE:|\Z)", report):
+            report = re.sub(
+                r"(?ims)^BIGGEST MISS:\s*(?=^SUMMARY:|^OPENAI COST ESTIMATE:|\Z)",
+                "BIGGEST MISS:\n- None\n\n",
+                report,
+                count=1,
+            )
 
     tonality = "Use confident tonality and a sharp, professional opening so the call starts with control and credibility."
 
@@ -1221,9 +1261,6 @@ def detect_auto_disposition(call_name, transcript, report, duration_seconds=None
     if report_stage_pre_start and very_short_transcript:
         return "BOOTC", "Call ended before the agent meaningfully started the sales process."
 
-    if _transcript_suggests_u90(transcript):
-        return "U90", "Call duration was under the short-call threshold."
-
     combined = ((transcript or "") + "\n" + (report or "")).lower()
 
     if report_says_policy_sold_for_disposition(report):
@@ -1276,6 +1313,11 @@ def detect_auto_disposition(call_name, transcript, report, duration_seconds=None
         re.I | re.S,
     ):
         return "LCR", "No-income / affordability disqualification language detected."
+
+    # U90 is a fallback operational disposition. It should not outrank SOLD, AGE,
+    # or LCR when the call has a clearer business outcome.
+    if _transcript_suggests_u90(transcript):
+        return "U90", "Call duration was under the short-call threshold."
 
     # BOOTC should stay conservative until duration/first-seconds support is added.
     opening_only = bool(re.search(

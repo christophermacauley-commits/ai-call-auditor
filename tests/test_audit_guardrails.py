@@ -2641,3 +2641,33 @@ COACHING:
     ),
 )
 print("Hold-only callback poor call-control regression test passed.")
+
+# Real-call clean U90 report cleanup test.
+def run_u90_report_cleanup_case():
+    from pathlib import Path
+    name = "u90_no_call_control"
+    transcript = Path("transcripts", f"{name}.txt").read_text(errors="ignore")
+    report = Path("reports", f"{name}_report.txt").read_text(errors="ignore")
+    out = watcher.enforce_final_audit_consistency(report, transcript)
+    out = watcher.enforce_pass_logic(out)
+    out = watcher.enforce_risk_for_automatic_fail(out)
+    out = watcher.redact_report_text(out)
+
+    for s in (
+        "SCORE: 90",
+        "RISK: LOW",
+        "PASS: YES",
+        "- Objection occurred without proper call control: NO",
+    ):
+        check(f"{name} U90 cleanup contains {s!r}", s in out, out)
+
+    for s in (
+        "Early refusal call",
+        "did not attempt calm call control",
+        "Attempt calm call control",
+        "coverage already handled to maintain engagement",
+    ):
+        check(f"{name} U90 cleanup not contains {s!r}", s not in out, out)
+
+run_u90_report_cleanup_case()
+print("Real-call clean U90 report cleanup test passed.")
