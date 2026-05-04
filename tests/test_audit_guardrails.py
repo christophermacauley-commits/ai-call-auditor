@@ -2545,3 +2545,157 @@ run_case(
 )
 
 print("Callback + unconfirmed coverage no-sale cleanup tests passed.")
+
+# Real-call disposition regression tests.
+def run_disposition_case(name, expected):
+    from pathlib import Path
+    transcript = Path("transcripts", f"{name}.txt").read_text(errors="ignore")
+    report = Path("reports", f"{name}_report.txt").read_text(errors="ignore")
+    disposition, reason = watcher.detect_auto_disposition(name, transcript, report)
+    check(f"{name} disposition is {expected}", disposition == expected, f"{disposition}: {reason}")
+
+run_disposition_case("lcr_cancer", "LCR")
+run_disposition_case("age_over_80", "AGE")
+print("Real-call disposition regression tests passed.")
+
+# Real-call fair disqualification report cleanup tests.
+def run_fair_disqualification_cleanup_case(name, must_contain=(), must_not_contain=()):
+    from pathlib import Path
+    transcript = Path("transcripts", f"{name}.txt").read_text(errors="ignore")
+    report = Path("reports", f"{name}_report.txt").read_text(errors="ignore")
+    out = watcher.enforce_final_audit_consistency(report, transcript)
+    out = watcher.enforce_pass_logic(out)
+    out = watcher.enforce_risk_for_automatic_fail(out)
+    out = watcher.redact_report_text(out)
+
+    for s in must_contain:
+        check(f"{name} fair disqualification contains {s!r}", s in out, out)
+    for s in must_not_contain:
+        check(f"{name} fair disqualification not contains {s!r}", s not in out, out)
+
+run_fair_disqualification_cleanup_case(
+    "lcr_cancer",
+    must_contain=(
+        "SCORE: 90",
+        "CALL STAGE REACHED: Medical / Health",
+        "- Final stage supporting sale: None",
+    ),
+    must_not_contain=(
+        "prospect stopped responding",
+        "disconnected before the agent could continue",
+        "Early refusal call",
+        "did not attempt calm call control",
+    ),
+)
+
+run_fair_disqualification_cleanup_case(
+    "age_over_80",
+    must_contain=(
+        "SCORE: 90",
+        "CALL STAGE REACHED: PQ / Handoff",
+        "- Final stage supporting sale: None",
+    ),
+    must_not_contain=(
+        "Early refusal call",
+        "did not attempt calm call control",
+        "Attempt calm call control",
+    ),
+)
+
+print("Real-call fair disqualification cleanup tests passed.")
+
+# Real-call hold-only callback should not clear poor call-control finding.
+run_case(
+    "hold-only callback does not clear poor call control",
+    """SCORE: 78
+RISK: LOW
+PASS: YES
+CALL STAGE REACHED: Fact Finding / Warm-up
+EARLY END: YES
+
+AUTOMATIC FAIL CHECKS:
+- Callback set: NO
+- Objection occurred without proper call control: YES
+- Existing coverage mentioned but not confirmed: NO
+- Credit union mentioned but bank/account not verified: NO
+- Automatic fail triggered: YES
+- Reason: Objection occurred without proper call control
+
+SALE OUTCOME:
+- Policy sold: NO
+- Final stage supporting sale: None
+
+COACHING:
+- Improve call control.
+""",
+    Path("transcripts/health_questions_poor_call_control.txt").read_text(errors="ignore"),
+    must_contain=(
+        "PASS: NO",
+        "RISK: HIGH",
+        "- Objection occurred without proper call control: YES",
+        "- Automatic fail triggered: YES",
+    ),
+    must_not_contain=(
+        "The agent made a call-control attempt",
+        "flow back into the script after the control statement",
+    ),
+)
+print("Hold-only callback poor call-control regression test passed.")
+
+# Real-call clean U90 report cleanup test.
+def run_u90_report_cleanup_case():
+    from pathlib import Path
+    name = "u90_no_call_control"
+    transcript = Path("transcripts", f"{name}.txt").read_text(errors="ignore")
+    report = Path("reports", f"{name}_report.txt").read_text(errors="ignore")
+    out = watcher.enforce_final_audit_consistency(report, transcript)
+    out = watcher.enforce_pass_logic(out)
+    out = watcher.enforce_risk_for_automatic_fail(out)
+    out = watcher.redact_report_text(out)
+
+    for s in (
+        "SCORE: 90",
+        "RISK: LOW",
+        "PASS: YES",
+        "- Objection occurred without proper call control: NO",
+    ):
+        check(f"{name} U90 cleanup contains {s!r}", s in out, out)
+
+    for s in (
+        "Early refusal call",
+        "did not attempt calm call control",
+        "Attempt calm call control",
+        "coverage already handled to maintain engagement",
+    ):
+        check(f"{name} U90 cleanup not contains {s!r}", s not in out, out)
+
+run_u90_report_cleanup_case()
+print("Real-call clean U90 report cleanup test passed.")
+
+# Real-call sold clean report should not inherit stale call-control-attempt coaching.
+def run_sold_clean_no_stale_call_control_coaching_case():
+    from pathlib import Path
+    name = "sold_clean_call"
+    transcript = Path("transcripts", f"{name}.txt").read_text(errors="ignore")
+    report = Path("reports", f"{name}_report.txt").read_text(errors="ignore")
+    out = watcher.enforce_final_audit_consistency(report, transcript)
+    out = watcher.enforce_pass_logic(out)
+    out = watcher.enforce_risk_for_automatic_fail(out)
+    out = watcher.redact_report_text(out)
+
+    for s in (
+        "PASS: YES",
+        "RISK: LOW",
+    ):
+        check(f"{name} sold clean contains {s!r}", s in out, out)
+
+    for s in (
+        "The agent made a call-control attempt",
+        "flow back into the script after the control statement",
+        "giving the prospect another exit",
+        "Call control was attempted, but the agent should flow back into the script",
+    ):
+        check(f"{name} sold clean not contains {s!r}", s not in out, out)
+
+run_sold_clean_no_stale_call_control_coaching_case()
+print("Real-call sold clean stale call-control cleanup test passed.")
