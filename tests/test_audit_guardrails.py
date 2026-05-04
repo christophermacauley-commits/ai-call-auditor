@@ -2545,3 +2545,15 @@ run_case(
 )
 
 print("Callback + unconfirmed coverage no-sale cleanup tests passed.")
+
+# Real-call disposition regression tests.
+def run_disposition_case(name, expected):
+    from pathlib import Path
+    transcript = Path("transcripts", f"{name}.txt").read_text(errors="ignore")
+    report = Path("reports", f"{name}_report.txt").read_text(errors="ignore")
+    disposition, reason = watcher.detect_auto_disposition(name, transcript, report)
+    check(f"{name} disposition is {expected}", disposition == expected, f"{disposition}: {reason}")
+
+run_disposition_case("lcr_cancer", "LCR")
+run_disposition_case("age_over_80", "AGE")
+print("Real-call disposition regression tests passed.")

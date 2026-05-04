@@ -1196,7 +1196,12 @@ def detect_auto_disposition(call_name, transcript, report, duration_seconds=None
         return "SOLD", "Report indicates policy sold."
 
     if re.search(
-        r"\b(over\s*80|older than\s*80|too old|outside (?:the )?age range|age limit|cannot qualify due to age|you have to be younger)\b",
+        r"(?is)\b("
+        r"over\s*80|older than\s*80|too old|outside (?:the )?age range|age limit|"
+        r"cannot qualify due to age|can't qualify due to age|not able to qualify due to age|"
+        r"due to (?:your|the) age.{0,120}(?:not going to be able to qualify|not able to qualify|can't qualify|cannot qualify)|"
+        r"cutoff is \[NUMBER\]|cutoff age|age cutoff|up until age \[NUMBER\]"
+        r")\b",
         combined,
         re.I,
     ):
@@ -1215,11 +1220,20 @@ def detect_auto_disposition(call_name, transcript, report, duration_seconds=None
     health_report_dq = bool(re.search(
         r"(?is)"
         r"(prospect had a disqualifying health condition|health-related disqualification|"
-        r"disqualifying medical condition|declined due to health|medical disqualification)",
+        r"disqualifying medical condition|declined due to health|medical disqualification|"
+        r"dnq due to|dnq condition|disqualification)",
         report or "",
     ))
 
-    if health_agent_dq or health_report_dq:
+    cancer_not_free_dq = bool(re.search(
+        r"(?is)"
+        r"(?:prostate cancer|diagnosis of .*?cancer|form of cancer|cancer).{0,260}"
+        r"(?:cancer[- ]free|not .*?cancer[- ]free|haven't had .*?doctor .*?cancer[- ]free|"
+        r"won't be able to|get you|not able to qualify|unable to qualify|can't qualify|cannot qualify)",
+        combined,
+    ))
+
+    if health_agent_dq or health_report_dq or cancer_not_free_dq:
         return "LCR", "Health-related disqualification language detected."
 
     if re.search(
