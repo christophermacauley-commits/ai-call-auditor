@@ -1083,6 +1083,55 @@ def _final_cleanup_call_control_attempt(report, transcript):
 
     return report
 
+
+def _final_cleanup_explicit_pq_interruption_bootc(report, transcript):
+    """
+    Explicit PQ-interruption/no-handoff calls are BOOTC, not low-score call-control
+    or incomplete-Who-I-Am failures.
+    """
+    if not report:
+        return report
+
+    combined = (report or "") + "\n" + (transcript or "")
+    words = re.findall(r"\w+", transcript or "")
+
+    pq_interruption_no_handoff = bool(re.search(
+        r"(?is)"
+        r"(PQ interrupted mid-agent turn|call ended early after PQ interruption|"
+        r"handoff was smooth:\s*NO|agent took control after handoff:\s*NO)",
+        combined,
+    )) and len(words) <= 100
+
+    if not pq_interruption_no_handoff:
+        return report
+
+    if re.search(r"(?im)^-\s*Automatic fail triggered:\s*YES\b", report):
+        return report
+
+    report = re.sub(r"(?im)^SCORE:\s*\d+\b", "SCORE: 100", report, count=1)
+    report = re.sub(r"(?im)^RISK:\s*(LOW|MEDIUM|HIGH)\s*$", "RISK: LOW", report, count=1)
+    report = re.sub(r"(?im)^PASS:\s*(NO|AT RISK)\s*$", "PASS: YES", report, count=1)
+    report = re.sub(r"(?im)^CALL STAGE REACHED:\s*.*$", "CALL STAGE REACHED: BOOTC", report, count=1)
+    report = re.sub(r"(?im)^-\s*Final stage supporting sale:\s*.*$", "- Final stage supporting sale: None", report, count=1)
+
+    stale_phrases = [
+        "calm call control",
+        "call control skills",
+        "interruptions and objections",
+        "redirect or reframe",
+        "Who I Am / What I Do section fully",
+        "clear role or purpose explanation",
+        "Agent did not complete Who I Am",
+        "Agent missed opportunity",
+        "Complete the Who I Am / What I Do",
+        "build trust",
+    ]
+    for phrase in stale_phrases:
+        report = _text_remove_lines_containing(report, phrase)
+
+    return report
+
+
 def _final_cleanup_u90_tonality_coaching(report, transcript):
     """
     U90 / very short calls should not get vague 'avoid ending abruptly' coaching.
@@ -1332,7 +1381,15 @@ def detect_auto_disposition(call_name, transcript, report, duration_seconds=None
     # BOOTC outranks U90 when the report/transcript show the call ended before
     # the selling agent meaningfully started. A very short PQ/Handoff or Opening
     # call should not be labeled U90 just because it is also under 110 seconds.
-    if report_stage_bootc or (_transcript_suggests_bootc(transcript) and report_stage_pre_start):
+    combined_for_bootc = (report or "") + "\n" + (transcript or "")
+    pq_interruption_no_handoff = bool(re.search(
+        r"(?is)"
+        r"(PQ interrupted mid-agent turn|call ended early after PQ interruption|"
+        r"handoff was smooth:\s*NO|agent took control after handoff:\s*NO)",
+        combined_for_bootc,
+    )) and len(re.findall(r"\w+", transcript or "")) <= 100
+
+    if report_stage_bootc or (_transcript_suggests_bootc(transcript) and report_stage_pre_start) or pq_interruption_no_handoff:
         return "BOOTC", "Call ended before the agent meaningfully started the sales process."
 
     if report_stage_pre_start and very_short_transcript:
@@ -10565,6 +10622,7 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _final_cleanup_clean_health_needs_hangup(report, transcript)
     report = _final_cleanup_clean_early_unreached_sections(report, transcript)
     report = _final_cleanup_bootc_u90_report(report, transcript)
+    report = _final_cleanup_explicit_pq_interruption_bootc(report, transcript)
     report = _final_cleanup_u90_tonality_coaching(report, transcript)
     report = _final_enforce_hold_only_poor_call_control(report, transcript)
     report = _final_cleanup_call_control_attempt(report, transcript)
