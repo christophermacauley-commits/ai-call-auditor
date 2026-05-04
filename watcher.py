@@ -923,6 +923,35 @@ def _transcript_has_hold_only_callback_no_control(transcript):
     return hold_request and agent_only_waits_or_callback and not real_control_before_hold
 
 
+def _final_enforce_hold_only_poor_call_control(report, transcript):
+    """
+    If the prospect tries to stop/leave and the agent only waits or schedules a callback,
+    enforce the call-control autofail instead of allowing a false clean report.
+    """
+    if not report or not _transcript_has_hold_only_callback_no_control(transcript):
+        return report
+
+    report = _set_callback_fields(
+        report,
+        objection_no_control=True,
+        autofail=True,
+        reason="Objection occurred without proper call control",
+    )
+    report = re.sub(r"(?im)^RISK:\s*(LOW|MEDIUM)\s*$", "RISK: HIGH", report, count=1)
+
+    if not re.search(r"(?is)hold|call you back|what time works", report):
+        coaching = (
+            "When a prospect says they need to leave or asks to be left on hold, use a real "
+            "call-control statement and redirect back into the health questions before offering a callback."
+        )
+        if re.search(r"(?im)^COACHING:\s*", report):
+            report = re.sub(r"(?im)^COACHING:\s*", "COACHING:\n- " + coaching + "\n", report, count=1)
+        else:
+            report = report.rstrip() + "\n\nCOACHING:\n- " + coaching + "\n"
+
+    return report
+
+
 def _final_cleanup_call_control_attempt(report, transcript):
     """
     If the transcript shows a call-control attempt, remove false 'no call control'
@@ -10506,6 +10535,7 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _final_cleanup_clean_early_unreached_sections(report, transcript)
     report = _final_cleanup_bootc_u90_report(report, transcript)
     report = _final_cleanup_u90_tonality_coaching(report, transcript)
+    report = _final_enforce_hold_only_poor_call_control(report, transcript)
     report = _final_cleanup_call_control_attempt(report, transcript)
     report = _final_cleanup_sold_existing_coverage_not_confirmed(report, transcript)
     report = _final_cleanup_confirmed_existing_coverage(report, transcript)
