@@ -9866,7 +9866,13 @@ def _detect_disqualification_no_agent_fault(report, transcript):
     combined = ((report or "") + "\n" + (transcript or "")).lower()
 
     age_dq = bool(re.search(
-        r"(too old|younger than \[number\]|you have to be younger|ages? (?:are )?only|outside (?:the )?age range|cannot qualify due to age)",
+        r"(?is)("
+        r"too old|younger than \\[number\\]|you have to be younger|ages? (?:are )?only|"
+        r"outside (?:the )?age range|cannot qualify due to age|can't qualify due to age|"
+        r"not able to qualify due to age|due to (?:your|the) age.{0,120}"
+        r"(?:not going to be able to qualify|not able to qualify|can't qualify|cannot qualify)|"
+        r"cutoff is \\[number\\]|cutoff age|age cutoff|up until age \\[number\\]"
+        r")",
         combined,
         re.I,
     ))
@@ -9887,6 +9893,14 @@ def _detect_disqualification_no_agent_fault(report, transcript):
         r"(do(?:es)? not qualify|won't qualify|would not qualify|can't qualify|cannot qualify|"
         r"not able to qualify|unable to qualify|not eligible|declined|knockout).{0,180}"
         r"(health|medical|condition|diagnosis|diagnosed|oxygen|dialysis|kidney|heart|copd|cancer|terminal|hospice)",
+        combined,
+    ))
+
+    health_dq = health_dq or bool(re.search(
+        r"(?is)"
+        r"(?:prostate cancer|diagnosis of .*?cancer|form of cancer|cancer).{0,260}"
+        r"(?:cancer[- ]free|not .*?cancer[- ]free|haven't had .*?doctor .*?cancer[- ]free|"
+        r"won't be able to|get you|not able to qualify|unable to qualify|can't qualify|cannot qualify)",
         combined,
     ))
 
@@ -9953,6 +9967,35 @@ def _final_cleanup_disqualification_no_agent_fault(report, transcript):
             report,
             count=1,
         )
+
+    # Align clean disqualification calls to the actual eligibility stop, not a sales-process failure.
+    if disposition == "AGE":
+        report = _set_stage_fields(
+            report,
+            "PQ / Handoff",
+            final_stage="None",
+            not_reached_items=list(CALL_STAGE_ORDER[1:]),
+            early_end="YES",
+        )
+    elif disposition == "LCR":
+        report = _set_stage_fields(
+            report,
+            "Medical / Health",
+            final_stage="None",
+            not_reached_items=list(CALL_STAGE_ORDER[CALL_STAGE_ORDER.index("Medical / Health") + 1:]),
+            early_end="YES",
+        )
+
+    report = re.sub(
+        r"(?i)prospect stopped responding / disconnected before the agent could continue",
+        "call ended because the prospect was not eligible to continue",
+        report,
+    )
+    report = re.sub(
+        r"(?i)prospect stopped responding|prospect disconnected|customer disconnected",
+        "prospect was not eligible to continue",
+        report,
+    )
 
     # These are not agent failures; keep them incomplete but fair.
     report = re.sub(r"(?im)^PASS:\s*NO\s*$", "PASS: YES", report, count=1)
@@ -10325,7 +10368,10 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _final_cleanup_false_health_disqualification_after_clean_screen(report, transcript)
     # Transcript-supported stage upgrade: funeral-cost / burial-cremation / no-coverage
     # impact questions mean the call reached the Needs section, not just Medical / Health.
-    if _transcript_reached_needs_section(transcript):
+    # Do not apply this to clean AGE/LCR disqualification endings; their true final stage is
+    # the eligibility stop, not a normal Needs-stage sales progression.
+    disq_disp_for_stage, _ = _detect_disqualification_no_agent_fault(report, transcript)
+    if _transcript_reached_needs_section(transcript) and not disq_disp_for_stage:
         report = re.sub(
             r"(?im)^CALL STAGE REACHED:\s*Medical / Health\s*$",
             "CALL STAGE REACHED: Needs",

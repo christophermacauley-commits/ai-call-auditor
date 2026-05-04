@@ -2557,3 +2557,49 @@ def run_disposition_case(name, expected):
 run_disposition_case("lcr_cancer", "LCR")
 run_disposition_case("age_over_80", "AGE")
 print("Real-call disposition regression tests passed.")
+
+# Real-call fair disqualification report cleanup tests.
+def run_fair_disqualification_cleanup_case(name, must_contain=(), must_not_contain=()):
+    from pathlib import Path
+    transcript = Path("transcripts", f"{name}.txt").read_text(errors="ignore")
+    report = Path("reports", f"{name}_report.txt").read_text(errors="ignore")
+    out = watcher.enforce_final_audit_consistency(report, transcript)
+    out = watcher.enforce_pass_logic(out)
+    out = watcher.enforce_risk_for_automatic_fail(out)
+    out = watcher.redact_report_text(out)
+
+    for s in must_contain:
+        check(f"{name} fair disqualification contains {s!r}", s in out, out)
+    for s in must_not_contain:
+        check(f"{name} fair disqualification not contains {s!r}", s not in out, out)
+
+run_fair_disqualification_cleanup_case(
+    "lcr_cancer",
+    must_contain=(
+        "SCORE: 90",
+        "CALL STAGE REACHED: Medical / Health",
+        "- Final stage supporting sale: None",
+    ),
+    must_not_contain=(
+        "prospect stopped responding",
+        "disconnected before the agent could continue",
+        "Early refusal call",
+        "did not attempt calm call control",
+    ),
+)
+
+run_fair_disqualification_cleanup_case(
+    "age_over_80",
+    must_contain=(
+        "SCORE: 90",
+        "CALL STAGE REACHED: PQ / Handoff",
+        "- Final stage supporting sale: None",
+    ),
+    must_not_contain=(
+        "Early refusal call",
+        "did not attempt calm call control",
+        "Attempt calm call control",
+    ),
+)
+
+print("Real-call fair disqualification cleanup tests passed.")
