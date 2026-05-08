@@ -21,9 +21,12 @@ TRANSCRIPTS_ROLE_LABELED_FOLDER = "transcripts_role_labeled"
 REPORTS_FOLDER = "reports"
 DB_FILE = "calls.db"
 
-# "medium" balances WER vs speed; int8 on CPU is the usual faster-whisper sweet spot (much faster
-# than float32/float16 with modest accuracy loss vs full precision).
-WHISPER_MODEL = "medium"
+# Whisper can be tuned per machine.
+# Mac/default: medium + cpu + int8.
+# Windows GPU server: large-v3 + cuda + float16 or int8_float16.
+WHISPER_MODEL = os.getenv("WHISPER_MODEL", "medium")
+WHISPER_DEVICE = os.getenv("WHISPER_DEVICE", "cpu")
+WHISPER_COMPUTE_TYPE = os.getenv("WHISPER_COMPUTE_TYPE", "int8")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
 SCAN_INTERVAL_SECONDS = 5
 OLLAMA_TIMEOUT_SECONDS = 300
@@ -268,8 +271,8 @@ def get_model():
         # int8 quantization, VAD skipping silence, and decode settings below (beam 5, no context carry).
         model = WhisperModel(
             WHISPER_MODEL,
-            device="cpu",
-            compute_type="int8",
+            device=WHISPER_DEVICE,
+            compute_type=WHISPER_COMPUTE_TYPE,
         )
     return model
 

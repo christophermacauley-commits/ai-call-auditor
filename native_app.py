@@ -5,8 +5,13 @@ import time
 import webview
 from webview.menu import Menu, MenuAction
 
-PROJECT = os.path.expanduser("~/Applications/ai-auditor")
-PYTHON = os.path.join(PROJECT, "venv/bin/python")
+PROJECT = os.path.dirname(os.path.abspath(__file__))
+
+if os.name == "nt":
+    PYTHON = os.path.join(PROJECT, "venv", "Scripts", "python.exe")
+else:
+    PYTHON = os.path.join(PROJECT, "venv", "bin", "python")
+
 URL = "http://127.0.0.1:5050"
 
 RESTARTING_HTML = """
