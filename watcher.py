@@ -827,6 +827,182 @@ def _final_cleanup_sold_existing_coverage_not_confirmed(report, transcript):
 
     return report
 
+
+def _remove_reason_fragment(reason, fragment):
+    parts = [
+        p.strip()
+        for p in re.split(r";", reason or "")
+        if p.strip()
+    ]
+    kept = [p for p in parts if fragment.lower() not in p.lower()]
+    return "; ".join(kept) if kept else "None"
+
+
+
+
+def _dedupe_searchable_answers(report):
+    """
+    Keep only one line per SEARCHABLE ANSWERS question.
+
+    Later cleanup helpers may rewrite every matching line and accidentally leave
+    repeated copies. Preserve the first occurrence after cleanup.
+    """
+    if not report:
+        return report
+
+    m = re.search(
+        r"(?ims)^(SEARCHABLE ANSWERS:\s*)(.*?)(?=^AUTOMATIC FAIL CHECKS:|\Z)",
+        report,
+    )
+    if not m:
+        return report
+
+    header, body = m.group(1), m.group(2)
+    seen = set()
+    kept = []
+
+    for line in body.splitlines():
+        stripped = line.strip()
+        q = re.match(r"^-\s*(.+?\?)\s*", stripped)
+        if q:
+            key = re.sub(r"\s+", " ", q.group(1).strip().lower())
+            if key in seen:
+                continue
+            seen.add(key)
+        kept.append(line)
+
+    new_section = header + "\n".join(kept).strip() + "\n\n"
+    return report[:m.start()] + new_section + report[m.end():]
+
+
+
+def _final_enforce_real_callback_autofail_from_transcript(report, transcript):
+    """
+    If the transcript clearly shows the agent accepted/set a later callback,
+    keep callback autofail fields aligned even after other cleanup removes
+    false coverage or stale callback fragments.
+
+    This handles patterns like:
+      Prospect: I have an appointment / we can do it another day.
+      Agent: What time tomorrow? I will call you tomorrow.
+    """
+    if not report or not transcript:
+        return report
+
+    if not _transcript_has_callback_set_or_accepted(transcript):
+        return report
+
+    report = _set_callback_fields(
+        report,
+        callback_set=True,
+        objection_no_control=True,
+        autofail=True,
+        reason="Callback set without allowed exception",
+    )
+
+    report = re.sub(r"(?im)^RISK:\s*(?:LOW|MEDIUM)\s*$", "RISK: HIGH", report, count=1)
+    report = re.sub(r"(?im)^PASS:\s*(?:YES|AT RISK)\s*$", "PASS: NO", report, count=1)
+
+    if re.search(r"(?ims)^BIGGEST MISS:\s*.*?(?=^SUMMARY:|^TRANSCRIPT NOTE|^OPENAI COST ESTIMATE:|\Z)", report):
+        report = re.sub(
+            r"(?ims)^BIGGEST MISS:\s*.*?(?=^SUMMARY:|^TRANSCRIPT NOTE|^OPENAI COST ESTIMATE:|\Z)",
+            "BIGGEST MISS:\n- Callback set without allowed exception.\n\n",
+            report,
+            count=1,
+        )
+
+    return report
+
+
+
+def _final_cleanup_false_existing_coverage_without_transcript_evidence(report, transcript):
+    """
+    If the transcript never mentions current existing coverage, do not let generic
+    searchable NO lines create an existing-coverage autofail.
+
+    Example: short callback/time-objection calls often have:
+      - Did the agent confirm current coverage? NO
+      - Did the agent call an insurance company to confirm current coverage? NO
+    Those lines are normal when coverage was never discussed. They must not become:
+      - Existing coverage mentioned but not confirmed: YES
+    """
+    if not report or not transcript:
+        return report
+
+    if _transcript_mentions_current_existing_coverage(transcript):
+        return report
+
+    had_false_coverage = bool(re.search(
+        r"(?im)^-\s*Existing coverage mentioned but not confirmed:\s*YES\b",
+        report,
+    ))
+
+    if not had_false_coverage:
+        return report
+
+    report = re.sub(
+        r"(?im)^-\s*Existing coverage mentioned but not confirmed:\s*YES\b.*$",
+        "- Existing coverage mentioned but not confirmed: NO",
+        report,
+    )
+
+    # Remove stale coverage failure language from narrative sections.
+    for phrase in [
+        "Existing coverage mentioned but not confirmed before completing the sale",
+        "Existing coverage mentioned but not confirmed",
+        "existing coverage was mentioned but not confirmed",
+        "existing coverage was not confirmed",
+        "coverage was not confirmed",
+        "did not verify current coverage",
+        "failed to verify current coverage",
+        "failed to confirm current coverage",
+        "verify existing active coverage",
+        "confirm current existing coverage",
+    ]:
+        report = _text_remove_lines_containing(report, phrase)
+
+    # Remove only the coverage fragment from Reason while preserving real causes
+    # such as callback.
+    rm = re.search(r"(?im)^-\s*Reason:\s*(.*)$", report)
+    if rm:
+        new_reason = _remove_reason_fragment(
+            rm.group(1),
+            "Existing coverage mentioned but not confirmed",
+        )
+        report = re.sub(
+            r"(?im)^-\s*Reason:\s*.*$",
+            f"- Reason: {new_reason}",
+            report,
+            count=1,
+        )
+
+    # If no remaining autofail cause is present, clear the aggregate autofail.
+    remaining_hard_yes = bool(re.search(
+        r"(?im)^-\s*(Callback set|Objection occurred without proper call control|Credit union mentioned but bank/account not verified):\s*YES\b",
+        report,
+    ))
+    reason_line = ""
+    rm = re.search(r"(?im)^-\s*Reason:\s*(.*)$", report)
+    if rm:
+        reason_line = rm.group(1).strip().lower()
+
+    if not remaining_hard_yes and (not reason_line or reason_line == "none"):
+        report = re.sub(
+            r"(?im)^-\s*Automatic fail triggered:\s*YES\b.*$",
+            "- Automatic fail triggered: NO",
+            report,
+        )
+        report = re.sub(
+            r"(?im)^-\s*Reason:\s*.*$",
+            "- Reason: None",
+            report,
+            count=1,
+        )
+
+    return report
+
+
+
 def _final_cleanup_confirmed_existing_coverage(report, transcript):
     """
     If current/existing coverage was confirmed, remove contradictory coaching or
@@ -7549,7 +7725,8 @@ def _has_real_callback_autofail_evidence(report, transcript):
         r"(Prospect:\s*.*(?:call\s+(?:me|you)?\s*back|callback|do this later|talk later|not a good time|busy)|"
         r"prospect requested (?:a )?callback|requested (?:a )?callback|asked (?:for )?(?:a )?callback|"
         r"callback due to being busy|too busy.*call back|busy.*call (?:me|you)?\s*back|"
-        r"not a good time.*call back|do this later|talk (?:about this )?later)",
+        r"not a good time.*call back|do this later|do it (?:another day|later)|talk (?:about this )?later|"
+        r"dentist appointment|doctor appointment|appointment.{0,80}(?:later|tomorrow|another day))",
         evidence_text,
     ))
 
@@ -7558,6 +7735,7 @@ def _has_real_callback_autofail_evidence(report, transcript):
         r"(Agent:\s*.*(?:i(?:'ll| will) call you back|i(?:'ll| will) give you a call back|"
         r"(?:yes|yeah|yep|sure|okay|ok|absolutely|no problem)[,\s.]{0,20}i can call you back|"
         r"i can call you back|i can give you a call back|"
+        r"i(?:'ll| will) call you (?:tomorrow|later|back)|"
         r"we(?:'ll| will) call you back|we can do this later|agreed to call back|"
         r"scheduled a callback|set a callback)|"
         r"agent agreed to call back later|agreed to call back|accepted the callback|"
@@ -7706,7 +7884,7 @@ def _final_cleanup_false_callback_autofail(report, transcript):
     if not report:
         return report
 
-    if _has_real_callback_autofail_evidence(report, transcript):
+    if _has_real_callback_autofail_evidence(report, transcript) or _transcript_has_callback_set_or_accepted(transcript):
         return report
 
     callback_marked = bool(re.search(r"(?im)^- Callback set:\s*YES\b", report))
@@ -7767,6 +7945,8 @@ def _final_cleanup_callback_autofail_consistency(report, transcript):
         r"busy.*call (?:me|you)?\s*back|"
         r"not a good time.*call back|"
         r"do this later|"
+        r"do it (?:another day|later)|"
+        r"dentist appointment|doctor appointment|appointment.{0,80}(?:later|tomorrow|another day)|"
         r"talk (?:about this )?later"
         r")",
         combined,
@@ -7785,6 +7965,7 @@ def _final_cleanup_callback_autofail_consistency(report, transcript):
         r"(?:yes|yeah|yep|sure|okay|ok|absolutely|no problem)[,\s.]{0,20}i can call you back|"
         r"i can call you back|"
         r"i can give you a call back|"
+        r"i(?:'ll| will) call you (?:tomorrow|later|back)|"
         r"we(?:'ll| will) call you back|"
         r"we can do this later|"
         r"instead of attempting call control|"
@@ -10409,7 +10590,7 @@ def enforce_final_audit_consistency(report, transcript=None):
     if transcript:
         report = _text_enforce_tpu_stage_report(report, transcript)
 
-        if not detect_agent_callback_from_transcript(transcript):
+        if not (detect_agent_callback_from_transcript(transcript) or _transcript_has_callback_set_or_accepted(transcript)):
             report = re.sub(r"(?im)^- Did the agent set a callback\?\s*YES\b.*$", "- Did the agent set a callback? NO", report)
             report = re.sub(r"(?im)^- Callback set:\s*YES\b.*$", "- Callback set: NO", report)
             report = _text_remove_lines_containing(report, "Callback set without allowed exception")
@@ -10634,6 +10815,9 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _final_cleanup_needs_stage_fields(report, transcript)
     report = _final_cleanup_callback_existing_coverage_no_sale(report, transcript)
     report = _final_enforce_callback_needs_coverage_line(report)
+    report = _final_cleanup_false_existing_coverage_without_transcript_evidence(report, transcript)
+    report = _final_enforce_real_callback_autofail_from_transcript(report, transcript)
+    report = _final_enforce_real_callback_autofail_from_transcript(report, transcript)
     report = _final_cleanup_quotes_not_application(report, transcript)
     report = _final_cleanup_clean_lcr_unreached_rapport(report, transcript)
     report = _final_cleanup_clean_health_needs_hangup(report, transcript)
@@ -10647,6 +10831,7 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _final_cleanup_confirmed_existing_coverage(report, transcript)
     report = _final_cleanup_promote_biggest_miss_from_flow_misses(report, transcript)
     report = _restore_safe_business_terms(report)
+    report = _dedupe_searchable_answers(report)
     return report
 
 
@@ -10763,6 +10948,7 @@ def finalize_audit_report(report, transcript):
     report = enforce_risk_for_automatic_fail(report)
     report = _final_enforce_existing_coverage_autofail_pass_no(report)
     report = _final_enforce_callback_needs_coverage_line(report)
+    report = _final_cleanup_false_existing_coverage_without_transcript_evidence(report, transcript)
     report = _final_cleanup_needs_stage_fields(report, transcript)
     return report
 
@@ -10804,6 +10990,7 @@ def audit(transcript, progress_callback=None, call_name=None):
         progress_callback(AI_DONE_PROGRESS, "Saving audit report")
 
     report = finalize_audit_report(report, transcript)
+    report = _dedupe_searchable_answers(report)
     return report
 
 
