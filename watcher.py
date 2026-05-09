@@ -877,6 +877,92 @@ def _dedupe_searchable_answers(report):
 
 
 
+
+def _transcript_agent_offered_dnc_before_prospect_requested(transcript):
+    """
+    True when the agent offers DNC as an exit before the prospect independently
+    asks to be removed / not called.
+
+    This should be HIGH risk coaching, but not an automatic fail by itself.
+    """
+    t = transcript or ""
+    if not t.strip():
+        return False
+
+    offer = re.search(
+        r"(?is)\b(i\s+can\s+put\s+you\s+on\s+(?:our\s+)?(?:do\s+not\s+call|do-not-call|don'?t\s+call)\s+list|"
+        r"would\s+you\s+like\s+(?:me\s+)?to\s+put\s+you\s+on\s+(?:the\s+)?(?:do\s+not\s+call|do-not-call|don'?t\s+call)\s+list)\b",
+        t,
+    )
+    if not offer:
+        return False
+
+    before_offer = t[:offer.start()]
+    prospect_requested_first = re.search(
+        r"(?is)\b(stop\s+calling|do\s+not\s+call|don'?t\s+call|take\s+me\s+off|remove\s+me\s+from|put\s+me\s+on\s+(?:the\s+)?(?:do\s+not\s+call|do-not-call|don'?t\s+call)\s+list)\b",
+        before_offer,
+    )
+
+    return not bool(prospect_requested_first)
+
+
+def _final_enforce_agent_offered_dnc_high_risk(report, transcript):
+    """
+    If agent offered DNC before prospect independently requested DNC, flag HIGH risk
+    while keeping it non-autofail.
+    """
+    if not report or not transcript:
+        return report
+
+    if not _transcript_agent_offered_dnc_before_prospect_requested(transcript):
+        return report
+
+    report = re.sub(r"(?im)^RISK:\s*(?:LOW|MEDIUM)\s*$", "RISK: HIGH", report, count=1)
+
+    # Keep DNC risk as coaching/risk, not automatic fail.
+    report = re.sub(
+        r"(?im)^-\s*Automatic fail triggered:\s*YES\b.*$",
+        "- Automatic fail triggered: NO",
+        report,
+    )
+    if re.search(r"(?im)^-\s*Reason:", report):
+        report = re.sub(r"(?im)^-\s*Reason:\s*.*$", "- Reason: None", report, count=1)
+
+    report = re.sub(
+        r"(?im)^-\s*Evidence:\s*Prospect stated coverage already in place and ended call early\s*$",
+        "- Evidence: Agent offered do-not-call list before the prospect independently requested it; prospect accepted DNC and the call ended early",
+        report,
+        count=1,
+    )
+
+    if "Agent offered DNC before prospect independently requested it" not in report:
+        if re.search(r"(?im)^TOP 3 COACHING PRIORITIES:\s*$", report):
+            report = re.sub(
+                r"(?im)^TOP 3 COACHING PRIORITIES:\s*$",
+                "TOP 3 COACHING PRIORITIES:\n- Agent offered DNC before prospect independently requested it; use calm call control before offering DNC unless the prospect asks for it.",
+                report,
+                count=1,
+            )
+        elif re.search(r"(?im)^COACHING:\s*$", report):
+            report = re.sub(
+                r"(?im)^COACHING:\s*$",
+                "COACHING:\n- Agent offered DNC before prospect independently requested it; use calm call control before offering DNC unless the prospect asks for it.",
+                report,
+                count=1,
+            )
+
+    if re.search(r"(?im)^BIGGEST MISS:\s*-\s*None\s*$", report):
+        report = re.sub(
+            r"(?im)^BIGGEST MISS:\s*-\s*None\s*$",
+            "BIGGEST MISS:\n- Agent offered DNC before prospect independently requested it instead of using call control.",
+            report,
+            count=1,
+        )
+
+    return report
+
+
+
 def _transcript_has_actual_objection_or_refusal(transcript):
     """
     True only when the prospect actually objects/refuses/defers in the transcript.
@@ -11262,8 +11348,10 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _final_cleanup_false_existing_coverage_without_transcript_evidence(report, transcript)
     report = _final_enforce_real_callback_autofail_from_transcript(report, transcript)
     report = _final_cleanup_unsupported_no_call_control_autofail(report, transcript)
+    report = _final_enforce_agent_offered_dnc_high_risk(report, transcript)
     report = _final_enforce_real_callback_autofail_from_transcript(report, transcript)
     report = _final_cleanup_unsupported_no_call_control_autofail(report, transcript)
+    report = _final_enforce_agent_offered_dnc_high_risk(report, transcript)
     report = _final_cleanup_quotes_not_application(report, transcript)
     report = _final_cleanup_clean_lcr_unreached_rapport(report, transcript)
     report = _final_cleanup_clean_health_needs_hangup(report, transcript)
@@ -11276,6 +11364,7 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _final_cleanup_sold_existing_coverage_not_confirmed(report, transcript)
     report = _final_cleanup_confirmed_existing_coverage(report, transcript)
     report = _final_cleanup_promote_biggest_miss_from_flow_misses(report, transcript)
+    report = _final_enforce_agent_offered_dnc_high_risk(report, transcript)
     report = _restore_safe_business_terms(report)
     report = _dedupe_searchable_answers(report)
     return report
@@ -11436,6 +11525,7 @@ def audit(transcript, progress_callback=None, call_name=None):
         progress_callback(AI_DONE_PROGRESS, "Saving audit report")
 
     report = finalize_audit_report(report, transcript)
+    report = _final_enforce_agent_offered_dnc_high_risk(report, transcript)
     report = _dedupe_searchable_answers(report)
     return report
 
