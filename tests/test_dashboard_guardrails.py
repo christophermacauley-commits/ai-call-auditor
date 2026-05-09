@@ -24,3 +24,19 @@ check("repeated-objection good call control golden protected", dashboard.is_gold
 check("normal call not protected", not dashboard.is_golden_call_name("normal_real_call_20260503_101010"))
 
 print("Dashboard golden fixture protection tests passed.")
+
+# Golden calls should also be hidden from processing/recent-upload cards.
+sample_processing = [
+    {"call_name": "good_call_control", "filename": "good_call_control.txt"},
+    {"call_name": "sold_2", "filename": "sold_2.txt"},
+    {"call_name": "normal_visible_call", "filename": "normal_visible_call.txt"},
+]
+filtered = [
+    item
+    for item in sample_processing
+    if not dashboard.is_golden_call_name(item.get("call_name", ""))
+]
+check(
+    "golden processing cards hidden",
+    filtered == [{"call_name": "normal_visible_call", "filename": "normal_visible_call.txt"}],
+)

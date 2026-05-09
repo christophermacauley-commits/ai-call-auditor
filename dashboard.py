@@ -1636,7 +1636,7 @@ def get_processing_files():
                 now,
             )
 
-    return processing
+    return [item for item in processing if not is_golden_call_name(item.get("call_name", ""))]
 
 
 
