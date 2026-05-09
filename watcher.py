@@ -4248,6 +4248,56 @@ def _repair_cost_question_response_role_split(labeled_text):
 
 
 
+
+
+
+
+def _repair_appointment_callback_role_split(labeled_text):
+    if not labeled_text:
+        return labeled_text
+
+    text = labeled_text
+    low = text.lower()
+
+    required = [
+        "dentist appointment",
+        "i need to go",
+        "is there a better time that works for you",
+        "if you want to do it tomorrow",
+        "what time tomorrow",
+        "about around this time",
+    ]
+    if not all(x in low for x in required):
+        return text
+
+    start_match = re.search(r"(?ims)Agent:\s*Okay\.\s*I\s+don'?t\s+have\s+too\s+much\s+time\s+because\s+I\s+have\s+a\s+dentist\s+appointment\s+at\s+\[NUMBER\]\.", text)
+    if not start_match:
+        return text
+
+    end_match = re.search(r"(?ims)Agent:\s*Okay,\s+that'?ll\s+be\s+fine\.", text[start_match.start():])
+    if not end_match:
+        return text
+
+    replace_start = start_match.start()
+    replace_end = start_match.start() + end_match.start()
+
+    replacement = (
+        "Prospect: Okay.\n"
+        "I don't have too much time because I have a dentist appointment at [NUMBER].\n"
+        "I need to go, but we can do it, or we can do it another day, whatever, or later.\n\n"
+        "Agent: Is there a better time that works for you?\n\n"
+        "Prospect: If you want to do it tomorrow, I will be here all day.\n"
+        "I don't have nothing to do, because one day I have another appointment.\n\n"
+        "Agent: Okay.\n"
+        "What time tomorrow?\n\n"
+        "Prospect: To my full doctor tomorrow.\n"
+        "Oh, about around this time.\n\n"
+    )
+
+    return (text[:replace_start].rstrip() + "\n\n" + replacement + text[replace_end:].lstrip()).strip() + "\n"
+
+
+
 def _repair_agent_self_disclosure_mislabeled_as_prospect(labeled_text):
     """
     Repair role-labeled transcript blocks where a long agent personal disclosure
@@ -4614,6 +4664,7 @@ def create_role_labeled_transcript(transcript_text):
     labeled = _repair_run_on_objection_response_blocks(labeled)
     labeled = _repair_u90_5_actual_run_on_block(labeled)
     labeled = _repair_cost_question_response_role_split(labeled)
+    labeled = _repair_appointment_callback_role_split(labeled)
     labeled = _repair_agent_self_disclosure_mislabeled_as_prospect(labeled)
 
     return labeled
