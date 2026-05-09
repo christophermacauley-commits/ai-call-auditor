@@ -298,6 +298,35 @@
         "Existing coverage was mentioned but not confirmed"
       ],
       "notes": "Full sold call where existing coverage was asked, but prospect indicated this would likely be the only policy; protects against false existing-coverage autofail and stale early-end summary."
+    },
+    {
+      "id": "prospect_requested_dnc_clean",
+      "match": "prospect_asked_for_dnc",
+      "expected_stage": "PQ / Handoff",
+      "expected_risk": "LOW",
+      "expected_policy_sold": "NO",
+      "expected_autofail": "NO",
+      "expected_final_stage": "None",
+      "expected_disposition": "DNC",
+      "required_phrases": [
+        "RISK: LOW",
+        "PASS: YES",
+        "- Automatic fail triggered: NO",
+        "- Reason: None",
+        "Honor direct do-not-call requests promptly and professionally",
+        "The prospect directly requested placement on the do-not-call list"
+      ],
+      "forbidden_phrases": [
+        "Agent offered do-not-call list before the prospect independently requested it",
+        "Agent offered DNC before prospect independently requested it",
+        "Attempt calm call control",
+        "attempt calm call control",
+        "keep the conversation open",
+        "expresses resistance",
+        "Automatic fail triggered: YES",
+        "PASS: AT RISK"
+      ],
+      "notes": "Prospect independently requested placement on the do-not-call list; protects clean DNC handling from being scored as call-control failure or agent-offered-DNC high risk."
     }
   ],
   "global_must_not_contain": [
