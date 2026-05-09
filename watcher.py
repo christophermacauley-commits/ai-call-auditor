@@ -4413,10 +4413,17 @@ def _extract_handoff_and_direct_address_names(text):
 
     blocked = {
         "PQ", "Agent", "Prospect", "Unknown", "Carrier", "Third", "Party",
-        "Mississippi", "Tennessee", "Maryland", "Indiana", "Arkansas",
+        "Mississippi", "Tennessee", "Maryland", "Indiana", "Arkansas", "Texas",
         "Social", "Security", "State", "Department", "Insurance",
         "American", "General", "Mutual", "Omaha", "Combined", "Colonial",
         "Globe", "MIB", "COVID", "Medicare", "Medicaid",
+
+        # Common words that can appear after "now/again/okay/like/that" patterns.
+        # These must never be added to the name vault or they will corrupt transcripts.
+        "Again", "Now", "Then", "That", "This", "There", "Here", "Time",
+        "Like", "Really", "Honestly", "Lastly", "Unfortunately", "Foremost",
+        "Gosh", "Guys", "No", "Yes", "Do", "Did", "Does", "Dryer", "Fall",
+        "White", "Protection", "Expenses", "Cholesterol",
     }
 
     patterns = [
@@ -4431,8 +4438,22 @@ def _extract_handoff_and_direct_address_names(text):
     for pat in patterns:
         for m in re.finditer(pat, text):
             name = m.group(1).strip()
-            if name and name not in blocked:
-                names.add(name)
+
+            # Keep this intentionally strict. This vault is applied globally,
+            # so a false positive like "that" or "time" can ruin the transcript.
+            if not name or name in blocked:
+                continue
+            if not re.fullmatch(r"[A-Z][a-z]{2,}", name):
+                continue
+            if name.lower() in {
+                "again", "now", "then", "that", "this", "there", "here", "time",
+                "like", "really", "honestly", "lastly", "unfortunately", "foremost",
+                "gosh", "guys", "yes", "no", "do", "did", "does", "fall", "white",
+                "dryer", "expenses", "protection", "cholesterol",
+            }:
+                continue
+
+            names.add(name)
 
     return names
 
@@ -7582,6 +7603,197 @@ def _final_cleanup_shelby_sold_short_false_fails(report, transcript):
 
     return report
 
+
+
+
+
+def _transcript_says_no_current_existing_coverage_only_policy(transcript):
+    """
+    True when the agent asks about current final expense/life coverage and the
+    prospect answers that this would be the only policy / they do not have one.
+
+    This must not trigger the existing-coverage-not-confirmed autofail.
+    """
+    t = re.sub(r"\s+", " ", (transcript or "").lower()).strip()
+    if not t:
+        return False
+
+    question_seen = bool(re.search(
+        r"\b(do you have any kind of final expense plan|life insurance in place now|final expense plan or life insurance|is this going to be your only policy)\b",
+        t,
+        re.I,
+    ))
+    if not question_seen:
+        return False
+
+    no_current_coverage_answer = bool(re.search(
+        r"\b("
+        r"it'?ll probably be the only policy|"
+        r"this (?:will|would) be (?:my |the )?only policy|"
+        r"going to be (?:my |the )?only policy|"
+        r"probably (?:my |the )?only policy|"
+        r"only policy|"
+        r"don'?t have (?:any )?(?:coverage|life insurance|insurance|policy)|"
+        r"no (?:coverage|life insurance|insurance|policy)"
+        r")\b",
+        t,
+        re.I,
+    ))
+
+    return no_current_coverage_answer
+
+
+def _final_cleanup_only_policy_no_existing_coverage(report, transcript):
+    """
+    If the prospect says the new policy would be the only policy, clear stale
+    existing-coverage autofail/report text. Asking the coverage question is good;
+    the prospect did not claim active current coverage.
+    """
+    if not report or not transcript:
+        return report
+
+    if not _transcript_says_no_current_existing_coverage_only_policy(transcript):
+        return report
+
+    report = re.sub(
+        r"(?im)^-\s*Existing coverage mentioned but not confirmed:\s*(?:YES|PARTIAL|IN PROCESS|UNCLEAR)\b.*$",
+        "- Existing coverage mentioned but not confirmed: NO",
+        report,
+    )
+
+    report = re.sub(
+        r"(?im)^-\s*Did the agent confirm current coverage\?\s*(?:YES|NO|UNCLEAR|PARTIAL)\b.*$",
+        "- Did the agent confirm current coverage? NO",
+        report,
+    )
+
+    report = _text_remove_lines_containing(report, "Existing coverage mentioned but not confirmed before completing the sale")
+    report = _text_remove_lines_containing(report, "Existing coverage was mentioned but not confirmed")
+    report = _text_remove_lines_containing(report, "Confirm current existing coverage with the carrier/provider")
+    report = _text_remove_lines_containing(report, "Clarify and verify existing active coverage thoroughly")
+
+    # If the only-policy/no-current-coverage cleanup removed the coverage trigger,
+    # also clear a stale autofail state even if the old Reason line was already removed.
+    existing_reason = bool(re.search(r"(?im)^-\s*Reason:\s*Existing coverage mentioned but not confirmed\b", report))
+    auto_yes = bool(re.search(r"(?im)^-\s*Automatic fail triggered:\s*YES\b", report))
+    callback_yes = bool(re.search(r"(?im)^-\s*Callback set:\s*YES\b", report))
+    objection_yes = bool(re.search(r"(?im)^-\s*Objection occurred without proper call control:\s*YES\b", report))
+    existing_yes = bool(re.search(r"(?im)^-\s*Existing coverage mentioned but not confirmed:\s*YES\b", report))
+    cu_yes = bool(re.search(r"(?im)^-\s*Credit union mentioned but bank/account not verified:\s*YES\b", report))
+
+    reason_match = re.search(r"(?im)^-\s*Reason:\s*(.+)$", report)
+    reason_text = reason_match.group(1).strip() if reason_match else ""
+    has_other_reason = bool(
+        reason_text
+        and reason_text.lower() != "none"
+        and "existing coverage mentioned but not confirmed" not in reason_text.lower()
+    )
+
+    stale_coverage_only_autofail = (
+        (existing_reason or auto_yes)
+        and not callback_yes
+        and not objection_yes
+        and not existing_yes
+        and not cu_yes
+        and not has_other_reason
+    )
+
+    if stale_coverage_only_autofail:
+        report = re.sub(
+            r"(?im)^-\s*Automatic fail triggered:\s*YES\b.*$",
+            "- Automatic fail triggered: NO",
+            report,
+            count=1,
+        )
+        if re.search(r"(?im)^-\s*Reason:\s*.*$", report):
+            report = re.sub(
+                r"(?im)^-\s*Reason:\s*.*$",
+                "- Reason: None",
+                report,
+                count=1,
+            )
+        else:
+            report = re.sub(
+                r"(?im)^-\s*Automatic fail triggered:\s*NO\b.*$",
+                "- Automatic fail triggered: NO\n- Reason: None",
+                report,
+                count=1,
+            )
+        report = re.sub(r"(?im)^PASS:\s*AT RISK\s*$", "PASS: YES", report, count=1)
+        report = re.sub(r"(?im)^PASS:\s*NO\s*$", "PASS: YES", report, count=1)
+        report = re.sub(r"(?im)^RISK:\s*HIGH\s*$", "RISK: MEDIUM", report, count=1)
+
+    # Remove stale biggest miss created from the false existing-coverage autofail.
+    if re.search(r"(?im)^BIGGEST MISS:\s*$", report):
+        report = re.sub(
+            r"(?ims)^BIGGEST MISS:\s*\n-\s*Existing coverage.*?(?=^SUMMARY:|^OPENAI COST ESTIMATE:|\Z)",
+            "BIGGEST MISS:\n- None\n",
+            report,
+            count=1,
+        )
+
+    return report
+
+
+def _final_cleanup_sold_full_process_stage(report, transcript):
+    """
+    Sold calls that reached application, payment date, banking, disclosures,
+    voice recording/signature, and post-sale wrap-up must not remain Needs/Early End.
+    """
+    if not report or not transcript:
+        return report
+
+    t = re.sub(r"\s+", " ", (transcript or "").lower()).strip()
+    sold_yes = bool(re.search(r"(?im)^-\s*Policy sold:\s*YES\b|^-\s*Was the policy sold\?\s*YES\b", report))
+
+    reached_app = bool(re.search(r"\b(middle initial|address|primary beneficiary|social|date of birth|doctor|application)\b", t, re.I))
+    reached_payment = bool(re.search(r"\b(payment schedule|payment date|draft|second wednesday|first payment|social security)\b", t, re.I))
+    reached_banking = bool(re.search(r"\b(bank or credit union|routing number|account number|automatic draft|bank account)\b", t, re.I))
+    reached_disclosures = bool(re.search(r"\b(fair credit reporting act|medical information bureau|mib|pharmacy benefit manager|statement of understanding|required disclosures)\b", t, re.I))
+    reached_voice = bool(re.search(r"\b(voice recording|this call is now being recorded|signing the application electronically|recording has now ended)\b", t, re.I))
+    reached_wrapup = bool(re.search(r"\b(policy doesn'?t lapse|decision we made today|aren'?t you glad|what made you act today|commitment from you|call me if you need)\b", t, re.I))
+
+    if not (sold_yes and reached_app and reached_payment and reached_banking and reached_disclosures and reached_voice):
+        return report
+
+    final_stage = "Cool Down" if reached_wrapup else "Peace of Mind"
+
+    report = re.sub(r"(?im)^CALL STAGE REACHED:\s*.*$", f"CALL STAGE REACHED: {final_stage}", report, count=1)
+    report = re.sub(r"(?im)^EARLY END:\s*YES\s*$", "EARLY END: NO", report, count=1)
+
+    report = re.sub(
+        r"(?ims)^NOT REACHED:\s*.*?(?=^COMPLIANCE FAILURES:)",
+        "NOT REACHED:\n- None\n\n",
+        report,
+        count=1,
+    )
+
+    report = _text_replace_checklist_value(report, "Application info collected", "YES")
+    report = _text_replace_checklist_value(report, "Banking/payment setup explained", "YES")
+    report = _text_replace_checklist_value(report, "Peace of mind completed", "YES")
+    report = _text_replace_checklist_value(report, "Cool down completed", "YES" if final_stage == "Cool Down" else "NOT REACHED")
+
+    report = re.sub(
+        r"(?im)^-\s*Evidence:\s*.*(?:did not continue to application|ended before quotes|ended before).*?$",
+        "- Evidence: Application information, payment date, banking setup, required disclosures, voice signature, and post-sale wrap-up were completed.",
+        report,
+        count=1,
+    )
+    report = re.sub(
+        r"(?im)^-\s*Final stage supporting sale:\s*.*$",
+        f"- Final stage supporting sale: {final_stage}",
+        report,
+        count=1,
+    )
+
+    report = re.sub(
+        r"(?ims)^SUMMARY:\s*.*?(?=^OPENAI COST ESTIMATE:|\Z)",
+        "SUMMARY:\nThe policy was sold. The call reached application information, payment date, banking setup, required disclosures, voice signature, and post-sale wrap-up. Existing coverage was asked about, but the prospect indicated this would likely be his only policy, so no existing-coverage-not-confirmed autofail is supported.\n",
+        report,
+        count=1,
+    )
+
+    return report
 
 
 
@@ -11397,6 +11609,8 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _final_cleanup_callback_existing_coverage_no_sale(report, transcript)
     report = _final_enforce_callback_needs_coverage_line(report)
     report = _final_cleanup_false_existing_coverage_without_transcript_evidence(report, transcript)
+    report = _final_cleanup_only_policy_no_existing_coverage(report, transcript)
+    report = _final_cleanup_sold_full_process_stage(report, transcript)
     report = _final_enforce_real_callback_autofail_from_transcript(report, transcript)
     report = _final_cleanup_unsupported_no_call_control_autofail(report, transcript)
     report = _final_enforce_agent_offered_dnc_high_risk(report, transcript)
@@ -11415,6 +11629,8 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _final_cleanup_sold_existing_coverage_not_confirmed(report, transcript)
     report = _final_cleanup_confirmed_existing_coverage(report, transcript)
     report = _final_cleanup_promote_biggest_miss_from_flow_misses(report, transcript)
+    report = _final_cleanup_only_policy_no_existing_coverage(report, transcript)
+    report = _final_cleanup_sold_full_process_stage(report, transcript)
     report = _final_enforce_agent_offered_dnc_high_risk(report, transcript)
     report = _restore_safe_business_terms(report)
     report = _dedupe_searchable_answers(report)
