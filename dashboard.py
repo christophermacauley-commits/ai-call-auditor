@@ -14,6 +14,7 @@ import json
 import sqlite3
 import os
 import re
+from pathlib import Path
 import time
 from datetime import datetime, timedelta
 from werkzeug.utils import secure_filename
@@ -79,22 +80,47 @@ def is_golden_call_name(call_name):
 
 
 
-TEST_FIXTURE_CALL_NAMES = {
-    "age_over_80",
-    "health_questions_poor_call_control",
-    "lcr_cancer",
-    "sold_clean_call",
-    "u90_1_20260508_200221",
-    "u90_3_20260508_200246",
-    "u90_no_call_control",
-}
+TEST_FIXTURE_SOURCE_FILES = [
+    "tests/test_audit_guardrails.py",
+    "tests/check_golden_reports.py",
+    "tests/test_dashboard_guardrails.py",
+]
+
+
+def test_fixture_call_names():
+    """
+    Discover call fixture basenames referenced by tests so dashboard delete/list
+    flows cannot accidentally remove files the regression suite depends on.
+    """
+    names = set()
+
+    for rel_path in TEST_FIXTURE_SOURCE_FILES:
+        path = Path(rel_path)
+        if not path.exists():
+            continue
+
+        text = path.read_text(errors="ignore")
+
+        # Common fixture patterns:
+        #   name = "sold_clean_call"
+        #   run_disposition_case("lcr_cancer", "LCR")
+        #   Path("transcripts/health_questions_poor_call_control.txt")
+        #   Path("reports/foo_report.txt")
+        names.update(re.findall(r'(?m)^\s*name\s*=\s*"([^"]+)"', text))
+        names.update(re.findall(r'run_disposition_case\("([^"]+)"', text))
+        names.update(re.findall(r'Path\("transcripts/([^"]+)\.txt"\)', text))
+        names.update(re.findall(r'Path\("reports/([^"]+)_report\.txt"\)', text))
+
+    return sorted(names)
+
+
 
 
 def is_protected_call_name(call_name):
     if is_golden_call_name(call_name):
         return True
     call_name = call_name or ""
-    return any(call_name == name or call_name.startswith(name) for name in TEST_FIXTURE_CALL_NAMES)
+    return any(call_name == name or call_name.startswith(name) for name in test_fixture_call_names())
 
 
 def protect_golden_call_redirect(call_name, target="/"):

@@ -48,4 +48,9 @@ check("bulk delete keeps good_call_control protected", dashboard.is_golden_call_
 
 check("sold_clean_call test fixture protected", dashboard.is_protected_call_name("sold_clean_call"))
 check("u90_no_call_control test fixture protected", dashboard.is_protected_call_name("u90_no_call_control"))
-
+fixture_names = dashboard.test_fixture_call_names()
+check("auto fixture discovery includes sold_clean_call", "sold_clean_call" in fixture_names)
+check("auto fixture discovery includes lcr_cancer", "lcr_cancer" in fixture_names)
+check("auto fixture discovery includes health poor call control", "health_questions_poor_call_control" in fixture_names)
+check("auto fixture discovery protects all fixtures", all(dashboard.is_protected_call_name(name) for name in fixture_names))
+check("normal call still not protected by fixture discovery", not dashboard.is_protected_call_name("normal_visible_call"))
