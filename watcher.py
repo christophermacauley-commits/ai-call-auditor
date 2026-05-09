@@ -876,6 +876,140 @@ def _dedupe_searchable_answers(report):
 
 
 
+
+def _transcript_has_actual_objection_or_refusal(transcript):
+    """
+    True only when the prospect actually objects/refuses/defers in the transcript.
+    A bare hangup, silence, or transcript cutoff during disclosure is not an
+    objection and should not create an objection-without-call-control autofail.
+    """
+    t = transcript or ""
+    if not t.strip():
+        return False
+
+    return bool(re.search(
+        r"(?is)\b("
+        r"not interested|no thanks|no thank you|don't want|do not want|"
+        r"stop calling|take me off|do not call|don't call|"
+        r"already have (?:life insurance|insurance|coverage|it handled|that handled|it taken care of|that taken care of)|"
+        r"final expenses? (?:are|is)?\s*(?:handled|taken care of|paid for)|"
+        r"wasting your time|"
+        r"too busy|don't have time|do not have time|not a good time|"
+        r"call (?:me|you)? back|callback|do it later|do it another day|"
+        r"dentist appointment|doctor appointment|appointment|"
+        r"need to ask (?:my )?(?:wife|husband|spouse|daughter|son|family)|"
+        r"can't afford|cannot afford|too expensive"
+        r")\b",
+        t,
+    ))
+
+
+def _final_cleanup_unsupported_no_call_control_autofail(report, transcript):
+    """
+    Remove stale no-call-control autofail language when the transcript does not
+    show an actual prospect objection/refusal/deferral.
+
+    Example: a short U90 call that cuts off during recording disclosure should
+    not say the prospect refused or that the agent failed call control.
+    """
+    if not report or not transcript:
+        return report
+
+    if _transcript_has_actual_objection_or_refusal(transcript):
+        return report
+
+    has_no_control = bool(re.search(
+        r"(?im)^-\s*Objection occurred without proper call control:\s*YES\b",
+        report,
+    ))
+    early_refusal_language = bool(re.search(
+        r"(?is)Early refusal call|did not attempt calm call control|"
+        r"no call control attempt|without proper call control|"
+        r"prospect indicated no interest|coverage already handled",
+        report,
+    ))
+
+    if not (has_no_control or early_refusal_language):
+        return report
+
+    report = re.sub(
+        r"(?im)^-\s*Objection occurred without proper call control:\s*YES\b.*$",
+        "- Objection occurred without proper call control: NO",
+        report,
+    )
+
+    for phrase in [
+        "Early refusal call",
+        "did not attempt calm call control",
+        "Attempt calm call control",
+        "no call control attempt",
+        "without proper call control",
+        "prospect indicated no interest",
+        "coverage already handled",
+        "Failure to attempt call control",
+        "early refusal without call control",
+    ]:
+        report = _text_remove_lines_containing(report, phrase)
+
+    # Preserve the checklist field itself; remove narrative accusations only.
+    if re.search(r"(?im)^-\s*Callback set:", report):
+        if not re.search(r"(?im)^-\s*Objection occurred without proper call control:", report):
+            report = re.sub(
+                r"(?im)^-\s*Callback set:.*$",
+                lambda m: m.group(0) + "\n- Objection occurred without proper call control: NO",
+                report,
+                count=1,
+            )
+    else:
+        report = re.sub(
+            r"(?im)^AUTOMATIC FAIL CHECKS:\s*$",
+            "AUTOMATIC FAIL CHECKS:\n- Callback set: NO\n- Objection occurred without proper call control: NO",
+            report,
+            count=1,
+        )
+
+    rm = re.search(r"(?im)^-\s*Reason:\s*(.*)$", report)
+    if rm:
+        reason = _remove_reason_fragment(rm.group(1), "Early refusal call with no call control attempt")
+        reason = _remove_reason_fragment(reason, "Objection occurred without proper call control")
+        report = re.sub(r"(?im)^-\s*Reason:\s*.*$", f"- Reason: {reason}", report, count=1)
+
+    remaining_hard_yes = bool(re.search(
+        r"(?im)^-\s*(Callback set|Existing coverage mentioned but not confirmed|Credit union mentioned but bank/account not verified):\s*YES\b",
+        report,
+    ))
+    reason_line = ""
+    rm = re.search(r"(?im)^-\s*Reason:\s*(.*)$", report)
+    if rm:
+        reason_line = rm.group(1).strip().lower()
+
+    if not remaining_hard_yes and (not reason_line or reason_line == "none"):
+        report = re.sub(
+            r"(?im)^-\s*Automatic fail triggered:\s*YES\b.*$",
+            "- Automatic fail triggered: NO",
+            report,
+        )
+        if re.search(r"(?im)^-\s*Reason:", report):
+            report = re.sub(r"(?im)^-\s*Reason:\s*.*$", "- Reason: None", report, count=1)
+        else:
+            report = re.sub(
+                r"(?im)^-\s*Automatic fail triggered:\s*NO\b.*$",
+                lambda m: m.group(0) + "\n- Reason: None",
+                report,
+                count=1,
+            )
+
+    report = re.sub(
+        r"(?im)^-\s*Evidence:\s*Call ended early during Opening with prospect refusal and no sale progression\s*$",
+        "- Evidence: Call ended early during Opening / recording disclosure before any clear objection or sale progression",
+        report,
+        count=1,
+    )
+
+    return report
+
+
+
 def _final_enforce_real_callback_autofail_from_transcript(report, transcript):
     """
     If the transcript clearly shows the agent accepted/set a later callback,
@@ -10817,7 +10951,9 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _final_enforce_callback_needs_coverage_line(report)
     report = _final_cleanup_false_existing_coverage_without_transcript_evidence(report, transcript)
     report = _final_enforce_real_callback_autofail_from_transcript(report, transcript)
+    report = _final_cleanup_unsupported_no_call_control_autofail(report, transcript)
     report = _final_enforce_real_callback_autofail_from_transcript(report, transcript)
+    report = _final_cleanup_unsupported_no_call_control_autofail(report, transcript)
     report = _final_cleanup_quotes_not_application(report, transcript)
     report = _final_cleanup_clean_lcr_unreached_rapport(report, transcript)
     report = _final_cleanup_clean_health_needs_hangup(report, transcript)

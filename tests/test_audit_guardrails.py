@@ -2700,3 +2700,37 @@ def run_sold_clean_no_stale_call_control_coaching_case():
 
 run_sold_clean_no_stale_call_control_coaching_case()
 print("Real-call sold clean stale call-control cleanup test passed.")
+
+# Real-call U90 no-objection hangup/cutoff should not create call-control autofail.
+def run_u90_no_objection_no_call_control_autofail_case():
+    from pathlib import Path
+    name = "u90_3_20260508_200246"
+    transcript = Path("transcripts", f"{name}.txt").read_text(errors="ignore")
+    report = Path("reports", f"{name}_report.txt").read_text(errors="ignore")
+    out = watcher.finalize_audit_report(report, transcript)
+    out = watcher.enforce_pass_logic(out)
+    out = watcher.enforce_risk_for_automatic_fail(out)
+    out = watcher.redact_report_text(out)
+
+    for s in (
+        "- Callback set: NO",
+        "- Objection occurred without proper call control: NO",
+        "- Existing coverage mentioned but not confirmed: NO",
+        "- Automatic fail triggered: NO",
+        "- Reason: None",
+        "before any clear objection or sale progression",
+    ):
+        check(f"{name} no-objection U90 cleanup contains {s!r}", s in out, out)
+
+    for s in (
+        "Early refusal call",
+        "did not attempt calm call control",
+        "prospect indicated no interest",
+        "coverage already handled",
+        "Failure to attempt call control",
+        "early refusal without call control",
+    ):
+        check(f"{name} no-objection U90 cleanup not contains {s!r}", s not in out, out)
+
+run_u90_no_objection_no_call_control_autofail_case()
+print("Real-call U90 no-objection cleanup test passed.")
