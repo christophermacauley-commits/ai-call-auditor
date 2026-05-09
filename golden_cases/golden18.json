@@ -362,6 +362,32 @@
         "EARLY END: YES"
       ],
       "notes": "Prospect asked for a callback during benefits/options, but the agent did not set it and completed the sale through Cool Down; protects against false callback autofail on completed sold calls."
+    },
+    {
+      "id": "agent_offered_dnc_high_risk",
+      "match": "u90_1_20260508_200221",
+      "expected_stage": "Who I Am / What I Do",
+      "expected_risk": "HIGH",
+      "expected_policy_sold": "NO",
+      "expected_autofail": "NO",
+      "expected_final_stage": "None",
+      "expected_disposition": "DNC",
+      "required_phrases": [
+        "RISK: HIGH",
+        "PASS: YES",
+        "- Automatic fail triggered: NO",
+        "- Reason: None",
+        "Agent offered do-not-call list before the prospect independently requested it",
+        "Agent offered DNC before prospect independently requested it"
+      ],
+      "forbidden_phrases": [
+        "Automatic fail triggered: YES",
+        "PASS: AT RISK",
+        "PASS: NO",
+        "Callback set without allowed exception",
+        "Existing coverage mentioned but not confirmed: YES"
+      ],
+      "notes": "Agent offered DNC before the prospect independently requested it; should be DNC and high risk, but not automatic fail."
     }
   ],
   "global_must_not_contain": [
