@@ -20,6 +20,7 @@ check("sold_2 golden protected", dashboard.is_golden_call_name("sold_2"))
 check("prospect requested DNC golden protected", dashboard.is_golden_call_name("prospect_asked_for_dnc"))
 check("completed-sale callback golden protected", dashboard.is_golden_call_name("callback_accepted_sold"))
 check("agent-offered DNC golden protected", dashboard.is_golden_call_name("u90_1_20260508_200221"))
+check("repeated-objection good call control golden protected", dashboard.is_golden_call_name("good_call_control"))
 check("normal call not protected", not dashboard.is_golden_call_name("normal_real_call_20260503_101010"))
 
 print("Dashboard golden fixture protection tests passed.")

@@ -388,6 +388,44 @@
         "Existing coverage mentioned but not confirmed: YES"
       ],
       "notes": "Agent offered DNC before the prospect independently requested it; should be DNC and high risk, but not automatic fail."
+    },
+    {
+      "id": "repeated_objections_good_call_control_no_sale",
+      "match": "good_call_control",
+      "expected_stage": "Banking/payment setup",
+      "expected_risk": "MEDIUM",
+      "expected_policy_sold": "NO",
+      "expected_autofail": "NO",
+      "expected_final_stage": "Banking/payment setup",
+      "expected_disposition": "LEAD",
+      "required_phrases": [
+        "RISK: MEDIUM",
+        "PASS: YES",
+        "CALL STAGE REACHED: Banking/payment setup",
+        "EARLY END: YES",
+        "- Did the agent set a callback? NO",
+        "- Objection occurred without proper call control: NO",
+        "- Credit union mentioned but bank/account not verified: NO",
+        "- Existing coverage mentioned but not confirmed: NO",
+        "- Automatic fail triggered: NO",
+        "- Reason: None",
+        "- Policy sold: NO",
+        "- Final stage supporting sale: Banking/payment setup",
+        "The agent made multiple reasonable call-control attempts",
+        "Prospect and husband refused to provide banking information"
+      ],
+      "forbidden_phrases": [
+        "RISK: HIGH",
+        "PASS: NO",
+        "PASS: AT RISK",
+        "Automatic fail triggered: YES",
+        "Objection occurred without proper call control: YES",
+        "Credit union mentioned but bank/account not verified: YES",
+        "Credit union account information not verified for ACH draft accuracy",
+        "after the sale was completed",
+        "Callback set without allowed exception"
+      ],
+      "notes": "Prospect/husband refused banking info after repeated objections; agent made reasonable call-control attempts, so the no-sale should not be a call-control or credit-union autofail."
     }
   ],
   "global_must_not_contain": [
