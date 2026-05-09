@@ -3857,6 +3857,186 @@ def _looks_like_agent_personal_self_disclosure(text):
     return marker_hits >= 3 or (marker_hits >= 2 and bridge_hits >= 1)
 
 
+
+
+def _repair_short_prospect_ack_after_agent_question(labeled_text):
+    """
+    Repair short acknowledgments that are grouped/labeled as Agent after the
+    agent asks a direct confirmation question.
+
+    Example:
+      Agent: It just won't be right away, okay?
+
+      Agent: Okay.
+      Wonderful.
+
+    Should become:
+      Agent: It just won't be right away, okay?
+
+      Prospect: Okay.
+
+      Agent: Wonderful.
+    """
+    if not labeled_text:
+        return labeled_text
+
+    lines = labeled_text.splitlines()
+    out = []
+    i = 0
+
+    short_ack_re = re.compile(r"^\s*(okay|ok|yes|yeah|yep|right|alright|all right)\.?\s*$", re.I)
+    agent_resume_re = re.compile(r"^\s*(wonderful|perfect|great|awesome|excellent|okay great|all right|alright)\.?\s*$", re.I)
+    agent_question_re = re.compile(r"(?:\bokay\?|right\?|correct\?|sound good\?|is that okay\?|alright\?)\s*$", re.I)
+
+    def last_nonblank_text():
+        for prev in reversed(out):
+            if prev.strip():
+                return prev.strip()
+        return ""
+
+    while i < len(lines):
+        line = lines[i]
+        m_agent = re.match(r"^\s*Agent\s*:\s*(.*)$", line)
+
+        if m_agent:
+            content = m_agent.group(1).strip()
+            prev = last_nonblank_text()
+
+            # Case: the model labeled the prospect's short answer as Agent.
+            if agent_question_re.search(prev) and short_ack_re.match(content):
+                out.append("Prospect: " + content)
+                i += 1
+
+                # Move immediate resume words back to Agent.
+                if i < len(lines) and not re.match(r"^\s*(PQ|Agent|Prospect|Unknown)\s*:", lines[i]):
+                    nxt = lines[i].strip()
+                    if agent_resume_re.match(nxt):
+                        out.append("")
+                        out.append("Agent: " + nxt)
+                        i += 1
+                continue
+
+        # Case: short answer is a continuation under the prior Agent block.
+        if short_ack_re.match(line.strip()) and agent_question_re.search(last_nonblank_text()):
+            out.append("")
+            out.append("Prospect: " + line.strip())
+            i += 1
+            if i < len(lines):
+                nxt = lines[i].strip()
+                if agent_resume_re.match(nxt):
+                    out.append("")
+                    out.append("Agent: " + nxt)
+                    i += 1
+            continue
+
+        out.append(line)
+        i += 1
+
+    return "\n".join(out).strip() + "\n"
+
+
+
+def _repair_role_labels_for_company_coverage_response(labeled_text):
+    """
+    Repair common short-call speaker-label mistakes around existing coverage/company
+    statements after agent setup.
+
+    Example:
+      Agent: ... then you just tell me what to do from there, okay?
+      I'm with WellCare.
+      Prospect: Okay, that's awesome.
+      I appreciate that information.
+      Agent: Today's just an informational call...
+
+    Should become:
+      Agent: ... okay?
+      Prospect: I'm with WellCare.
+      Agent: Okay, that's awesome.
+      I appreciate that information.
+      Today's just an informational call...
+
+    This only changes labels/line grouping. It does not rewrite transcript words.
+    """
+    if not labeled_text:
+        return labeled_text
+
+    lines = labeled_text.splitlines()
+    out = []
+    i = 0
+
+    company_statement_re = re.compile(
+        r"^\s*(i'?m|i am)\s+with\s+(wellcare|medicare|medicaid|mutual|omaha|colonial|globe|transamerica|aetna|humana|cigna|united|anthem|state farm|allstate|progressive)\b",
+        re.I,
+    )
+    agent_ack_re = re.compile(
+        r"^\s*(okay|ok|all right|alright|that'?s awesome|that is awesome|i appreciate that information|today'?s just an informational call|anything we do today wouldn'?t bother anything)\b",
+        re.I,
+    )
+
+    while i < len(lines):
+        line = lines[i]
+
+        # Normalize impossible redacted-name speaker labels like "[NAME]:".
+        m_bad = re.match(r"^\s*\[NAME\]\s*:\s*(.*)$", line)
+        if m_bad:
+            out.append("Prospect: " + m_bad.group(1).strip())
+            i += 1
+            continue
+
+        # If an Agent block contains a prospect company/coverage statement as a
+        # continuation line, split that statement into its own Prospect turn.
+        if re.match(r"^\s*Agent\s*:", line):
+            out.append(line)
+            i += 1
+
+            while i < len(lines):
+                nxt = lines[i]
+                if re.match(r"^\s*(PQ|Agent|Prospect|Unknown)\s*:", nxt):
+                    break
+
+                if company_statement_re.search(nxt):
+                    out.append("")
+                    out.append("Prospect: " + nxt.strip())
+                    i += 1
+
+                    # Any immediate acknowledgment lines after that are agent language
+                    # unless they already have a speaker label.
+                    ack_lines = []
+                    while i < len(lines):
+                        ack = lines[i]
+                        if re.match(r"^\s*(PQ|Agent|Prospect|Unknown)\s*:", ack):
+                            break
+                        if agent_ack_re.search(ack):
+                            ack_lines.append(ack.strip())
+                            i += 1
+                            continue
+                        break
+
+                    if ack_lines:
+                        out.append("")
+                        out.append("Agent: " + ack_lines[0])
+                        out.extend(ack_lines[1:])
+                    continue
+
+                out.append(nxt)
+                i += 1
+            continue
+
+        # If a Prospect block starts with agent acknowledgment after a company
+        # statement, flip that block back to Agent.
+        m_prospect = re.match(r"^\s*Prospect\s*:\s*(.*)$", line)
+        if m_prospect and agent_ack_re.search(m_prospect.group(1)):
+            out.append("Agent: " + m_prospect.group(1).strip())
+            i += 1
+            continue
+
+        out.append(line)
+        i += 1
+
+    return "\n".join(out).strip() + "\n"
+
+
+
 def _repair_agent_self_disclosure_mislabeled_as_prospect(labeled_text):
     """
     Repair role-labeled transcript blocks where a long agent personal disclosure
@@ -4218,6 +4398,8 @@ def create_role_labeled_transcript(transcript_text):
 
     # Conservative post-label repair: long agent rapport/self-disclosure sometimes
     # gets mislabeled as Prospect. Preserve exact words; only repair speaker label.
+    labeled = _repair_short_prospect_ack_after_agent_question(labeled)
+    labeled = _repair_role_labels_for_company_coverage_response(labeled)
     labeled = _repair_agent_self_disclosure_mislabeled_as_prospect(labeled)
 
     return labeled
