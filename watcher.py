@@ -906,6 +906,75 @@ def _transcript_agent_offered_dnc_before_prospect_requested(transcript):
     return not bool(prospect_requested_first)
 
 
+
+def _transcript_has_prospect_requested_dnc(transcript):
+    if not transcript:
+        return False
+
+    t = re.sub(r"\s+", " ", transcript.lower()).strip()
+
+    return bool(re.search(
+        r"\b("
+        r"put me on (?:the )?(?:do not call|do-not-call|dnc) list|"
+        r"i need to (?:go|get|be put|be placed) on (?:a |the )?(?:do not call|do-not-call|dnc) list|"
+        r"take me off (?:your )?(?:list|calling list)|"
+        r"remove me from (?:your )?(?:list|calling list)"
+        r")\b",
+        t,
+        re.I,
+    ))
+
+
+def _final_cleanup_prospect_requested_dnc_coaching(report, transcript):
+    """
+    If the prospect independently requests DNC, do not coach the agent/PQ to
+    overcome the objection or keep the sales conversation open. The correct
+    behavior is to honor the DNC request promptly and professionally.
+    """
+    if not report or not transcript:
+        return report
+
+    if not _transcript_has_prospect_requested_dnc(transcript):
+        return report
+
+    report = _text_remove_lines_containing(report, "Attempt calm call control")
+    report = _text_remove_lines_containing(report, "attempt calm call control")
+    report = _text_remove_lines_containing(report, "maintaining control and engagement")
+    report = _text_remove_lines_containing(report, "maintain control and engagement")
+    report = _text_remove_lines_containing(report, "keep the conversation open")
+    report = _text_remove_lines_containing(report, "handle resistance and maintain")
+    report = _text_remove_lines_containing(report, "expresses resistance")
+    report = _text_remove_lines_containing(report, "express frustration or disinterest")
+    report = _text_remove_lines_containing(report, "Work on energizing tone")
+
+    if re.search(r"(?im)^COACHING:\s*$", report):
+        report = re.sub(
+            r"(?ims)^COACHING:\s*.*?(?=^TOP 3 COACHING PRIORITIES:|^BIGGEST MISS:|^SUMMARY:|^OPENAI COST ESTIMATE:|\Z)",
+            "COACHING:\n- Honor direct do-not-call requests promptly and professionally, as done here.\n",
+            report,
+            count=1,
+        )
+
+    if re.search(r"(?im)^TOP 3 COACHING PRIORITIES:\s*$", report):
+        report = re.sub(
+            r"(?ims)^TOP 3 COACHING PRIORITIES:\s*.*?(?=^BIGGEST MISS:|^SUMMARY:|^OPENAI COST ESTIMATE:|\Z)",
+            "TOP 3 COACHING PRIORITIES:\n- None\n\n",
+            report,
+            count=1,
+        )
+
+    report = re.sub(
+        r"(?ims)^SUMMARY:\s*.*?(?=^OPENAI COST ESTIMATE:|\Z)",
+        "SUMMARY:\nThe prospect directly requested placement on the do-not-call list. The request was acknowledged promptly and professionally, the call ended appropriately, and no automatic fail was triggered.\n\n",
+        report,
+        count=1,
+    )
+
+    report = _cleanup_empty_sections_after_line_removal(report)
+    return report
+
+
+
 def _final_enforce_agent_offered_dnc_high_risk(report, transcript):
     """
     If agent offered DNC before prospect independently requested DNC, flag HIGH risk
@@ -11631,6 +11700,7 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _final_cleanup_promote_biggest_miss_from_flow_misses(report, transcript)
     report = _final_cleanup_only_policy_no_existing_coverage(report, transcript)
     report = _final_cleanup_sold_full_process_stage(report, transcript)
+    report = _final_cleanup_prospect_requested_dnc_coaching(report, transcript)
     report = _final_enforce_agent_offered_dnc_high_risk(report, transcript)
     report = _restore_safe_business_terms(report)
     report = _dedupe_searchable_answers(report)
