@@ -2556,6 +2556,7 @@ def run_disposition_case(name, expected):
 
 run_disposition_case("lcr_cancer", "LCR")
 run_disposition_case("age_over_80", "AGE")
+run_disposition_case("u90_1_20260508_200221", "DNC")
 print("Real-call disposition regression tests passed.")
 
 # Real-call fair disqualification report cleanup tests.

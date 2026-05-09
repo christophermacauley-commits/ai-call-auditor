@@ -348,7 +348,7 @@ def set_processing_state(call_name, filename, status, progress=0, message=None, 
 
 
 
-VALID_DISPOSITIONS = {"SOLD", "U90", "LCR", "BOOTC", "LEAD", "AGE"}
+VALID_DISPOSITIONS = {"SOLD", "U90", "LCR", "BOOTC", "LEAD", "AGE", "DNC"}
 
 def report_says_policy_sold_for_disposition(report):
     return bool(re.search(
@@ -1452,6 +1452,20 @@ def detect_auto_disposition(call_name, transcript, report, duration_seconds=None
         re.I | re.S,
     ):
         return "LCR", "No-income / affordability disqualification language detected."
+
+    dnc_requested_or_accepted = bool(re.search(
+        r"(?is)\b("
+        r"do not call list|do-not-call list|don'?t call list|"
+        r"put (?:me|you|them) on (?:the )?(?:do not call|do-not-call|don'?t call) list|"
+        r"take (?:me|you|them) off (?:the )?(?:call|calling) list|"
+        r"remove (?:me|you|them) from (?:the )?(?:call|calling) list|"
+        r"stop calling"
+        r")\b",
+        combined,
+    ))
+
+    if dnc_requested_or_accepted:
+        return "DNC", "Do-not-call request or acceptance detected."
 
     # U90 is a fallback operational disposition. It should not outrank SOLD, AGE,
     # or LCR when the call has a clearer business outcome.

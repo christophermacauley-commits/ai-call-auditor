@@ -3414,7 +3414,7 @@ def api_dashboard_partial():
 
 
 
-VALID_DISPOSITIONS = ["SOLD", "U90", "LCR", "BOOTC", "LEAD", "AGE"]
+VALID_DISPOSITIONS = ["SOLD", "U90", "LCR", "BOOTC", "LEAD", "AGE", "DNC"]
 
 def _call_col(call, idx, default=""):
     try:
@@ -3454,6 +3454,7 @@ def disposition_badge_html(disposition):
         "LCR": "badge badge-fail",
         "BOOTC": "badge badge-warn",
         "AGE": "badge badge-fail",
+        "DNC": "badge badge-fail",
     }
     cls = classes.get(d, "badge badge-neutral")
     return f'<span class="{cls}">{escape(d)}</span>'
