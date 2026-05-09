@@ -40,3 +40,12 @@ check(
     "golden processing cards hidden",
     filtered == [{"call_name": "normal_visible_call", "filename": "normal_visible_call.txt"}],
 )
+
+# Bulk delete support should exist and still protect golden calls.
+check("bulk delete route exists", "delete_selected_calls" in dir(dashboard))
+check("shared delete helper exists", "delete_call_artifacts_by_id" in dir(dashboard))
+check("bulk delete keeps good_call_control protected", dashboard.is_golden_call_name("good_call_control"))
+
+check("sold_clean_call test fixture protected", dashboard.is_protected_call_name("sold_clean_call"))
+check("u90_no_call_control test fixture protected", dashboard.is_protected_call_name("u90_no_call_control"))
+

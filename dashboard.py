@@ -78,8 +78,22 @@ def is_golden_call_name(call_name):
     return False
 
 
-def protect_golden_call_redirect(call_name, target="/"):
+
+TEST_FIXTURE_CALL_NAMES = {
+    "sold_clean_call",
+    "u90_no_call_control",
+}
+
+
+def is_protected_call_name(call_name):
     if is_golden_call_name(call_name):
+        return True
+    call_name = call_name or ""
+    return any(call_name == name or call_name.startswith(name) for name in TEST_FIXTURE_CALL_NAMES)
+
+
+def protect_golden_call_redirect(call_name, target="/"):
+    if is_protected_call_name(call_name):
         return redirect(f"{target}?error=Golden%20test%20fixture%20calls%20are%20protected.")
     return None
 
@@ -288,7 +302,7 @@ def get_calls(include_golden=False):
     if include_golden:
         return rows
 
-    return [row for row in rows if not is_golden_call_name(row[1])]
+    return [row for row in rows if not is_protected_call_name(row[1])]
 
 
 def get_call(call_id):
@@ -1535,6 +1549,7 @@ def build_completed_calls_table_rows_html(calls):
         rows.append(
             f"""
             <tr class="call-filter-row" data-agent="{agent_attr}" data-sale="{sale_data}" data-pass="{pass_data}" data-audit="{audit_attr}" data-audit-rank="{audit_rank}" data-score="{score_attr}" data-disposition="{disposition_attr}" data-call-date="{date_attr}" data-sort-date="{sort_date}" data-call-id="{cid}">
+                <td><input type="checkbox" class="bulk-delete-checkbox" name="call_ids" value="{cid}" form="bulk-delete-form" aria-label="Select {name_esc}"></td>
                 <td class="call-name"><a href="/call/{cid}">{name_esc}</a></td>
                 <td>{agent_cell}</td>
                 <td class="score-cell"><span class="badge badge-score">{score_val}</span></td>
@@ -1636,7 +1651,7 @@ def get_processing_files():
                 now,
             )
 
-    return [item for item in processing if not is_golden_call_name(item.get("call_name", ""))]
+    return [item for item in processing if not is_protected_call_name(item.get("call_name", ""))]
 
 
 
@@ -2918,6 +2933,35 @@ def dashboard():
 
     setInterval(updateTimes, 1000);
     updateTimes();
+    </script>
+
+    <form id="bulk-delete-form" method="POST" action="/delete-selected" onsubmit="return confirmBulkDelete();" style="margin: 12px 0; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <button class="delete-button" type="submit">Delete selected</button>
+        <button class="button" type="button" onclick="toggleBulkDeleteCheckboxes(true)">Select all visible</button>
+        <button class="button" type="button" onclick="toggleBulkDeleteCheckboxes(false)">Clear selected</button>
+        <span class="muted-sm">Golden calls are hidden/protected and cannot be deleted.</span>
+    </form>
+    <script>
+    function visibleCallRows() {{
+        return Array.from(document.querySelectorAll("tr.call-filter-row")).filter(row => row.offsetParent !== null);
+    }}
+    function toggleBulkDeleteCheckboxes(checked) {{
+        visibleCallRows().forEach(row => {{
+            const cb = row.querySelector(".bulk-delete-checkbox");
+            if (cb) cb.checked = checked;
+        }});
+    }}
+    function selectedBulkDeleteCount() {{
+        return document.querySelectorAll(".bulk-delete-checkbox:checked").length;
+    }}
+    function confirmBulkDelete() {{
+        const count = selectedBulkDeleteCount();
+        if (!count) {{
+            alert("Select at least one call to delete.");
+            return false;
+        }}
+        return confirm("Delete " + count + " selected call(s) and their files?");
+    }}
     </script>
 
     <div class="header">
@@ -4282,6 +4326,65 @@ def delete_processing():
     return redirect("/")
 
 
+
+def delete_call_artifacts_by_id(call_id):
+    """
+    Delete one completed non-golden call and its associated artifacts.
+    Returns (deleted, protected, call_name).
+    """
+    call = get_call(call_id)
+    if not call:
+        return False, False, ""
+
+    call_name = call[1]
+    if is_protected_call_name(call_name):
+        return False, True, call_name
+
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("DELETE FROM calls WHERE id=?", (call_id,))
+    conn.commit()
+    conn.close()
+
+    remove_file(os.path.join(TRANSCRIPTS_FOLDER, f"{call_name}.txt"))
+    remove_file(os.path.join(REPORTS_FOLDER, f"{call_name}_report.txt"))
+
+    filenames = [f"{call_name}{ext}" for ext in AUDIO_EXTENSIONS]
+    filenames.append(f"{call_name}.txt")
+    for filename in filenames:
+        remove_file(os.path.join(UPLOAD_FOLDER, filename))
+        remove_file(os.path.join(PROCESSED_CALLS_FOLDER, filename))
+        remove_file(os.path.join(TRANSCRIPT_UPLOAD_FOLDER, filename))
+
+    forget_upload_times(filenames)
+    forget_processing_states([call_name])
+    return True, False, call_name
+
+
+@app.route("/delete-selected", methods=["POST"])
+@login_required
+def delete_selected_calls():
+    raw_ids = request.form.getlist("call_ids")
+    deleted = 0
+    protected = 0
+
+    for raw_id in raw_ids:
+        try:
+            call_id = int(raw_id)
+        except (TypeError, ValueError):
+            continue
+
+        did_delete, was_protected, _call_name = delete_call_artifacts_by_id(call_id)
+        if did_delete:
+            deleted += 1
+        elif was_protected:
+            protected += 1
+
+    if protected:
+        return redirect(f"/?message=Deleted%20{deleted}%20call(s);%20skipped%20{protected}%20protected%20golden%20call(s).")
+    return redirect(f"/?message=Deleted%20{deleted}%20call(s).")
+
+
 @app.route("/delete/<int:call_id>", methods=["POST"])
 @login_required
 def delete_call(call_id):
@@ -4289,28 +4392,11 @@ def delete_call(call_id):
 
     if call:
         call_name = call[1]
-
         protected = protect_golden_call_redirect(call_name, target=f"/call/{call_id}")
         if protected:
             return protected
 
-        conn = sqlite3.connect(DB_FILE)
-        c = conn.cursor()
-        c.execute("DELETE FROM calls WHERE id=?", (call_id,))
-        conn.commit()
-        conn.close()
-
-        remove_file(os.path.join(TRANSCRIPTS_FOLDER, f"{call_name}.txt"))
-        remove_file(os.path.join(REPORTS_FOLDER, f"{call_name}_report.txt"))
-
-        filenames = [f"{call_name}{ext}" for ext in AUDIO_EXTENSIONS]
-        filenames.append(f"{call_name}.txt")
-        for filename in filenames:
-            remove_file(os.path.join(UPLOAD_FOLDER, filename))
-            remove_file(os.path.join(TRANSCRIPT_UPLOAD_FOLDER, filename))
-        forget_upload_times(filenames)
-        forget_processing_states([call_name])
-
+    delete_call_artifacts_by_id(call_id)
     return redirect("/")
 
 
