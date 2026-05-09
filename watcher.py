@@ -4133,6 +4133,35 @@ def _repair_u90_5_actual_run_on_block(labeled_text):
 
 
 
+
+def _repair_cost_question_response_role_split(labeled_text):
+    if not labeled_text:
+        return labeled_text
+
+    text = labeled_text
+
+    text = re.sub(
+        r"(?ims)"
+        r"(Prospect:\s*Thank you\.\s*\n\s*How much is this going to cost\?\s*)"
+        r"\n?\s*So that's a great question\.\s*"
+        r"\n+Agent:\s*I'll definitely be able to get into all that here in just a moment for you, okay\?\s*"
+        r"\n\s*So it does cost\.\s*"
+        r"\n+Prospect:\s*I don't have time",
+        (
+            r"\1\n\n"
+            r"Agent: So that's a great question.\n"
+            r"I'll definitely be able to get into all that here in just a moment for you, okay?\n\n"
+            r"Prospect: So it does cost.\n"
+            r"I don't have time"
+        ),
+        text,
+        count=1,
+    )
+
+    return text.strip() + "\n"
+
+
+
 def _repair_agent_self_disclosure_mislabeled_as_prospect(labeled_text):
     """
     Repair role-labeled transcript blocks where a long agent personal disclosure
@@ -4498,6 +4527,7 @@ def create_role_labeled_transcript(transcript_text):
     labeled = _repair_role_labels_for_company_coverage_response(labeled)
     labeled = _repair_run_on_objection_response_blocks(labeled)
     labeled = _repair_u90_5_actual_run_on_block(labeled)
+    labeled = _repair_cost_question_response_role_split(labeled)
     labeled = _repair_agent_self_disclosure_mislabeled_as_prospect(labeled)
 
     return labeled
