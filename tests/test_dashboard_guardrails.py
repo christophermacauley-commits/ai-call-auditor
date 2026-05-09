@@ -54,3 +54,41 @@ check("auto fixture discovery includes lcr_cancer", "lcr_cancer" in fixture_name
 check("auto fixture discovery includes health poor call control", "health_questions_poor_call_control" in fixture_names)
 check("auto fixture discovery protects all fixtures", all(dashboard.is_protected_call_name(name) for name in fixture_names))
 check("normal call still not protected by fixture discovery", not dashboard.is_protected_call_name("normal_visible_call"))
+
+# Dashboard call-row helpers should work with current sqlite tuple rows.
+sample_call_tuple = (
+    123,
+    "sample_call",
+    "db transcript",
+    "db report",
+    91,
+    "LOW",
+    "2026-05-09 12:00:00",
+    "SOLD",
+    None,
+    "SOLD",
+    "Auto sold.",
+    456,
+)
+
+check("tuple call id helper", dashboard.call_row_id(sample_call_tuple) == 123)
+check("tuple call name helper", dashboard.call_row_name(sample_call_tuple) == "sample_call")
+check("tuple call report helper", dashboard.call_row_report(sample_call_tuple) == "db report")
+check("tuple call score helper", dashboard.call_row_score(sample_call_tuple) == 91)
+check("tuple call timestamp helper", dashboard.call_row_timestamp(sample_call_tuple) == "2026-05-09 12:00:00")
+
+# The generic helper should also support mapping-style rows for future sqlite.Row usage.
+sample_call_mapping = {
+    "id": 456,
+    "call_name": "mapping_call",
+    "report": "mapping report",
+    "score": 88,
+    "timestamp": "2026-05-09 13:00:00",
+}
+
+check("mapping call id helper", dashboard.call_row_id(sample_call_mapping) == 456)
+check("mapping call name helper", dashboard.call_row_name(sample_call_mapping) == "mapping_call")
+check("mapping call report helper", dashboard.call_row_report(sample_call_mapping) == "mapping report")
+check("mapping call score helper", dashboard.call_row_score(sample_call_mapping) == 88)
+check("mapping call timestamp helper", dashboard.call_row_timestamp(sample_call_mapping) == "2026-05-09 13:00:00")
+
