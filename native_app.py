@@ -4,6 +4,7 @@ import threading
 import time
 import webview
 from webview.menu import Menu, MenuAction
+from db_migrations import migrate_database
 
 PROJECT = os.path.dirname(os.path.abspath(__file__))
 
@@ -100,6 +101,7 @@ def stop_auditor_services():
 
 def start_auditor_services():
     global watcher, dashboard, _watcher_log, _dashboard_log
+    migrate_database("calls.db")
     _watcher_log = open("logs/watcher.log", "a")
     watcher = subprocess.Popen(
         [PYTHON, "watcher.py"],

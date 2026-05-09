@@ -9,6 +9,7 @@ import json
 from dotenv import load_dotenv
 from faster_whisper import WhisperModel
 from openai import OpenAI
+from db_migrations import migrate_database
 
 load_dotenv()
 
@@ -278,36 +279,7 @@ def get_model():
 
 
 def ensure_db():
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS calls (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        call_name TEXT,
-        transcript TEXT,
-        report TEXT,
-        score INTEGER,
-        risk TEXT,
-        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS processing_state (
-        call_name TEXT PRIMARY KEY,
-        filename TEXT NOT NULL,
-        status TEXT NOT NULL,
-        progress INTEGER NOT NULL DEFAULT 0,
-        message TEXT,
-        attempts INTEGER NOT NULL DEFAULT 0,
-        error TEXT,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-
-    conn.commit()
-    conn.close()
+    migrate_database(DB_FILE)
 
 
 def set_processing_state(call_name, filename, status, progress=0, message=None, error=None):

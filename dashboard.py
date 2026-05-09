@@ -18,6 +18,7 @@ from pathlib import Path
 import time
 from datetime import datetime, timedelta
 from werkzeug.utils import secure_filename
+from db_migrations import migrate_database
 
 try:
     from dotenv import load_dotenv
@@ -196,6 +197,10 @@ def ensure_processing_state_table():
     conn.close()
 
 
+def ensure_calls_table_schema():
+    migrate_database(DB_FILE)
+
+
 def get_stable_file_time(file_path):
     stat = os.stat(file_path)
     return int(getattr(stat, "st_birthtime", stat.st_mtime))
@@ -324,6 +329,7 @@ def display_processing_state(call_name, transcript_exists, state):
 
 
 def get_calls(include_golden=False):
+    ensure_calls_table_schema()
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute("SELECT * FROM calls ORDER BY timestamp DESC")
@@ -337,6 +343,7 @@ def get_calls(include_golden=False):
 
 
 def get_call(call_id):
+    ensure_calls_table_schema()
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute("SELECT * FROM calls WHERE id=?", (call_id,))
@@ -3936,6 +3943,7 @@ def update_call_disposition(call_id):
     if manual and manual not in VALID_DISPOSITIONS:
         manual = ""
 
+    ensure_calls_table_schema()
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
 
@@ -4497,4 +4505,5 @@ def delete_call(call_id):
 
 
 if __name__ == "__main__":
+    migrate_database(DB_FILE)
     app.run(host="0.0.0.0", debug=False, use_reloader=False, port=PORT)
