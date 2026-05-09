@@ -80,7 +80,12 @@ def is_golden_call_name(call_name):
 
 
 TEST_FIXTURE_CALL_NAMES = {
+    "age_over_80",
+    "health_questions_poor_call_control",
+    "lcr_cancer",
     "sold_clean_call",
+    "u90_1_20260508_200221",
+    "u90_3_20260508_200246",
     "u90_no_call_control",
 }
 
@@ -2935,35 +2940,6 @@ def dashboard():
     updateTimes();
     </script>
 
-    <form id="bulk-delete-form" method="POST" action="/delete-selected" onsubmit="return confirmBulkDelete();" style="margin: 12px 0; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-        <button class="delete-button" type="submit">Delete selected</button>
-        <button class="button" type="button" onclick="toggleBulkDeleteCheckboxes(true)">Select all visible</button>
-        <button class="button" type="button" onclick="toggleBulkDeleteCheckboxes(false)">Clear selected</button>
-        <span class="muted-sm">Golden calls are hidden/protected and cannot be deleted.</span>
-    </form>
-    <script>
-    function visibleCallRows() {{
-        return Array.from(document.querySelectorAll("tr.call-filter-row")).filter(row => row.offsetParent !== null);
-    }}
-    function toggleBulkDeleteCheckboxes(checked) {{
-        visibleCallRows().forEach(row => {{
-            const cb = row.querySelector(".bulk-delete-checkbox");
-            if (cb) cb.checked = checked;
-        }});
-    }}
-    function selectedBulkDeleteCount() {{
-        return document.querySelectorAll(".bulk-delete-checkbox:checked").length;
-    }}
-    function confirmBulkDelete() {{
-        const count = selectedBulkDeleteCount();
-        if (!count) {{
-            alert("Select at least one call to delete.");
-            return false;
-        }}
-        return confirm("Delete " + count + " selected call(s) and their files?");
-    }}
-    </script>
-
     <div class="header">
         <div>
             <h1>Dashboard</h1>
@@ -3008,6 +2984,94 @@ def dashboard():
         </div>
         """
     else:
+        content += """
+        <form id="bulk-delete-form" method="POST" action="/delete-selected" onsubmit="return confirmBulkDelete();" style="margin: 0 0 12px 0; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+            <button class="delete-button" type="submit">Delete selected</button>
+            <button class="button" type="button" onclick="toggleBulkDeleteCheckboxes(true)">Select all visible</button>
+            <button class="button" type="button" onclick="toggleBulkDeleteCheckboxes(false)">Clear selected</button>
+            <span class="muted-sm">Golden calls and test fixtures are hidden/protected and cannot be deleted.</span>
+        </form>
+        <script>
+        window.__bulkDeleteSelectedIds = window.__bulkDeleteSelectedIds || new Set();
+
+        function visibleCallRows() {
+            return Array.from(document.querySelectorAll("tr.call-filter-row")).filter(function(row) {
+                return row.offsetParent !== null;
+            });
+        }
+
+        function syncBulkDeleteSelectionFromDom() {
+            document.querySelectorAll(".bulk-delete-checkbox").forEach(function(cb) {
+                if (cb.checked) {
+                    window.__bulkDeleteSelectedIds.add(cb.value);
+                } else {
+                    window.__bulkDeleteSelectedIds.delete(cb.value);
+                }
+            });
+        }
+
+        function restoreBulkDeleteSelectionToDom() {
+            document.querySelectorAll(".bulk-delete-checkbox").forEach(function(cb) {
+                cb.checked = window.__bulkDeleteSelectedIds.has(cb.value);
+            });
+        }
+
+        function toggleBulkDeleteCheckboxes(checked) {
+            visibleCallRows().forEach(function(row) {
+                const cb = row.querySelector(".bulk-delete-checkbox");
+                if (!cb) return;
+                cb.checked = checked;
+                if (checked) {
+                    window.__bulkDeleteSelectedIds.add(cb.value);
+                } else {
+                    window.__bulkDeleteSelectedIds.delete(cb.value);
+                }
+            });
+        }
+
+        function selectedBulkDeleteCount() {
+            syncBulkDeleteSelectionFromDom();
+            return window.__bulkDeleteSelectedIds.size;
+        }
+
+        function confirmBulkDelete() {
+            syncBulkDeleteSelectionFromDom();
+            const form = document.getElementById("bulk-delete-form");
+            if (form) {
+                form.querySelectorAll('input[type="hidden"][name="call_ids"]').forEach(function(el) {
+                    el.remove();
+                });
+                window.__bulkDeleteSelectedIds.forEach(function(id) {
+                    const hidden = document.createElement("input");
+                    hidden.type = "hidden";
+                    hidden.name = "call_ids";
+                    hidden.value = id;
+                    form.appendChild(hidden);
+                });
+            }
+
+            const count = window.__bulkDeleteSelectedIds.size;
+            if (!count) {
+                alert("Select at least one call to delete.");
+                return false;
+            }
+            return confirm("Delete " + count + " selected call(s) and their files?");
+        }
+
+        document.addEventListener("change", function(e) {
+            if (!e.target || !e.target.classList || !e.target.classList.contains("bulk-delete-checkbox")) {
+                return;
+            }
+            if (e.target.checked) {
+                window.__bulkDeleteSelectedIds.add(e.target.value);
+            } else {
+                window.__bulkDeleteSelectedIds.delete(e.target.value);
+            }
+        });
+
+        document.addEventListener("DOMContentLoaded", restoreBulkDeleteSelectionToDom);
+        </script>
+        """
         rows_html = build_completed_calls_table_rows_html(calls)
         agent_filter_options_html = build_agent_filter_options_html(calls)
         agent_sidebar_html = build_agent_sidebar_html(calls)
@@ -3399,9 +3463,15 @@ def dashboard():
                     }
                     var tb = document.getElementById("completed-calls-tbody");
                     if (tb && d.completed_tbody_html != null) {
+                        if (window.syncBulkDeleteSelectionFromDom) {
+                            window.syncBulkDeleteSelectionFromDom();
+                        }
                         tb.innerHTML = d.completed_tbody_html;
                         if (window.__dashboardReapplyFilters) {
                             window.__dashboardReapplyFilters();
+                        }
+                        if (window.restoreBulkDeleteSelectionToDom) {
+                            window.restoreBulkDeleteSelectionToDom();
                         }
                     }
                     document.querySelectorAll(".timeago").forEach(function(el) {

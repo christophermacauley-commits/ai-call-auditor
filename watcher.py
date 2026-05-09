@@ -966,6 +966,82 @@ def _transcript_has_prospect_requested_callback_only(transcript):
 
 
 
+
+def _final_cleanup_fair_medical_disqualification(report, transcript):
+    """
+    Fair medical/health disqualifications should not be treated like generic
+    early-ended Needs calls. If the prospect clearly disclosed a disqualifying
+    medical condition and no automatic fail exists, keep the stage at
+    Medical / Health and preserve fair-disqualification scoring.
+    """
+    if not report or not transcript:
+        return report
+
+    text = f"{transcript}\n{report}".lower()
+
+    # Do not fire on health-screening question wording alone.
+    # Require actual disqualification evidence: an affirmative prospect answer,
+    # explicit fair-disqualification language, or agent language ending the app
+    # because of the medical answer.
+    has_medical_disq = bool(
+        re.search(
+            r"(?is)\bprospect\s*:\s*(?:yes|yeah|yep|correct|right|i\s+(?:have|am|was)|"
+            r"i'?m|currently)\b[^\n]{0,160}\b(cancer|treatment|chemotherapy|radiation|"
+            r"terminal|hospice)\b",
+            transcript or "",
+        )
+        or re.search(
+            r"(?i)\b("
+            r"fair medical disqualification|"
+            r"fair disqualification/no-sale|"
+            r"active cancer treatment|"
+            r"disclosed active cancer treatment|"
+            r"health-related disqualification language detected|"
+            r"would not be able to continue with the application"
+            r")\b",
+            text,
+        )
+    )
+
+    if re.search(
+        r"(?i)\b(no disqualification was confirmed|no health disqualification|"
+        r"health questions were asked but no disqualification)\b",
+        text,
+    ):
+        has_medical_disq = False
+
+    sold_no = bool(re.search(r"(?im)^-\s*Policy sold:\s*NO\b|^-\s*Was the policy sold\?\s*NO\b", report))
+    no_auto = bool(re.search(r"(?im)^-\s*Automatic fail triggered:\s*NO\b", report))
+
+    if not (has_medical_disq and sold_no and no_auto):
+        return report
+
+    report = re.sub(r"(?im)^SCORE:\s*\d+\s*$", "SCORE: 90", report, count=1)
+    report = re.sub(r"(?im)^RISK:\s*(LOW|MEDIUM|HIGH)\s*$", "RISK: LOW", report, count=1)
+    report = re.sub(r"(?im)^PASS:\s*(YES|NO|AT RISK)\s*$", "PASS: YES", report, count=1)
+    report = re.sub(
+        r"(?im)^CALL STAGE REACHED:\s*.*$",
+        "CALL STAGE REACHED: Medical / Health",
+        report,
+        count=1,
+    )
+
+    report = re.sub(
+        r"(?ims)^NOT REACHED:\s*.*?(?=^COMPLIANCE FAILURES:)",
+        "NOT REACHED:\n- Product benefits\n- Three options\n- Client choice\n- Application information\n- Payment date\n- Banking/payment setup\n- Banking/account verification\n- Disclosures\n- Third Party Underwriting\n- Peace of Mind\n- Cool Down\n\n",
+        report,
+        count=1,
+    )
+
+    report = _text_remove_lines_containing(report, "prospect stopped responding")
+    report = _text_remove_lines_containing(report, "disconnected before the agent could continue")
+    report = _text_remove_lines_containing(report, "Early refusal call")
+    report = _text_remove_lines_containing(report, "did not attempt calm call control")
+    report = _cleanup_empty_sections_after_line_removal(report)
+    return report
+
+
+
 def _transcript_has_repeated_good_call_control_no_sale(transcript):
     """
     Detect late no-sale calls where the prospect gives repeated objections/refusals
@@ -12023,6 +12099,7 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _final_cleanup_sold_full_process_stage(report, transcript)
     report = _final_cleanup_prospect_requested_callback_completed_sale(report, transcript)
     report = _final_cleanup_repeated_good_call_control_no_sale(report, transcript)
+    report = _final_cleanup_fair_medical_disqualification(report, transcript)
     report = _final_cleanup_prospect_requested_dnc_coaching(report, transcript)
     report = _final_enforce_agent_offered_dnc_high_risk(report, transcript)
     report = _restore_safe_business_terms(report)
