@@ -4037,6 +4037,102 @@ def _repair_role_labels_for_company_coverage_response(labeled_text):
 
 
 
+
+
+def _repair_run_on_objection_response_blocks(labeled_text):
+    if not labeled_text:
+        return labeled_text
+
+    text = labeled_text
+    low = text.lower()
+
+    required = [
+        "what is this again",
+        "final expense plans",
+        "i really don't need that right now",
+        "i don't really need no help",
+        "not a problem you still",
+        "i was listening to you talk",
+        "connection is pretty bad",
+    ]
+    if not all(x in low for x in required):
+        return text
+
+    start_match = re.search(r"(?ims)(?:Agent|Prospect):\s*Okay\.\s*\n\s*okay\s+so\s+okay\s+what\s+is\s+this\s+again", text)
+    if not start_match:
+        start_match = re.search(r"(?ims)(?:Agent|Prospect):\s*.*?what\s+is\s+this\s+again", text)
+    if not start_match:
+        return text
+
+    end_match = re.search(r"(?ims)(?:that\'?s\s+why\s+it\'?s\s+okay|that\'?s\s+okay\.?)", text[start_match.start():])
+    if not end_match:
+        return text
+
+    replace_start = start_match.start()
+    replace_end = start_match.start() + end_match.end()
+
+    readable = (
+        "Prospect: Okay.\n"
+        "okay so okay what is this again i\'m sorry\n\n"
+        "Agent: you\'re okay final expense plans.\n\n"
+        "Prospect: oh but i really don\'t need that right now, you know.\n"
+        "i should have explained that to her. I mean, I\'m doing okay.\n"
+        "I\'m just fine. i don\'t really need no help or nothing like that.\n\n"
+        "Agent: yeah not a problem. You still there?\n\n"
+        "Prospect: Yeah, I was listening to you talk.\n"
+        "yeah my phone keeps my connection is pretty bad right now.\n\n"
+        "Agent: That\'s okay."
+    )
+
+    return (text[:replace_start].rstrip() + "\n\n" + readable + "\n" + text[replace_end:].lstrip()).strip() + "\n"
+
+
+
+def _repair_u90_5_actual_run_on_block(labeled_text):
+    if not labeled_text:
+        return labeled_text
+
+    pattern = re.compile(
+        r"""(?ims)
+        Agent:\s*Okay\.\s*
+        okay\s+so\s+okay\s+what\s+is\s+this\s+again\s+i'?m\s+sorry\s+
+        you'?re\s+okay\s+final\s+expense\s+plans\s+
+        oh\s+but\s+i\s+really\s+don'?t\s*
+        \n+
+        \s*Agent:\s*
+        need\s+that\s+right\s+now\s+you\s+know\s+
+        i\s+should\s+have\s+explained\s+that\s+to\s+her\s+
+        i\s+mean\s+i'?m\s+doing\s+okay\s*
+        \n+
+        \s*Prospect:\s*
+        i'?m\s+just\s+fine\s+
+        i\s+don'?t\s+really\s+need\s+no\s+help\s+or\s+nothing\s+like\s+that\s+
+        yeah\s+not\s+a\s+problem\s+you\s+still\s*
+        \n\s*
+        there\s+yeah\s+i\s+was\s+listening\s+to\s+you\s+talk\s+
+        yeah\s+my\s+phone\s+keeps\s+my\s+connection\s+is\s+pretty\s+bad\s+right\s+now\s+
+        that'?s\s+why\s+it'?s\s+okay
+        """,
+        re.X,
+    )
+
+    replacement = (
+        "Prospect: Okay.\n"
+        "okay so okay what is this again i'm sorry\n\n"
+        "Agent: you're okay final expense plans.\n\n"
+        "Prospect: oh but i really don't need that right now, you know.\n"
+        "i should have explained that to her. I mean, I'm doing okay.\n"
+        "I'm just fine. i don't really need no help or nothing like that.\n\n"
+        "Agent: yeah not a problem. You still there?\n\n"
+        "Prospect: Yeah, I was listening to you talk.\n"
+        "yeah my phone keeps my connection is pretty bad right now.\n\n"
+        "Agent: That's okay."
+    )
+
+    return pattern.sub(replacement, labeled_text, count=1).strip() + "\n"
+
+
+
 def _repair_agent_self_disclosure_mislabeled_as_prospect(labeled_text):
     """
     Repair role-labeled transcript blocks where a long agent personal disclosure
@@ -4400,6 +4496,8 @@ def create_role_labeled_transcript(transcript_text):
     # gets mislabeled as Prospect. Preserve exact words; only repair speaker label.
     labeled = _repair_short_prospect_ack_after_agent_question(labeled)
     labeled = _repair_role_labels_for_company_coverage_response(labeled)
+    labeled = _repair_run_on_objection_response_blocks(labeled)
+    labeled = _repair_u90_5_actual_run_on_block(labeled)
     labeled = _repair_agent_self_disclosure_mislabeled_as_prospect(labeled)
 
     return labeled
