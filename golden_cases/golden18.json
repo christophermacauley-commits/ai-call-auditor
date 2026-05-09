@@ -327,6 +327,41 @@
         "PASS: AT RISK"
       ],
       "notes": "Prospect independently requested placement on the do-not-call list; protects clean DNC handling from being scored as call-control failure or agent-offered-DNC high risk."
+    },
+    {
+      "id": "callback_requested_but_sale_completed",
+      "match": "callback_accepted_sold",
+      "expected_stage": "Cool Down",
+      "expected_risk": "MEDIUM",
+      "expected_policy_sold": "YES",
+      "expected_autofail": "NO",
+      "expected_final_stage": "Cool Down",
+      "expected_disposition": "SOLD",
+      "required_phrases": [
+        "RISK: MEDIUM",
+        "PASS: YES",
+        "CALL STAGE REACHED: Cool Down",
+        "EARLY END: NO",
+        "- Did the agent set a callback? NO",
+        "- Callback set: NO",
+        "- Objection occurred without proper call control: NO",
+        "- Automatic fail triggered: NO",
+        "- Reason: None",
+        "- Policy sold: YES",
+        "- Final stage supporting sale: Cool Down",
+        "BIGGEST MISS:\n- None"
+      ],
+      "forbidden_phrases": [
+        "Callback set without allowed exception",
+        "Callback set before policy completion",
+        "Automatic fail triggered: YES",
+        "PASS: AT RISK",
+        "PASS: NO",
+        "Policy sold: NO",
+        "Was the policy sold? NO",
+        "EARLY END: YES"
+      ],
+      "notes": "Prospect asked for a callback during benefits/options, but the agent did not set it and completed the sale through Cool Down; protects against false callback autofail on completed sold calls."
     }
   ],
   "global_must_not_contain": [
