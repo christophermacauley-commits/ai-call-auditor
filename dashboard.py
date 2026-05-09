@@ -201,6 +201,69 @@ def ensure_calls_table_schema():
     migrate_database(DB_FILE)
 
 
+CALL_ROW_FIELDS = {
+    "id": 0,
+    "call_name": 1,
+    "transcript": 2,
+    "report": 3,
+    "score": 4,
+    "risk": 5,
+    "timestamp": 6,
+    "auto_disposition": 7,
+    "manual_disposition": 8,
+    "final_disposition": 9,
+    "disposition_reason": 10,
+    "duration_seconds": 11,
+}
+
+
+def call_field(call, field_name, default=""):
+    """
+    Read a calls-table field by name.
+
+    Keeps dashboard code from depending on raw tuple indexes everywhere while
+    remaining compatible with current sqlite tuple rows.
+    """
+    if call is None:
+        return default
+
+    try:
+        value = call[field_name]
+        return value if value is not None else default
+    except Exception:
+        pass
+
+    idx = CALL_ROW_FIELDS.get(field_name)
+    if idx is None:
+        return default
+
+    try:
+        value = call[idx]
+        return value if value is not None else default
+    except Exception:
+        return default
+
+
+def call_row_id(call):
+    return call_field(call, "id", None)
+
+
+def call_row_name(call):
+    return call_field(call, "call_name", "")
+
+
+def call_row_report(call):
+    return call_field(call, "report", "")
+
+
+def call_row_score(call):
+    return call_field(call, "score", None)
+
+
+def call_row_timestamp(call):
+    return call_field(call, "timestamp", None)
+
+
 def get_stable_file_time(file_path):
     stat = os.stat(file_path)
     return int(getattr(stat, "st_birthtime", stat.st_mtime))
@@ -339,7 +402,7 @@ def get_calls(include_golden=False):
     if include_golden:
         return rows
 
-    return [row for row in rows if not is_protected_call_name(row[1])]
+    return [row for row in rows if not is_protected_call_name(call_row_name(row))]
 
 
 def get_call(call_id):
@@ -698,9 +761,9 @@ def _ask_qa_strict_rules_block():
 
 def get_ask_context_text(call):
     """Redacted transcript from disk + saved report (file preferred, else DB)."""
-    call_name = call[1]
+    call_name = call_row_name(call)
     transcript = get_saved_transcript(call_name) or ""
-    report = get_saved_report(call_name) or (call[3] or "")
+    report = get_saved_report(call_name) or (call_row_report(call) or "")
     return transcript, report
 
 
@@ -1198,7 +1261,7 @@ def extract_biggest_miss(report_text):
 
 def call_report_text(row):
     """Saved report file overrides DB `report` column (same source as call detail / table)."""
-    return get_saved_report(row[1]) or (row[3] or "")
+    return get_saved_report(call_row_name(row)) or (call_row_report(row) or "")
 
 
 # Report sections recognized when splitting saved audit text (show / hide in build_clean_report).
