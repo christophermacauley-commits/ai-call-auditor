@@ -264,6 +264,40 @@
         "without proper call control"
       ],
       "notes": "Agent attempted call control: 'I can assure you this will take just a moment here.'"
+    },
+    {
+      "id": "sold_2_only_policy_full_sale",
+      "match": "sold_2",
+      "expected_stage": "Cool Down",
+      "expected_risk": "MEDIUM",
+      "expected_policy_sold": "YES",
+      "expected_autofail": "NO",
+      "expected_final_stage": "Cool Down",
+      "expected_disposition": "SOLD",
+      "required_phrases": [
+        "PASS: YES",
+        "CALL STAGE REACHED: Cool Down",
+        "EARLY END: NO",
+        "- Existing coverage asked: YES",
+        "- Existing coverage mentioned but not confirmed: NO",
+        "- Automatic fail triggered: NO",
+        "- Reason: None",
+        "- Policy sold: YES",
+        "- Final stage supporting sale: Cool Down",
+        "Application information, payment date, banking setup, required disclosures, voice signature, and post-sale wrap-up were completed."
+      ],
+      "forbidden_phrases": [
+        "CALL STAGE REACHED: Needs",
+        "EARLY END: YES",
+        "Existing coverage mentioned but not confirmed: YES",
+        "Automatic fail triggered: YES",
+        "PASS: AT RISK",
+        "the call did not continue to application or enrollment completion",
+        "ended before quotes, application, banking, or enrollment completion",
+        "Confirm current existing coverage",
+        "Existing coverage was mentioned but not confirmed"
+      ],
+      "notes": "Full sold call where existing coverage was asked, but prospect indicated this would likely be the only policy; protects against false existing-coverage autofail and stale early-end summary."
     }
   ],
   "global_must_not_contain": [
