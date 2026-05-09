@@ -925,6 +925,124 @@ def _transcript_has_prospect_requested_dnc(transcript):
     ))
 
 
+
+def _transcript_has_prospect_requested_callback_only(transcript):
+    """
+    True when the prospect asks for a callback/later time, but the agent does not
+    accept/set it. This is an objection or interruption only, not a callback set.
+    """
+    if not transcript:
+        return False
+
+    t = re.sub(r"\s+", " ", transcript.lower()).strip()
+
+    prospect_request = bool(re.search(
+        r"\b("
+        r"could you call me back|"
+        r"can you call me back|"
+        r"call me back in about|"
+        r"call me back later|"
+        r"call me back tomorrow|"
+        r"can we do this later|"
+        r"can we do it another day|"
+        r"i need to go.*(?:later|another day)"
+        r")\b",
+        t,
+        re.I,
+    ))
+
+    if not prospect_request:
+        return False
+
+    agent_accepted = bool(
+        detect_agent_callback_from_transcript(transcript)
+        or (
+            "_transcript_has_agent_accepted_callback" in globals()
+            and _transcript_has_agent_accepted_callback(transcript)
+        )
+    )
+
+    return not agent_accepted
+
+
+def _final_cleanup_prospect_requested_callback_completed_sale(report, transcript):
+    """
+    If the prospect asked for a callback but the agent did not accept it and the
+    call continued through a completed sale, clear stale callback autofail state.
+    """
+    if not report or not transcript:
+        return report
+
+    if not _transcript_has_prospect_requested_callback_only(transcript):
+        return report
+
+    sold_yes = bool(re.search(r"(?im)^-\s*Policy sold:\s*YES\b|^-\s*Was the policy sold\?\s*YES\b", report))
+    completed_sale = bool(re.search(
+        r"(?is)(voice signature|this call is now being recorded|you have applied for|"
+        r"signing the application electronically|authorized the drafting|application process|"
+        r"welcome letter|decision you made to put this coverage in place|insurance policy could lapse)",
+        transcript,
+    ))
+
+    if not (sold_yes and completed_sale):
+        return report
+
+    report = re.sub(
+        r"(?im)^-\s*Did the agent set a callback\?\s*YES\b.*$",
+        "- Did the agent set a callback? NO",
+        report,
+    )
+    report = re.sub(
+        r"(?im)^-\s*Callback set:\s*YES\b.*$",
+        "- Callback set: NO",
+        report,
+    )
+    report = re.sub(
+        r"(?im)^-\s*Objection occurred without proper call control:\s*YES\b.*$",
+        "- Objection occurred without proper call control: NO",
+        report,
+    )
+
+    report = _text_remove_lines_containing(report, "Callback set without allowed exception")
+    report = _text_remove_lines_containing(report, "Callback set before policy completion")
+
+    callback_yes = bool(re.search(r"(?im)^-\s*Callback set:\s*YES\b", report))
+    objection_yes = bool(re.search(r"(?im)^-\s*Objection occurred without proper call control:\s*YES\b", report))
+    existing_yes = bool(re.search(r"(?im)^-\s*Existing coverage mentioned but not confirmed:\s*YES\b", report))
+    cu_yes = bool(re.search(r"(?im)^-\s*Credit union mentioned but bank/account not verified:\s*YES\b", report))
+
+    if not callback_yes and not objection_yes and not existing_yes and not cu_yes:
+        report = re.sub(
+            r"(?im)^-\s*Automatic fail triggered:\s*YES\b.*$",
+            "- Automatic fail triggered: NO",
+            report,
+            count=1,
+        )
+        if re.search(r"(?im)^-\s*Reason:\s*.*$", report):
+            report = re.sub(r"(?im)^-\s*Reason:\s*.*$", "- Reason: None", report, count=1)
+        else:
+            report = re.sub(
+                r"(?im)^-\s*Automatic fail triggered:\s*NO\b.*$",
+                "- Automatic fail triggered: NO\n- Reason: None",
+                report,
+                count=1,
+            )
+
+        report = re.sub(r"(?im)^PASS:\s*(?:AT RISK|NO)\s*$", "PASS: YES", report, count=1)
+        report = re.sub(r"(?im)^RISK:\s*HIGH\s*$", "RISK: MEDIUM", report, count=1)
+
+    if re.search(r"(?im)^BIGGEST MISS:\s*$", report):
+        report = re.sub(
+            r"(?ims)^BIGGEST MISS:\s*\n-\s*Callback.*?(?=^SUMMARY:|^OPENAI COST ESTIMATE:|\Z)",
+            "BIGGEST MISS:\n- None\n\n",
+            report,
+            count=1,
+        )
+
+    return report
+
+
+
 def _final_cleanup_prospect_requested_dnc_coaching(report, transcript):
     """
     If the prospect independently requests DNC, do not coach the agent/PQ to
@@ -4483,6 +4601,7 @@ def _extract_handoff_and_direct_address_names(text):
     blocked = {
         "PQ", "Agent", "Prospect", "Unknown", "Carrier", "Third", "Party",
         "Mississippi", "Tennessee", "Maryland", "Indiana", "Arkansas", "Texas",
+        "Georgia", "Rome", "Atlanta", "Lindale",
         "Social", "Security", "State", "Department", "Insurance",
         "American", "General", "Mutual", "Omaha", "Combined", "Colonial",
         "Globe", "MIB", "COVID", "Medicare", "Medicaid",
@@ -11700,9 +11819,19 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _final_cleanup_promote_biggest_miss_from_flow_misses(report, transcript)
     report = _final_cleanup_only_policy_no_existing_coverage(report, transcript)
     report = _final_cleanup_sold_full_process_stage(report, transcript)
+    report = _final_cleanup_prospect_requested_callback_completed_sale(report, transcript)
     report = _final_cleanup_prospect_requested_dnc_coaching(report, transcript)
     report = _final_enforce_agent_offered_dnc_high_risk(report, transcript)
     report = _restore_safe_business_terms(report)
+
+    # Keep BIGGEST MISS from rendering as a blank section after late cleanup removes a stale miss.
+    report = re.sub(
+        r"(?im)^BIGGEST MISS:\s*$\n\s*(?=^SUMMARY:|^OPENAI COST ESTIMATE:|\Z)",
+        "BIGGEST MISS:\n- None\n\n",
+        report,
+        count=1,
+    )
+
     report = _dedupe_searchable_answers(report)
     return report
 
