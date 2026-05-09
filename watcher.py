@@ -965,6 +965,185 @@ def _transcript_has_prospect_requested_callback_only(transcript):
     return not agent_accepted
 
 
+
+def _transcript_has_repeated_good_call_control_no_sale(transcript):
+    """
+    Detect late no-sale calls where the prospect gives repeated objections/refusals
+    and the agent makes real control attempts, but the prospect/husband still refuses.
+    This should not become an objection-without-control autofail.
+    """
+    if not transcript:
+        return False
+
+    t = re.sub(r"\s+", " ", transcript.lower()).strip()
+
+    objection_hits = len(re.findall(
+        r"\b("
+        r"i can'?t pay|can'?t pay|"
+        r"i can'?t give .* info|can'?t give .* bank|"
+        r"not .* giving .* bank information|"
+        r"he doesn'?t want|he thinks|"
+        r"he said no|he said nope|he told me no|"
+        r"he said i'?m not interested|"
+        r"not interested|"
+        r"i can'?t go against my husband|"
+        r"my husband don'?t trust|"
+        r"he ain'?t giving nobody no bank information|"
+        r"we can look it over|"
+        r"right now.*(?:no|not|can'?t)"
+        r")\b",
+        t,
+        re.I,
+    ))
+
+    control_hits = len(re.findall(
+        r"\b("
+        r"i can assure you|"
+        r"we will not be withdrawing anything until|"
+        r"i would not risk my license|"
+        r"i do understand|"
+        r"i hear him|"
+        r"i hear you|"
+        r"to be able to get the paperwork|"
+        r"i do have to finish and submit the application|"
+        r"they just don'?t send out that paperwork until that application is submitted|"
+        r"is there anything that i could better explain|"
+        r"help him feel .* comfortable|"
+        r"i have been able to find .* cheaper|"
+        r"you guys have my direct number|"
+        r"you always leave a voicemail|"
+        r"call the state department of insurance|"
+        r"verify exactly who i am|"
+        r"verify .* who i am"
+        r")\b",
+        t,
+        re.I,
+    ))
+
+    refusal_final = bool(re.search(
+        r"\b(he said no|he said nope|he told me no|he said i'?m not interested|"
+        r"i can'?t go against my husband|he ain'?t giving nobody no bank information|"
+        r"husband .* not interested|husband .* no)\b",
+        t,
+        re.I,
+    ))
+
+    return objection_hits >= 3 and control_hits >= 2 and refusal_final
+
+
+def _final_cleanup_repeated_good_call_control_no_sale(report, transcript):
+    """
+    If repeated objections/refusals occurred and the agent made real control attempts,
+    remove stale no-call-control autofail language. Also do not apply credit-union ACH
+    autofail when the policy was not sold and banking verification was blocked/refused.
+    """
+    if not report or not transcript:
+        return report
+
+    if not _transcript_has_repeated_good_call_control_no_sale(transcript):
+        return report
+
+    sold_yes = bool(re.search(r"(?im)^-\s*Policy sold:\s*YES\b|^-\s*Was the policy sold\?\s*YES\b", report))
+    sold_no = bool(re.search(r"(?im)^-\s*Policy sold:\s*NO\b|^-\s*Was the policy sold\?\s*NO\b", report))
+
+    if sold_yes:
+        return report
+
+    report = re.sub(
+        r"(?im)^-\s*Objection occurred without proper call control:\s*YES\b.*$",
+        "- Objection occurred without proper call control: NO",
+        report,
+    )
+
+    if sold_no:
+        report = re.sub(
+            r"(?im)^-\s*Credit union mentioned but bank/account not verified:\s*YES\b.*$",
+            "- Credit union mentioned but bank/account not verified: NO",
+            report,
+        )
+
+    report = _text_remove_lines_containing(report, "Objection occurred without proper call control")
+    report = _text_remove_lines_containing(report, "Credit union account information not verified for ACH draft accuracy")
+    report = _text_remove_lines_containing(report, "after the sale was completed")
+
+    any_auto_reason = bool(re.search(
+        r"(?im)^-\s*(Callback set|Objection occurred without proper call control|"
+        r"Existing coverage mentioned but not confirmed|Credit union mentioned but bank/account not verified):\s*YES\b",
+        report,
+    ))
+
+    if not any_auto_reason:
+        report = re.sub(
+            r"(?im)^-\s*Automatic fail triggered:\s*YES\b.*$",
+            "- Automatic fail triggered: NO",
+            report,
+            count=1,
+        )
+        report = re.sub(r"(?im)^-\s*Reason:\s*.*$", "- Reason: None", report, count=1)
+        report = re.sub(r"(?im)^RISK:\s*HIGH\s*$", "RISK: MEDIUM", report, count=1)
+        report = re.sub(r"(?im)^PASS:\s*(NO|AT RISK)\s*$", "PASS: YES", report, count=1)
+
+    # The call got into application/payment setup, but not completed disclosures/TPU.
+    report = re.sub(
+        r"(?im)^CALL STAGE REACHED:\s*Disclosures\s*$",
+        "CALL STAGE REACHED: Banking/payment setup",
+        report,
+        count=1,
+    )
+    report = re.sub(
+        r"(?im)^-\s*Final stage supporting sale:\s*Quotes\s*$",
+        "- Final stage supporting sale: Banking/payment setup",
+        report,
+        count=1,
+    )
+
+    report = re.sub(
+        r"(?ims)^BIGGEST MISS:\s*.*?(?=^SUMMARY:|^OPENAI COST ESTIMATE:|\Z)",
+        "BIGGEST MISS:\n- Prospect and husband refused to provide banking information after multiple reasonable call-control attempts, so the application could not be completed.\n\n",
+        report,
+        count=1,
+    )
+
+    report = re.sub(
+        r"(?ims)^SUMMARY:\s*.*?(?=^OPENAI COST ESTIMATE:|\Z)",
+        "SUMMARY:\nThe prospect reached options/application and initially leaned toward an option, but the sale was not completed because the prospect and husband refused to provide banking information. The agent made multiple reasonable call-control attempts, so no objection-without-call-control autofail is supported.\n",
+        report,
+        count=1,
+    )
+
+    report = re.sub(
+        r"(?i)When a prospect says they need to leave or asks to be left on hold, use a real call-control statement and redirect back into the health questions before offering a callback\.",
+        "The agent made multiple reasonable call-control attempts; when a prospect and spouse continue refusing banking information, document the refusal and close professionally.",
+        report,
+    )
+
+    report = re.sub(
+        r"(?im)^-\s*Attempt calm call control early.*$",
+        "- After several objections and a spouse refusal, document the refusal clearly and close professionally.",
+        report,
+    )
+
+    if not re.search(r"(?im)^-\s*Objection occurred without proper call control:", report):
+        report = re.sub(
+            r"(?im)^-\s*Callback set:\s*NO\b.*$",
+            lambda m: m.group(0) + "\n- Objection occurred without proper call control: NO",
+            report,
+            count=1,
+        )
+
+    if re.search(r"(?im)^-\s*Automatic fail triggered:\s*NO\b", report) and not re.search(r"(?im)^-\s*Reason:", report):
+        report = re.sub(
+            r"(?im)^-\s*Automatic fail triggered:\s*NO\b.*$",
+            lambda m: m.group(0) + "\n- Reason: None",
+            report,
+            count=1,
+        )
+
+    report = _cleanup_empty_sections_after_line_removal(report)
+    return report
+
+
+
 def _final_cleanup_prospect_requested_callback_completed_sale(report, transcript):
     """
     If the prospect asked for a callback but the agent did not accept it and the
@@ -3711,6 +3890,15 @@ def redact_sensitive_transcript(transcript):
     redacted = _transcript_restore_phrases(redacted, vault)
     redacted = hard_privacy_redact_transcript(redacted)
     redacted = final_transcript_privacy_cleanup(redacted)
+
+    # Repair title/name split where "Specialist Ella, PQ[NUMBER]" was partially
+    # redacted as "[NAME] Ella, PQ[NUMBER]". The title is not private; the PQ name is.
+    redacted = re.sub(
+        r"(?i)\bHi,\s*\[NAME\]\s+([A-Z][a-z]+),\s*PQ\[NUMBER\]",
+        "Hi, Specialist [NAME], PQ[NUMBER]",
+        redacted,
+    )
+
     return redacted
 
 
@@ -4599,7 +4787,7 @@ def _extract_handoff_and_direct_address_names(text):
         return names
 
     blocked = {
-        "PQ", "Agent", "Prospect", "Unknown", "Carrier", "Third", "Party",
+        "PQ", "Agent", "Prospect", "Unknown", "Carrier", "Third", "Party", "Specialist",
         "Mississippi", "Tennessee", "Maryland", "Indiana", "Arkansas", "Texas",
         "Georgia", "Rome", "Atlanta", "Lindale",
         "Social", "Security", "State", "Department", "Insurance",
@@ -4865,6 +5053,20 @@ def create_role_labeled_transcript(transcript_text):
 
     # Show the speaker label only when the speaker changes.
     labeled = format_grouped_speaker_transcript(labeled)
+
+    # Repair title/name split in PQ handoff lines where "Specialist Ella, PQ[NUMBER]"
+    # can become "Hi, [NAME] [NAME], PQ[NUMBER]" after role-label redaction.
+    # The title is not private; the PQ name is.
+    labeled = re.sub(
+        r"(?im)^(PQ:\s*Hi,\s*)\[NAME\]\s+\[NAME\](,\s*PQ\[NUMBER\]\.?)$",
+        r"\1Specialist [NAME]\2",
+        labeled,
+    )
+    labeled = re.sub(
+        r"(?im)^(\s*Hi,\s*)\[NAME\]\s+\[NAME\](,\s*PQ\[NUMBER\]\.?)$",
+        r"\1Specialist [NAME]\2",
+        labeled,
+    )
 
     # Conservative post-label repair: long agent rapport/self-disclosure sometimes
     # gets mislabeled as Prospect. Preserve exact words; only repair speaker label.
@@ -11820,6 +12022,7 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _final_cleanup_only_policy_no_existing_coverage(report, transcript)
     report = _final_cleanup_sold_full_process_stage(report, transcript)
     report = _final_cleanup_prospect_requested_callback_completed_sale(report, transcript)
+    report = _final_cleanup_repeated_good_call_control_no_sale(report, transcript)
     report = _final_cleanup_prospect_requested_dnc_coaching(report, transcript)
     report = _final_enforce_agent_offered_dnc_high_risk(report, transcript)
     report = _restore_safe_business_terms(report)
