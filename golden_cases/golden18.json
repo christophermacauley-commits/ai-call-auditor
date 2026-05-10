@@ -452,6 +452,38 @@
         "ACH-compatible account information was not clearly verified with the credit union"
       ],
       "notes": "Sold credit-union branch verification case. Bank/CU ACH call must not count as insurance-company coverage confirmation; branch/direct-deposit-form resolution satisfies credit-union account verification."
+    },
+    {
+      "id": "lcr_weight",
+      "match": "lcr_weight",
+      "expected_policy_sold": "NO",
+      "expected_risk": [
+        "LOW"
+      ],
+      "must_contain": [
+        "SCORE: 90",
+        "RISK: LOW",
+        "PASS: YES",
+        "CALL STAGE REACHED: Medical / Health",
+        "- Did the agent set a callback? YES",
+        "- Callback set: YES",
+        "- Objection occurred without proper call control: NO",
+        "- Automatic fail triggered: NO",
+        "- Reason: None",
+        "- Policy sold: NO",
+        "- Evidence: Prospect had a disqualifying health condition.",
+        "- Final stage supporting sale: None",
+        "BIGGEST MISS:\n- None"
+      ],
+      "must_not_contain": [
+        "CALL STAGE REACHED: Fact Finding / Warm-up",
+        "CALL STAGE REACHED: Needs",
+        "Callback set without allowed exception",
+        "Objection occurred without proper call control: YES",
+        "- Automatic fail triggered: YES",
+        "3 and 1 Method incomplete"
+      ],
+      "notes": "Weight/height parameter stop. Should be fair LCR; callback can remain factually YES but must not trigger callback/call-control autofail."
     }
   ],
   "global_must_not_contain": [

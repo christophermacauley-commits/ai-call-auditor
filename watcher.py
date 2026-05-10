@@ -11413,6 +11413,10 @@ def _final_cleanup_false_health_disqualification_after_clean_screen(report, tran
     if not report or not _transcript_has_clean_health_screening_no_dq(transcript):
         return report
 
+    disq_disp, _ = _detect_disqualification_no_agent_fault(report, transcript)
+    if disq_disp in {"AGE", "LCR"}:
+        return report
+
     stale_health = bool(re.search(
         r"(?is)Prospect had a disqualifying health condition|"
         r"Agent appropriately stopped after identifying disqualification|"
@@ -11850,12 +11854,20 @@ def _final_cleanup_disqualification_no_agent_fault(report, transcript):
         )
 
     # Keep outcome clear.
-    report = re.sub(
-        r"(?im)^- Evidence:\s*.*$",
-        f"- Evidence: {reason}",
-        report,
-        count=1,
-    )
+    if re.search(r"(?im)^- Evidence:\s*", report):
+        report = re.sub(
+            r"(?im)^- Evidence:\s*.*$",
+            f"- Evidence: {reason}",
+            report,
+            count=1,
+        )
+    elif re.search(r"(?im)^- Policy sold:\s*NO\b", report):
+        report = re.sub(
+            r"(?im)^- Policy sold:\s*NO\b.*$",
+            lambda m: m.group(0) + f"\n- Evidence: {reason}",
+            report,
+            count=1,
+        )
 
     # Biggest miss should not accuse the agent when the call ended due to disqualification.
     if re.search(r"(?im)^BIGGEST MISS:\s*", report):
