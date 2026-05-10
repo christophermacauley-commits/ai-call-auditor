@@ -255,6 +255,52 @@ check(
     fixed_self_disclosure,
 )
 
+
+# Raw Whisper lines can contain both speakers. Split obvious embedded agent
+# rapport/fact-finding turns before role labeling so the labeler can assign each
+# turn separately.
+run_on_speaker_turn_lines = watcher._split_transcript_for_exact_labeling("""tell me have you always lived there in ohio i'm from indiana so i'm just your neighbor
+yeah i've been here all my life oh that's how i am with indiana you like it there
+but ours is corn well that's me i love a good festival well miss. [NAME] are you currently working are you retired now or on disability
+but not from social security gotcha because I was a postal worker and oh nice so how long did you do that work for
+""")
+
+check(
+    "run-on speaker splitter preserves agent opener",
+    "tell me have you always lived there in ohio i'm from indiana so i'm just your neighbor" in run_on_speaker_turn_lines,
+    run_on_speaker_turn_lines,
+)
+check(
+    "run-on speaker splitter separates prospect ohio answer",
+    "yeah i've been here all my life" in run_on_speaker_turn_lines,
+    run_on_speaker_turn_lines,
+)
+check(
+    "run-on speaker splitter separates agent indiana follow-up",
+    "oh that's how i am with indiana you like it there" in run_on_speaker_turn_lines,
+    run_on_speaker_turn_lines,
+)
+check(
+    "run-on speaker splitter separates prospect corn answer",
+    "but ours is corn" in run_on_speaker_turn_lines,
+    run_on_speaker_turn_lines,
+)
+check(
+    "run-on speaker splitter separates agent work-status question",
+    "well that's me i love a good festival well miss. [NAME] are you currently working are you retired now or on disability" in run_on_speaker_turn_lines,
+    run_on_speaker_turn_lines,
+)
+check(
+    "run-on speaker splitter separates prospect social-security answer",
+    "but not from social security" in run_on_speaker_turn_lines,
+    run_on_speaker_turn_lines,
+)
+check(
+    "run-on speaker splitter separates agent postal-worker follow-up",
+    "gotcha because I was a postal worker and oh nice so how long did you do that work for" in run_on_speaker_turn_lines,
+    run_on_speaker_turn_lines,
+)
+
 print("Speaker-label self-disclosure test passed.")
 
 late_stage_should_not_downgrade_to_who_i_am = """SCORE: 90

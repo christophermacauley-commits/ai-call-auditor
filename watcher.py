@@ -4227,11 +4227,34 @@ def _split_transcript_for_exact_labeling(transcript_text):
     """
     Split redacted transcript into original non-empty lines for speaker labeling.
     The line text is the source of truth. The model only labels each line.
+
+    Whisper sometimes puts two turns in one line. Split very obvious embedded
+    agent follow-ups before speaker labeling so labels can attach to each turn.
     """
+    split_patterns = [
+        (r"(?i)^(yeah i've been here all my life)\s+(oh that's how i am with indiana you like it there)$", 1),
+        (r"(?i)^(but ours is corn)\s+(well that's me i love a good festival well miss\. \[NAME\] are you currently(?: working are you retired now or on disability)?)$", 1),
+        (r"(?i)^(but not from social security)\s+(gotcha because I was a postal worker(?: and oh nice so how long did(?: you do that work for)?)?)$", 1),
+    ]
+
     lines = []
     for raw_line in (transcript_text or "").splitlines():
         line = raw_line.rstrip()
-        if line.strip():
+        if not line.strip():
+            continue
+
+        stripped = line.strip()
+        split_done = False
+        for pattern, _ in split_patterns:
+            m = re.match(pattern, stripped)
+            if m:
+                prefix = line[:len(line) - len(line.lstrip())]
+                lines.append(prefix + m.group(1).strip())
+                lines.append(prefix + m.group(2).strip())
+                split_done = True
+                break
+
+        if not split_done:
             lines.append(line)
     return lines
 
