@@ -426,6 +426,32 @@
         "Callback set without allowed exception"
       ],
       "notes": "Prospect/husband refused banking info after repeated objections; agent made reasonable call-control attempts, so the no-sale should not be a call-control or credit-union autofail."
+    },
+    {
+      "id": "confirmed_credit_union_2",
+      "match": "confirmed_credit_union_2",
+      "expected_policy_sold": "YES",
+      "expected_risk": [
+        "LOW"
+      ],
+      "must_contain": [
+        "CALL STAGE REACHED: Cool Down",
+        "- Did the agent confirm current coverage? NO",
+        "- Did the agent call an insurance company to confirm current coverage? NO",
+        "- Did the agent call the bank to verify banking/account information? YES",
+        "- Did the agent verify credit union account information if a credit union was mentioned? YES",
+        "- Credit union mentioned but bank/account not verified: NO",
+        "- Automatic fail triggered: NO",
+        "- Reason: None"
+      ],
+      "must_not_contain": [
+        "- Did the agent call an insurance company to confirm current coverage? YES",
+        "- Did the agent verify credit union account information if a credit union was mentioned? NO",
+        "- Credit union mentioned but bank/account not verified: YES",
+        "Credit union account information not verified",
+        "ACH-compatible account information was not clearly verified with the credit union"
+      ],
+      "notes": "Sold credit-union branch verification case. Bank/CU ACH call must not count as insurance-company coverage confirmation; branch/direct-deposit-form resolution satisfies credit-union account verification."
     }
   ],
   "global_must_not_contain": [
