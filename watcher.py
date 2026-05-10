@@ -1749,6 +1749,10 @@ def _final_enforce_hold_only_poor_call_control(report, transcript):
     if not report or not _transcript_has_hold_only_callback_no_control(transcript):
         return report
 
+    disq_disp, _ = _detect_disqualification_no_agent_fault(report, transcript)
+    if disq_disp in {"AGE", "LCR"}:
+        return report
+
     report = _set_callback_fields(
         report,
         objection_no_control=True,
@@ -11162,6 +11166,10 @@ def _final_cleanup_clean_health_needs_hangup(report, transcript):
     as a health disqualification just because stale report text says so.
     """
     if not report:
+        return report
+
+    disq_disp, _ = _detect_disqualification_no_agent_fault(report, transcript)
+    if disq_disp in {"AGE", "LCR"}:
         return report
 
     if not _transcript_has_clean_health_screening_no_dq(transcript):
