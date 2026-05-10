@@ -3626,23 +3626,16 @@ def api_dashboard_partial():
 
 VALID_DISPOSITIONS = ["SOLD", "U90", "LCR", "BOOTC", "LEAD", "AGE", "DNC"]
 
-def _call_col(call, idx, default=""):
-    try:
-        v = call[idx]
-        return v if v is not None else default
-    except Exception:
-        return default
-
 def call_auto_disposition(call):
-    return str(_call_col(call, 7, "") or "").strip().upper()
+    return str(call_field(call, "auto_disposition", "") or "").strip().upper()
 
 def call_manual_disposition(call):
-    return str(_call_col(call, 8, "") or "").strip().upper()
+    return str(call_field(call, "manual_disposition", "") or "").strip().upper()
 
 def call_final_disposition(call):
     manual = call_manual_disposition(call)
     auto = call_auto_disposition(call)
-    final = str(_call_col(call, 9, "") or "").strip().upper()
+    final = str(call_field(call, "final_disposition", "") or "").strip().upper()
 
     if manual in VALID_DISPOSITIONS:
         return manual
@@ -3653,7 +3646,7 @@ def call_final_disposition(call):
     return "LEAD"
 
 def call_disposition_reason(call):
-    return str(_call_col(call, 10, "") or "").strip()
+    return str(call_field(call, "disposition_reason", "") or "").strip()
 
 def disposition_badge_html(disposition):
     d = (disposition or "LEAD").strip().upper()
