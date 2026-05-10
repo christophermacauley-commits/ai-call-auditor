@@ -1198,6 +1198,80 @@ run_case(
     ],
 )
 
+lcr_approval_stop_chf_report = """SCORE: 70
+RISK: LOW
+PASS: YES
+CALL STAGE REACHED: Needs
+EARLY END: YES
+NOT REACHED:
+- Product benefits, options, application, payment/banking, disclosures, underwriting, Peace of Mind, and Cool Down.
+
+COMPLIANCE FAILURES:
+- None
+
+SCRIPT / FLOW MISSES:
+- 3 and 1 Method incomplete: agent asked rapport questions but did not provide meaningful personal self-disclosure tied to the prospect's answers.
+
+TASK CHECKLIST:
+- Health questions completed: PARTIAL
+- Product benefits explained: NOT REACHED
+- Three options presented: NOT REACHED
+
+SEARCHABLE ANSWERS:
+- Was the policy sold? NO
+
+AUTOMATIC FAIL CHECKS:
+- Callback set: NO
+- Objection occurred without proper call control: NO
+- Automatic fail triggered: NO
+- Reason: None
+
+SALE OUTCOME:
+- Policy sold: NO
+- Evidence: Agent stopped sale due to disqualifying medical condition (congestive heart failure) and offered transfer to colleague; prospect ended call.
+- Final stage supporting sale: Needs
+
+SCORING BREAKDOWN:
+- Compliance: 80
+- Sales Process: 65
+- Product Explanation: 60
+- Closing: 60
+- Communication Quality: 70
+
+BIGGEST MISS:
+- 3 and 1 Method incomplete: agent asked rapport questions but did not provide meaningful personal self-disclosure tied to the prospect's answers.
+"""
+
+lcr_approval_stop_chf_transcript = """Agent: Has the doctor talked to you about congestive heart failure?
+Prospect: Yes, ma'am.
+Agent: So you do have congestive heart failure?
+Prospect: They say I do.
+Agent: Unfortunately, I'm not going to be able to get you approved with any of the plans that I'm able to today.
+Prospect: Why can't you get me approved?
+Agent: The congestive heart failure really. There are some other plans available; I just am not able to sell them.
+Prospect: I ain't going to waste my time. You have a nice day.
+"""
+
+run_case(
+    "CHF approval-stop LCR should stay medical and not score future stages",
+    lcr_approval_stop_chf_report,
+    lcr_approval_stop_chf_transcript,
+    must_contain=[
+        "SCORE: 90",
+        "CALL STAGE REACHED: Medical / Health",
+        "- Final stage supporting sale: None",
+        "Prospect had a disqualifying health condition.",
+        "BIGGEST MISS:\n- None",
+    ],
+    must_not_contain=[
+        "CALL STAGE REACHED: Needs",
+        "- Final stage supporting sale: Needs",
+        "Product Explanation: 60",
+        "Closing: 60",
+        "3 and 1 Method incomplete",
+    ],
+)
+
 print("False LCR detection tests passed.")
 
 coverage_hangup_before_verify_report = """SCORE: 80

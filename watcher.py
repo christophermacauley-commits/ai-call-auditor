@@ -2233,7 +2233,7 @@ def detect_auto_disposition(call_name, transcript, report, duration_seconds=None
         r"(unfortunately|sorry|based on that|because of that|with that condition|due to that|that means|"
         r"after reviewing|from those answers).{0,220}"
         r"(do(?:es)? not qualify|won't qualify|would not qualify|can't qualify|cannot qualify|"
-        r"not able to qualify|unable to qualify|can't help you|cannot help you|not eligible|declined|knockout)",
+        r"not able to qualify|unable to qualify|can't help you|cannot help you|not able to get you approved|not going to be able to get you approved|can't get you approved|cannot get you approved|won't be able to get you approved|would not be able to get you approved|not able to approve you|can't approve you|cannot approve you|not eligible|declined|knockout)",
         combined,
     ))
 
@@ -11532,7 +11532,7 @@ def _detect_disqualification_no_agent_fault(report, transcript):
     health_dq = health_dq or bool(re.search(
         r"(?is)"
         r"(do(?:es)? not qualify|won't qualify|would not qualify|can't qualify|cannot qualify|"
-        r"not able to qualify|unable to qualify|not eligible|declined|knockout).{0,180}"
+        r"not able to qualify|unable to qualify|not able to get you approved|not going to be able to get you approved|can't get you approved|cannot get you approved|won't be able to get you approved|would not be able to get you approved|not able to approve you|can't approve you|cannot approve you|not eligible|declined|knockout).{0,180}"
         r"(health|medical|condition|diagnosis|diagnosed|oxygen|dialysis|kidney|heart|copd|cancer|terminal|hospice)",
         combined,
     ))
