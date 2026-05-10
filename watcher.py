@@ -1523,6 +1523,10 @@ def _final_enforce_real_callback_autofail_from_transcript(report, transcript):
     if not report or not transcript:
         return report
 
+    disq_disp, _ = _detect_disqualification_no_agent_fault(report, transcript)
+    if disq_disp in {"AGE", "LCR"}:
+        return report
+
     if not _transcript_has_callback_set_or_accepted(transcript):
         return report
 
@@ -2253,7 +2257,19 @@ def detect_auto_disposition(call_name, transcript, report, duration_seconds=None
         combined,
     ))
 
-    if health_agent_dq or health_report_dq or cancer_not_free_dq:
+    weight_height_dq = bool(re.search(
+        r"(?is)"
+        r"(height\s+and\s+weight|checked\s+your\s+weight|exact(?:ly)?\s+what\s+that\s+scale\s+says|"
+        r"right\s+on\s+the\s+borderline|fall\s+into\s+the\s+parameters|below\s+\[number\]).{0,700}"
+        r"(not\s+going\s+to\s+be\s+able\s+to\s+get\s+you\s+qualified|"
+        r"not\s+able\s+to\s+get\s+you\s+qualified|"
+        r"can't\s+get\s+you\s+qualified|cannot\s+get\s+you\s+qualified|"
+        r"need\s+you\s+to\s+be\s+(?:around\s+)?below\s+\[number\]|"
+        r"weight\s+has\s+a\s+lot\s+to\s+do\s+with\s+your\s+health)",
+        combined,
+    ))
+
+    if health_agent_dq or health_report_dq or cancer_not_free_dq or weight_height_dq:
         return "LCR", "Health-related disqualification language detected."
 
     if re.search(
@@ -10489,6 +10505,7 @@ def _transcript_has_callback_set_or_accepted(transcript):
         r"call (?:me|us)? back|"
         r"give me a call back|"
         r"give us a call back|"
+        r"give you a call back|"
         r"i(?:'ll| will) call you back|"
         r"we(?:'ll| will) call you back|"
         r"call you tomorrow|call you later|"
@@ -10596,6 +10613,10 @@ def _final_cleanup_callback_existing_coverage_no_sale(report, transcript):
 
     sold_no = bool(re.search(r"(?im)^-\s*Policy sold:\s*NO\s*$|^-\s*Was the policy sold\?\s*NO\s*$", report))
     if not sold_no:
+        return report
+
+    disq_disp, _ = _detect_disqualification_no_agent_fault(report, transcript)
+    if disq_disp in {"AGE", "LCR"}:
         return report
 
     if not _transcript_has_callback_set_or_accepted(transcript):
@@ -11556,6 +11577,19 @@ def _detect_disqualification_no_agent_fault(report, transcript):
         combined,
     ))
 
+    weight_height_dq = bool(re.search(
+        r"(?is)"
+        r"(height\s+and\s+weight|checked\s+your\s+weight|exact(?:ly)?\s+what\s+that\s+scale\s+says|"
+        r"right\s+on\s+the\s+borderline|fall\s+into\s+the\s+parameters|below\s+\[number\]).{0,700}"
+        r"(not\s+going\s+to\s+be\s+able\s+to\s+get\s+you\s+qualified|"
+        r"not\s+able\s+to\s+get\s+you\s+qualified|"
+        r"can't\s+get\s+you\s+qualified|cannot\s+get\s+you\s+qualified|"
+        r"need\s+you\s+to\s+be\s+(?:around\s+)?below\s+\[number\]|"
+        r"weight\s+has\s+a\s+lot\s+to\s+do\s+with\s+your\s+health)",
+        combined,
+    ))
+    health_dq = health_dq or weight_height_dq
+
     no_income_dq = bool(re.search(
         r"(no income|don't have any income|do not have any income|not at all.*income|"
         r"working on my disability|i don't want to sell you a policy if you don't have any income|"
@@ -11565,7 +11599,7 @@ def _detect_disqualification_no_agent_fault(report, transcript):
         re.I | re.S,
     ))
 
-    if _transcript_has_clean_health_screening_no_dq(transcript):
+    if _transcript_has_clean_health_screening_no_dq(transcript) and not weight_height_dq:
         health_dq = False
 
     if age_dq:
@@ -11596,7 +11630,9 @@ def _final_cleanup_disqualification_no_agent_fault(report, transcript):
         real_autofail_reason = rm.group(1).strip().lower()
 
     callback_or_control_only = (
-        "objection occurred without proper call control" in real_autofail_reason
+        "callback set without allowed exception" in real_autofail_reason
+        or "callback set" in real_autofail_reason
+        or "objection occurred without proper call control" in real_autofail_reason
         or "call control" in real_autofail_reason
         or "none" in real_autofail_reason
         or not real_autofail_reason
@@ -11616,6 +11652,32 @@ def _final_cleanup_disqualification_no_agent_fault(report, transcript):
         report = re.sub(
             r"(?im)^- Reason:\s*.*$",
             "- Reason: None",
+            report,
+            count=1,
+        )
+
+    if _transcript_has_callback_set_or_accepted(transcript):
+        report = re.sub(
+            r"(?im)^- Did the agent set a callback\?\s*(?:YES|NO|UNCLEAR|PARTIAL)\b.*$",
+            "- Did the agent set a callback? YES",
+            report,
+        )
+        report = re.sub(
+            r"(?im)^- Callback set:\s*(?:YES|NO|UNCLEAR|PARTIAL)\b.*$",
+            "- Callback set: YES",
+            report,
+        )
+
+    if re.search(r"(?im)^- Objection occurred without proper call control:", report):
+        report = re.sub(
+            r"(?im)^- Objection occurred without proper call control:\s*(?:YES|NO|UNCLEAR|PARTIAL)\b.*$",
+            "- Objection occurred without proper call control: NO",
+            report,
+        )
+    elif re.search(r"(?im)^- Callback set:", report):
+        report = re.sub(
+            r"(?im)^- Callback set:.*$",
+            lambda m: m.group(0) + "\n- Objection occurred without proper call control: NO",
             report,
             count=1,
         )
@@ -11692,6 +11754,32 @@ def _final_cleanup_disqualification_no_agent_fault(report, transcript):
     ]
     for phrase in unfair_phrases:
         report = _text_remove_lines_containing(report, phrase)
+
+    if _transcript_has_callback_set_or_accepted(transcript) and re.search(r"(?im)^- Callback set:\s*YES\b", report):
+        if re.search(r"(?im)^- Objection occurred without proper call control:", report):
+            report = re.sub(
+                r"(?im)^- Objection occurred without proper call control:\s*(?:YES|NO|UNCLEAR|PARTIAL)\b.*$",
+                "- Objection occurred without proper call control: NO",
+                report,
+            )
+        else:
+            report = re.sub(
+                r"(?im)^- Callback set:.*$",
+                lambda m: m.group(0) + "\n- Objection occurred without proper call control: NO",
+                report,
+                count=1,
+            )
+
+    if re.search(r"(?im)^- Automatic fail triggered:\s*NO\b", report):
+        if re.search(r"(?im)^- Reason:", report):
+            report = re.sub(r"(?im)^- Reason:\s*.*$", "- Reason: None", report, count=1)
+        else:
+            report = re.sub(
+                r"(?im)^- Automatic fail triggered:\s*NO\b.*$",
+                lambda m: m.group(0) + "\n- Reason: None",
+                report,
+                count=1,
+            )
 
     # Add/replace fair coaching so the report explains what happened without blaming the agent.
     fair_note = f"Agent appropriately stopped after identifying disqualification / inability to proceed. {reason}"

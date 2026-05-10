@@ -1272,6 +1272,80 @@ run_case(
     ],
 )
 
+lcr_weight_callback_allowed_report = """SCORE: 78
+RISK: HIGH
+PASS: NO
+CALL STAGE REACHED: Fact Finding / Warm-up
+EARLY END: YES
+NOT REACHED:
+- Existing coverage
+- Health questions
+- Product benefits
+
+SCRIPT / FLOW MISSES:
+- 3 and 1 Method incomplete.
+
+TASK CHECKLIST:
+- Health questions completed: NO
+- Product benefits explained: NO
+- Three options presented: NO
+
+SEARCHABLE ANSWERS:
+- Did the agent set a callback? YES
+- Was the policy sold? NO
+
+AUTOMATIC FAIL CHECKS:
+- Callback set: YES
+- Objection occurred without proper call control: YES
+- Automatic fail triggered: YES
+- Reason: Callback set without allowed exception; Objection occurred without proper call control
+
+SALE OUTCOME:
+- Policy sold: NO
+- Evidence: None
+- Final stage supporting sale: Fact Finding / Warm-up
+
+BIGGEST MISS:
+- Callback set without allowed exception.
+"""
+
+lcr_weight_callback_allowed_transcript = """Agent: What is your height and weight?
+Prospect: [NUMBER]'[NUMBER]", [NUMBER].
+Agent: When is the last time that you checked your weight?
+Prospect: This morning.
+Agent: I want to know exactly what that scale says because we're right on the borderline.
+Prospect: It went up five extra pounds.
+Agent: Unfortunately, I'm not going to be able to get you qualified for one of the plans I have access to.
+Agent: I need you to be below [NUMBER] in order to get you qualified for one of my plans at [NUMBER]'[NUMBER]".
+Prospect: I don't understand what the weight has to do with getting insurance.
+Agent: It has a lot to do with your health and your age. Can I give you a call back maybe next week, or you call me back next week, because it seems like you're doing great losing the weight?
+Prospect: I'll go to the doctor Monday. I'll get my exact weight Monday.
+"""
+
+run_case(
+    "weight LCR callback should not autofail",
+    lcr_weight_callback_allowed_report,
+    lcr_weight_callback_allowed_transcript,
+    must_contain=[
+        "SCORE: 90",
+        "RISK: LOW",
+        "PASS: YES",
+        "CALL STAGE REACHED: Medical / Health",
+        "- Callback set: YES",
+        "- Objection occurred without proper call control: NO",
+        "- Automatic fail triggered: NO",
+        "- Reason: None",
+        "Prospect had a disqualifying health condition.",
+        "BIGGEST MISS:\n- None",
+    ],
+    must_not_contain=[
+        "CALL STAGE REACHED: Fact Finding / Warm-up",
+        "Callback set without allowed exception",
+        "Objection occurred without proper call control: YES",
+        "3 and 1 Method incomplete",
+    ],
+)
+
 print("False LCR detection tests passed.")
 
 coverage_hangup_before_verify_report = """SCORE: 80
