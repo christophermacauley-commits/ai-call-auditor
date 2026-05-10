@@ -2324,6 +2324,47 @@ run_case(
     ],
 )
 
+confirmed_credit_union_false_carrier_transcript = """
+Agent: We work with all the top companies and they have a great customer service department.
+Agent: This call may be recorded for quality and training purposes.
+Agent: At this time, do you have final expense or life insurance in place now, or is this going to be your only policy?
+Prospect: No, I don't have anything.
+Agent: Did you at some point in the past maybe have some?
+Prospect: When I was working, I had a policy through the place where I work. Since I'm not working anymore, I don't have a policy.
+Agent: Are you with a bank or a credit union?
+Prospect: Eastman Credit Union.
+Agent: Let's get the bank on the line and ask them what number we need. You're setting up life insurance for an ACH draft and need the right account and routing number.
+Credit union IVR: Thank you for calling Eastman Credit Union.
+Credit union representative: So you're needing to verify the routing and account number?
+Prospect: Yes.
+Credit union representative: Unfortunately, I was not able to get you verified, so I can't provide account information over the phone. You would have to visit a local branch for the direct deposit form with your routing and account number.
+Agent: It sounds like we're going to have to go to the bank. Throw me in your pocket; I'll ride with you.
+Prospect: I'm trying to get life insurance and I need my routing number for the bank so it comes out automatically.
+Branch teller: Which account do you want to pull it from?
+Prospect: Bobby's checking.
+Prospect: You just need the routing number?
+Agent: I need the routing and account number, but I have the routing number if you want me to confirm what I have here.
+Agent: For routing, I have [NUMBER].
+Prospect: Yes.
+Agent: What's the account number?
+Prospect: The account number is [ACCOUNT_NUMBER].
+Agent: Read that back one more time. Make sure I didn't mix up anything.
+Prospect: [BANK_NUMBER].
+Agent: Okay.
+"""
+
+check(
+    "credit union/bank ACH call is not existing-coverage carrier confirmation",
+    not watcher._transcript_existing_coverage_confirmed_by_carrier(confirmed_credit_union_false_carrier_transcript),
+    confirmed_credit_union_false_carrier_transcript,
+)
+
+check(
+    "credit union branch-resolution ACH path counts as verified",
+    watcher._transcript_credit_union_verified_for_ach(confirmed_credit_union_false_carrier_transcript),
+    confirmed_credit_union_false_carrier_transcript,
+)
+
 print("Confirmed existing-coverage cleanup tests passed.")
 
 sold_existing_coverage_not_confirmed_should_autofail_report = """SCORE: 85

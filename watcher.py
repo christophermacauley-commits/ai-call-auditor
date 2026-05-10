@@ -7620,7 +7620,7 @@ def _transcript_credit_union_verified_for_ach(transcript):
     if not t:
         return False
 
-    return bool(re.search(
+    direct_cu_verification = bool(re.search(
         r"\b(?:called|call|contacted|verified\s+with|confirmed\s+with|checked\s+with)\s+(?:the\s+)?credit\s+union\b|"
         r"\bcredit\s+union\s+(?:confirmed|verified)\b|"
         r"\bach[-\s]?compatible\s+account\b|"
@@ -7629,6 +7629,17 @@ def _transcript_credit_union_verified_for_ach(transcript):
         t,
         re.I,
     ))
+
+    branch_resolution_verification = bool(
+        re.search(r"\bcredit\s+union\b", t, re.I)
+        and re.search(r"\b(?:local\s+branch|visit\s+a\s+local\s+branch|direct\s+deposit\s+form|go\s+to\s+the\s+bank|back\s+to\s+the\s+bank)\b", t, re.I)
+        and re.search(r"\b(?:routing\s+and\s+account\s+number|account\s+and\s+routing\s+number|routing\s+number).{0,260}\baccount\s+number\b", t, re.I | re.S)
+        and re.search(r"\b(?:for\s+routing,?\s+i\s+have|i\s+have\s+the\s+routing\s+number|confirm\s+what\s+i\s+have\s+here)\b", t, re.I)
+        and re.search(r"\baccount\s+number\s+is\s+\[account_number\]|\bwhat'?s\s+the\s+account\s+number\b", t, re.I)
+        and re.search(r"\bread\s+that\s+back\s+one\s+more\s+time|make\s+sure\s+i\s+didn'?t\s+mix\s+up\s+anything\b", t, re.I)
+    )
+
+    return direct_cu_verification or branch_resolution_verification
 
 
 def _final_cleanup_credit_union_and_sold_summary(report, transcript):
@@ -8245,7 +8256,7 @@ def _transcript_existing_coverage_confirmed_by_carrier(transcript):
         return False
 
     carrier_call = bool(re.search(
-        r"\b(thank you for calling mutual of omaha|mutual of omaha|combinedinsurance|combined insurance|child benefits|policy owner|policy number|customer service)\b",
+        r"\b(thank you for calling mutual of omaha|mutual of omaha|combinedinsurance|combined insurance|child benefits|policy owner|policy number)\b",
         t,
         re.I,
     ))
@@ -8264,7 +8275,7 @@ def _transcript_existing_coverage_confirmed_by_carrier(transcript):
             confirmed_details += 1
 
     agent_call_language = bool(re.search(
-        r"\b(call mutual|call.*omaha|call.*combined|policy checkup|let'?s go ahead and call|we were just.*curious.*coverage|questions regarding the policy)\b",
+        r"\b(call mutual|call.*omaha|call.*combined|policy checkup|we were just.*curious.*coverage|questions regarding the policy)\b",
         t,
         re.I,
     ))
