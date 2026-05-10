@@ -92,3 +92,33 @@ check("mapping call report helper", dashboard.call_row_report(sample_call_mappin
 check("mapping call score helper", dashboard.call_row_score(sample_call_mapping) == 88)
 check("mapping call timestamp helper", dashboard.call_row_timestamp(sample_call_mapping) == "2026-05-09 13:00:00")
 
+# Completed calls table should render core tuple-row fields through call-row helpers.
+sample_completed_call = (
+    123,
+    "sample_completed_call",
+    "db transcript",
+    "SCORE: 91\nRISK: LOW\nCALL STAGE REACHED: Needs\nPOLICY SALE: NO",
+    91,
+    "LOW",
+    "2026-05-09 12:00:00",
+    "LEAD",
+    None,
+    "LEAD",
+    "Auto lead.",
+    456,
+)
+
+completed_html = dashboard.build_completed_calls_table_rows_html([sample_completed_call])
+
+check("completed table includes call id attr", 'data-call-id="123"' in completed_html)
+check("completed table includes checkbox value", 'value="123"' in completed_html)
+check("completed table includes call detail link", 'href="/call/123"' in completed_html)
+check("completed table includes transcript link", 'href="/transcript/123"' in completed_html)
+check("completed table includes delete action", 'action="/delete/123"' in completed_html)
+check("completed table includes call name", "sample_completed_call" in completed_html)
+check("completed table includes score attr", 'data-score="91"' in completed_html)
+check("completed table includes disposition attr", 'data-disposition="LEAD"' in completed_html)
+check("completed table includes call date attr", 'data-call-date="2026-05-09"' in completed_html)
+check("completed table includes timestamp", "2026-05-09 12:00:00" in completed_html)
+check("completed table includes stage", ">Needs<" in completed_html)
+
