@@ -1636,16 +1636,19 @@ def build_completed_calls_table_rows_html(calls):
         final_disp = call_final_disposition(c)
         disposition_attr = escape(final_disp)
         disposition_cell = disposition_badge_html(final_disp)
-        name_esc = escape(c[1])
-        agent_name = detect_agent_name_from_call_name(c[1])
+        call_name = call_row_name(c)
+        call_ts = call_row_timestamp(c)
+        call_score = call_row_score(c)
+        cid = call_row_id(c)
+        name_esc = escape(call_name)
+        agent_name = detect_agent_name_from_call_name(call_name)
         agent_cell = escape(agent_name)
         agent_attr = escape(agent_name)
-        ts_cell = escape(str(c[6])) if c[6] else "—"
-        date_attr = escape(str(c[6])[:10]) if c[6] else ""
-        score_val = c[4] if c[4] is not None else "—"
-        score_attr = "" if c[4] is None else str(int(c[4]))
-        cid = c[0]
-        sort_date = row_sort_unix(c[6])
+        ts_cell = escape(str(call_ts)) if call_ts else "—"
+        date_attr = escape(str(call_ts)[:10]) if call_ts else ""
+        score_val = call_score if call_score is not None else "—"
+        score_attr = "" if call_score is None else str(int(call_score))
+        sort_date = row_sort_unix(call_ts)
         audit_badge = format_audit_badge_html(report_src)
         rows.append(
             f"""
