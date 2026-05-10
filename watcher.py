@@ -4260,18 +4260,34 @@ def _split_transcript_for_exact_labeling(transcript_text):
                 r"\s+(?=oh cedar point\b)",
                 r"\s+(?=gotcha because i was a postal worker\b)",
                 r"\s+(?=gotcha because I was a postal worker\b)",
+                r"\s+(?=um I'm retired\b)",
+                r"\s+(?=um i'm retired\b)",
+                r"\s+(?=um actually only\b)",
+                r"\s+(?=you say only like\b)",
                 r"\s+(?=you say only like that was just a little bit of time out of your life there\b)",
+                r"\s+(?=well in considering that you started working\b)",
+                r"\s+(?=oh okay \[NUMBER\] in July so gotcha\b)",
             ]
-            split_line = None
-            for boundary in general_splits:
-                parts = re.split(boundary, stripped, maxsplit=1, flags=re.I)
-                if len(parts) == 2 and len(parts[0].split()) >= 4 and len(parts[1].split()) >= 4:
-                    split_line = (parts[0].strip(), parts[1].strip())
-                    break
+            pending = [stripped]
+            emitted = []
+            while pending:
+                current = pending.pop(0)
+                split_line = None
+                for boundary in general_splits:
+                    parts = re.split(boundary, current, maxsplit=1, flags=re.I)
+                    if len(parts) == 2 and len(parts[0].split()) >= 4 and len(parts[1].split()) >= 4:
+                        split_line = (parts[0].strip(), parts[1].strip())
+                        break
 
-            if split_line:
-                lines.append(prefix + split_line[0])
-                lines.append(prefix + split_line[1])
+                if split_line:
+                    emitted.append(split_line[0])
+                    pending.insert(0, split_line[1])
+                else:
+                    emitted.append(current)
+
+            if len(emitted) > 1:
+                for part in emitted:
+                    lines.append(prefix + part)
             else:
                 lines.append(line)
     return lines

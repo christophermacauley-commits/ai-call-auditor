@@ -339,6 +339,49 @@ check(
     general_run_on_speaker_turn_lines,
 )
 
+
+# More run-on role splitting from transcription_fix: agent question + prospect answer + agent follow-up.
+extended_run_on_speaker_turn_lines = watcher._split_transcript_for_exact_labeling("""working are you retired now or on disability um I'm retired um I'm on disability from my job
+you do that work for um actually only [NUMBER] years that was the last job I had you say only like that was just a little bit of time out of your life there
+that was just a little bit of time out of your life there well in considering that you started working at [NUMBER] it was only a little time oh okay [NUMBER] in July so gotcha okay that I'll give that one
+""")
+
+check(
+    "extended splitter separates work status question",
+    "working are you retired now or on disability" in extended_run_on_speaker_turn_lines,
+    extended_run_on_speaker_turn_lines,
+)
+check(
+    "extended splitter separates retired disability answer",
+    "um I'm retired um I'm on disability from my job" in extended_run_on_speaker_turn_lines,
+    extended_run_on_speaker_turn_lines,
+)
+check(
+    "extended splitter separates agent work-duration question",
+    "you do that work for" in extended_run_on_speaker_turn_lines,
+    extended_run_on_speaker_turn_lines,
+)
+check(
+    "extended splitter separates only-years answer",
+    "um actually only [NUMBER] years that was the last job I had" in extended_run_on_speaker_turn_lines,
+    extended_run_on_speaker_turn_lines,
+)
+check(
+    "extended splitter separates agent only-like-that follow-up",
+    "you say only like that was just a little bit of time out of your life there" in extended_run_on_speaker_turn_lines,
+    extended_run_on_speaker_turn_lines,
+)
+check(
+    "extended splitter separates prospect considering answer",
+    "well in considering that you started working at [NUMBER] it was only a little time" in extended_run_on_speaker_turn_lines,
+    extended_run_on_speaker_turn_lines,
+)
+check(
+    "extended splitter separates agent july acknowledgment",
+    "oh okay [NUMBER] in July so gotcha okay that I'll give that one" in extended_run_on_speaker_turn_lines,
+    extended_run_on_speaker_turn_lines,
+)
+
 print("Speaker-label self-disclosure test passed.")
 
 late_stage_should_not_downgrade_to_who_i_am = """SCORE: 90
