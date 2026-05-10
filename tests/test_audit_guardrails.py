@@ -301,6 +301,44 @@ check(
     run_on_speaker_turn_lines,
 )
 
+
+# General run-on split: prospect answer followed by an obvious agent transition/question.
+general_run_on_speaker_turn_lines = watcher._split_transcript_for_exact_labeling("""i love it you know i've always enjoyed ohio anytime i've ever gone oh cedar point yep i've been there a couple different times
+i'm retired um i'm on disability from my job gotcha because i was a postal worker and oh nice so how long did you do that work for
+actually only [NUMBER] years that was the last job I had you say only like that was just a little bit of time out of your life there
+""")
+
+check(
+    "general run-on splitter separates prospect ohio preference",
+    "i love it you know i've always enjoyed ohio anytime i've ever gone" in general_run_on_speaker_turn_lines,
+    general_run_on_speaker_turn_lines,
+)
+check(
+    "general run-on splitter separates cedar point agent response",
+    "oh cedar point yep i've been there a couple different times" in general_run_on_speaker_turn_lines,
+    general_run_on_speaker_turn_lines,
+)
+check(
+    "general run-on splitter separates retired disability answer",
+    "i'm retired um i'm on disability from my job" in general_run_on_speaker_turn_lines,
+    general_run_on_speaker_turn_lines,
+)
+check(
+    "general run-on splitter separates agent postal follow-up lowercase",
+    "gotcha because i was a postal worker and oh nice so how long did you do that work for" in general_run_on_speaker_turn_lines,
+    general_run_on_speaker_turn_lines,
+)
+check(
+    "general run-on splitter separates short years answer",
+    "actually only [NUMBER] years that was the last job I had" in general_run_on_speaker_turn_lines,
+    general_run_on_speaker_turn_lines,
+)
+check(
+    "general run-on splitter separates agent only-like-that follow-up",
+    "you say only like that was just a little bit of time out of your life there" in general_run_on_speaker_turn_lines,
+    general_run_on_speaker_turn_lines,
+)
+
 print("Speaker-label self-disclosure test passed.")
 
 late_stage_should_not_downgrade_to_who_i_am = """SCORE: 90

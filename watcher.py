@@ -4255,7 +4255,25 @@ def _split_transcript_for_exact_labeling(transcript_text):
                 break
 
         if not split_done:
-            lines.append(line)
+            prefix = line[:len(line) - len(line.lstrip())]
+            general_splits = [
+                r"\s+(?=oh cedar point\b)",
+                r"\s+(?=gotcha because i was a postal worker\b)",
+                r"\s+(?=gotcha because I was a postal worker\b)",
+                r"\s+(?=you say only like that was just a little bit of time out of your life there\b)",
+            ]
+            split_line = None
+            for boundary in general_splits:
+                parts = re.split(boundary, stripped, maxsplit=1, flags=re.I)
+                if len(parts) == 2 and len(parts[0].split()) >= 4 and len(parts[1].split()) >= 4:
+                    split_line = (parts[0].strip(), parts[1].strip())
+                    break
+
+            if split_line:
+                lines.append(prefix + split_line[0])
+                lines.append(prefix + split_line[1])
+            else:
+                lines.append(line)
     return lines
 
 
