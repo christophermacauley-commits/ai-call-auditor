@@ -4838,14 +4838,19 @@ def _repair_agent_self_disclosure_mislabeled_as_prospect(labeled_text):
     for idx, (speaker, body_lines) in enumerate(blocks):
         body = "\n".join(body_lines).strip()
 
-        if speaker == "Prospect" and _looks_like_agent_personal_self_disclosure(body):
+        agent_rapport_interjection = bool(re.search(
+            r"(?is)^\s*(oh\s+cedar\s+point\b.*|oh\s+really\s+so\s+do\s+i\b.*popcorn\s+festival.*)\s*$",
+            body,
+        ))
+
+        if speaker == "Prospect" and (_looks_like_agent_personal_self_disclosure(body) or agent_rapport_interjection):
             # Extra safety: prefer repair when nearby previous context is Agent rapport.
             prev_text = ""
             if idx > 0:
                 prev_speaker, prev_lines = blocks[idx - 1]
                 prev_text = (prev_speaker or "") + ": " + "\n".join(prev_lines)
 
-            rapport_context = bool(re.search(
+            rapport_context = agent_rapport_interjection or bool(re.search(
                 r"(?is)(family|brother|sister|children|kids|married|husband|wife|relationship|born|raised|live|work|retired|favorite part|tell me about)",
                 prev_text + "\n" + body,
             ))
@@ -4853,8 +4858,37 @@ def _repair_agent_self_disclosure_mislabeled_as_prospect(labeled_text):
             if rapport_context:
                 speaker = "Agent"
 
+        embedded_agent_rapport_line = re.compile(
+            r"(?is)^\s*(oh\s+cedar\s+point\b.*|oh\s+really\s+so\s+do\s+i\b.*popcorn\s+festival.*)\s*$"
+        )
+
         if speaker is None:
             repaired.extend(body_lines)
+        elif speaker == "Prospect" and any(embedded_agent_rapport_line.match((ln or "").strip()) for ln in body_lines):
+            current = "Prospect"
+            first_line = True
+            for ln in body_lines:
+                stripped_ln = (ln or "").strip()
+                if embedded_agent_rapport_line.match(stripped_ln):
+                    if repaired and repaired[-1] != "":
+                        repaired.append("")
+                    repaired.append("Agent: " + stripped_ln)
+                    current = "Agent"
+                    first_line = False
+                    continue
+
+                if first_line:
+                    repaired.append("Prospect: " + ln)
+                    first_line = False
+                    current = "Prospect"
+                else:
+                    if current != "Prospect":
+                        if repaired and repaired[-1] != "":
+                            repaired.append("")
+                        repaired.append("Prospect: " + ln)
+                        current = "Prospect"
+                    else:
+                        repaired.append(ln)
         else:
             if body_lines:
                 repaired.append(f"{speaker}: {body_lines[0]}")

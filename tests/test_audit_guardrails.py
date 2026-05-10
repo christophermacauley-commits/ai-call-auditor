@@ -382,6 +382,60 @@ check(
     extended_run_on_speaker_turn_lines,
 )
 
+
+# Short agent rapport interjections sometimes get labeled as Prospect after splitting.
+agent_rapport_interjection_mislabeled = """Prospect: i love it you know i've always enjoyed ohio
+Prospect: oh cedar point yep I've been there a couple different times
+Prospect: oh really so do i we uh ours is called the popcorn festival
+"""
+
+fixed_agent_rapport_interjection = watcher._repair_agent_self_disclosure_mislabeled_as_prospect(
+    agent_rapport_interjection_mislabeled
+)
+
+check(
+    "agent rapport interjection cedar point relabeled",
+    "Agent: oh cedar point yep I've been there a couple different times" in fixed_agent_rapport_interjection,
+    fixed_agent_rapport_interjection,
+)
+check(
+    "agent rapport interjection popcorn festival relabeled",
+    "Agent: oh really so do i we uh ours is called the popcorn festival" in fixed_agent_rapport_interjection,
+    fixed_agent_rapport_interjection,
+)
+
+
+# Agent rapport interjections can appear as continuation lines inside a larger
+# Prospect block after grouping. Split those lines out to Agent without rewriting words.
+embedded_agent_rapport_in_prospect_block = """Prospect: i love it you know i've always enjoyed ohio
+anything but I've traveled there a handful of times
+oh cedar point yep I've been there a couple different times
+but I don't live too far from the border
+Prospect: know that about us yeah i've got a corn festival every year
+oh really so do i we uh ours is called the popcorn festival it's really for popcorn not so much corn
+but ours is corn
+"""
+
+fixed_embedded_agent_rapport = watcher._repair_agent_self_disclosure_mislabeled_as_prospect(
+    embedded_agent_rapport_in_prospect_block
+)
+
+check(
+    "embedded agent cedar point line split out of prospect block",
+    "Agent: oh cedar point yep I've been there a couple different times" in fixed_embedded_agent_rapport,
+    fixed_embedded_agent_rapport,
+)
+check(
+    "embedded agent popcorn festival line split out of prospect block",
+    "Agent: oh really so do i we uh ours is called the popcorn festival it's really for popcorn not so much corn" in fixed_embedded_agent_rapport,
+    fixed_embedded_agent_rapport,
+)
+check(
+    "embedded prospect ohio content preserved",
+    "Prospect: i love it you know i've always enjoyed ohio" in fixed_embedded_agent_rapport,
+    fixed_embedded_agent_rapport,
+)
+
 print("Speaker-label self-disclosure test passed.")
 
 late_stage_should_not_downgrade_to_who_i_am = """SCORE: 90
