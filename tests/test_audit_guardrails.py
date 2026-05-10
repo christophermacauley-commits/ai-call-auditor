@@ -2439,6 +2439,57 @@ check(
     confirmed_credit_union_false_carrier_transcript,
 )
 
+confirmed_credit_union_report_line_alignment_report = """SCORE: 80
+RISK: LOW
+PASS: YES
+CALL STAGE REACHED: Cool Down
+
+SEARCHABLE ANSWERS:
+- Did the agent confirm current coverage? NO
+- Did the agent call an insurance company to confirm current coverage? YES
+- Did the agent call the bank to verify banking/account information? YES
+- Did the agent verify credit union account information if a credit union was mentioned? NO
+- Was the policy sold? YES
+
+AUTOMATIC FAIL CHECKS:
+- Callback set: NO
+- Objection occurred without proper call control: NO
+- Credit union mentioned but bank/account not verified: YES
+- Automatic fail triggered: NO
+- Reason: None
+
+SALE OUTCOME:
+- Policy sold: YES
+- Evidence: Policy was sold.
+- Final stage supporting sale: Cool Down
+
+BIGGEST MISS:
+- None
+"""
+
+confirmed_credit_union_report_line_alignment_transcript = confirmed_credit_union_false_carrier_transcript
+
+out = watcher.enforce_final_audit_consistency(
+    confirmed_credit_union_report_line_alignment_report,
+    confirmed_credit_union_report_line_alignment_transcript,
+)
+
+check(
+    "confirmed credit union carrier call line aligned to NO",
+    "- Did the agent call an insurance company to confirm current coverage? NO" in out,
+    out,
+)
+check(
+    "confirmed credit union verification line aligned to YES",
+    "- Did the agent verify credit union account information if a credit union was mentioned? YES" in out,
+    out,
+)
+check(
+    "confirmed credit union autofail line aligned to NO",
+    "- Credit union mentioned but bank/account not verified: NO" in out,
+    out,
+)
+
 print("Confirmed existing-coverage cleanup tests passed.")
 
 sold_existing_coverage_not_confirmed_should_autofail_report = """SCORE: 85

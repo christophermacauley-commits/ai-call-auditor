@@ -8343,6 +8343,48 @@ def _transcript_sold_call_cool_down_after_pom(transcript):
     return sale_done and cooldown_talk
 
 
+def _final_cleanup_credit_union_and_carrier_line_alignment(report, transcript):
+    """
+    Align report checklist/autofail lines with transcript-supported carrier and
+    credit-union ACH detectors.
+
+    A bank/CU/payment call is not an insurance-company coverage confirmation.
+    A credit-union branch/direct-deposit-form resolution can satisfy ACH/account
+    verification even when phone verification initially failed.
+    """
+    if not report or not transcript:
+        return report
+
+    carrier_confirmed = _transcript_existing_coverage_confirmed_by_carrier(transcript)
+    credit_union = _transcript_credit_union_mentioned(transcript)
+    cu_verified = _transcript_credit_union_verified_for_ach(transcript)
+
+    if not carrier_confirmed:
+        report = re.sub(
+            r"(?im)^- Did the agent call an insurance company to confirm current coverage\?\s*(?:YES|NO|UNCLEAR|PARTIAL)\b.*$",
+            "- Did the agent call an insurance company to confirm current coverage? NO",
+            report,
+        )
+
+    if credit_union and cu_verified:
+        report = re.sub(
+            r"(?im)^- Did the agent verify credit union account information if a credit union was mentioned\?\s*(?:YES|NO|UNCLEAR|PARTIAL)\b.*$",
+            "- Did the agent verify credit union account information if a credit union was mentioned? YES",
+            report,
+        )
+        report = re.sub(
+            r"(?im)^- Credit union mentioned but bank/account not verified:\s*(?:YES|NO|UNCLEAR|PARTIAL)\b.*$",
+            "- Credit union mentioned but bank/account not verified: NO",
+            report,
+        )
+        report = _text_remove_lines_containing(report, "Credit union account information not verified")
+        report = _text_remove_lines_containing(report, "credit unions can require extra digits")
+        report = _text_remove_lines_containing(report, "credit union ACH verification")
+        report = _text_remove_lines_containing(report, "ACH-compatible account information was not clearly verified with the credit union")
+
+    return report
+
+
 def _final_cleanup_confirmed_coverage_bank_and_cooldown(report, transcript):
     """
     Correct contradictions for long sold calls:
@@ -12095,6 +12137,7 @@ def enforce_final_audit_consistency(report, transcript=None):
     report = _final_cleanup_false_banking_from_existing_coverage_lookup(report, transcript)
     report = _final_cleanup_shelby_sold_short_false_fails(report, transcript)
     report = _final_cleanup_confirmed_coverage_bank_and_cooldown(report, transcript)
+    report = _final_cleanup_credit_union_and_carrier_line_alignment(report, transcript)
     report = _final_cleanup_no_autofail_consistency(report, transcript)
     report = _final_cleanup_early_end_stage_and_banking(report, transcript)
     report = _final_cleanup_names_and_late_pq_in_report(report, transcript)
