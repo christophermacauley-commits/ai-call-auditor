@@ -28,3 +28,14 @@ cleanup_backup/
 
 # Temporary save files
 *.save
+# Runtime call/audio data
+incoming_calls/
+vicidial_exports/
+calls/
+processed_calls/
+
+# Temporary patch scripts
+temp_*.py
+
+# Local backup snapshots
+dashboard_before_scorecard_cleanup.py

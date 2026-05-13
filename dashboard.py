@@ -18,6 +18,7 @@ from pathlib import Path
 import time
 from datetime import datetime, timedelta
 from werkzeug.utils import secure_filename
+from urllib.parse import quote
 from db_migrations import migrate_database
 
 try:
@@ -1495,6 +1496,255 @@ def row_sort_unix(ts):
     except Exception:
         return 0
 
+def is_real_production_call(call):
+    """
+    Canonical filter for analytics, rankings, coaching trends,
+    and manager reporting.
+
+    Prevents golden fixtures, incomplete rows, synthetic tests,
+    and unusable records from polluting analytics.
+    """
+
+    if not call:
+        return False
+
+    call_name = call_row_name(call)
+
+    if not call_name:
+        return False
+
+    if is_protected_call_name(call_name):
+        return False
+
+    agent = detect_agent_name_from_call_name(call_name)
+
+    # Ignore unresolved agents for rankings/trends.
+    if not agent or str(agent).startswith("Unknown"):
+        return False
+
+    score = call_row_score(call)
+
+    if score is None:
+        return False
+
+    report = call_row_report(call)
+
+    if not report or not str(report).strip():
+        return False
+
+    return True
+
+
+def get_real_production_calls(calls):
+    """
+    Shared analytics-safe call list used by:
+    - scorecards
+    - trends
+    - leaderboards
+    - coaching summaries
+    - week-over-week comparisons
+    """
+
+    return [c for c in calls if is_real_production_call(c)]
+
+
+def compute_agent_week_over_week(calls):
+    """
+    Compare last 7 days vs previous 7 days average score by agent.
+    """
+
+    from collections import defaultdict
+
+    now = datetime.now()
+
+    current_start = now - timedelta(days=7)
+    previous_start = now - timedelta(days=14)
+
+    current_scores = defaultdict(list)
+    previous_scores = defaultdict(list)
+
+    for c in get_real_production_calls(calls):
+        ts = call_row_timestamp(c)
+
+        if not ts:
+            continue
+
+        try:
+            dt = datetime.strptime(str(ts)[:19], "%Y-%m-%d %H:%M:%S")
+        except Exception:
+            continue
+
+        agent = detect_agent_name_from_call_name(call_row_name(c))
+
+        score = call_row_score(c)
+
+        if score is None:
+            continue
+
+        if dt >= current_start:
+            current_scores[agent].append(score)
+        elif dt >= previous_start:
+            previous_scores[agent].append(score)
+
+    results = {}
+
+    agents = set(current_scores.keys()) | set(previous_scores.keys())
+
+    for agent in agents:
+        curr = current_scores.get(agent, [])
+        prev = previous_scores.get(agent, [])
+
+        curr_avg = round(sum(curr) / len(curr), 1) if curr else None
+        prev_avg = round(sum(prev) / len(prev), 1) if prev else None
+
+        delta = None
+
+        if curr_avg is not None and prev_avg is not None:
+            delta = round(curr_avg - prev_avg, 1)
+
+        results[agent] = {
+            "current_avg": curr_avg,
+            "previous_avg": prev_avg,
+            "delta": delta,
+        }
+
+    return results
+
+
+def compute_agent_leaderboard(calls):
+    """
+    Manager leaderboard based on average score and call volume.
+    """
+
+    from collections import defaultdict
+
+    by_agent = defaultdict(list)
+
+    for c in get_real_production_calls(calls):
+        agent = detect_agent_name_from_call_name(call_row_name(c))
+        by_agent[agent].append(c)
+
+    leaderboard = []
+
+    for agent, rows in by_agent.items():
+        scores = [call_row_score(r) for r in rows if call_row_score(r) is not None]
+
+        if not scores:
+            continue
+
+        avg = round(sum(scores) / len(scores), 1)
+
+        leaderboard.append({
+            "agent": agent,
+            "avg_score": avg,
+            "total_calls": len(rows),
+        })
+
+    leaderboard.sort(
+        key=lambda x: (-x["avg_score"], -x["total_calls"], x["agent"])
+    )
+
+    return leaderboard
+
+
+def build_agent_coaching_export(agent_name, calls):
+    """
+    Plain-text coaching export for managers.
+    """
+
+    real_calls = get_real_production_calls(calls)
+
+    filtered = [
+        c for c in real_calls
+        if detect_agent_name_from_call_name(call_row_name(c)) == agent_name
+    ]
+
+    scores = [
+        call_row_score(c)
+        for c in filtered
+        if call_row_score(c) is not None
+    ]
+
+    avg_score = round(sum(scores) / len(scores), 1) if scores else None
+
+    repeated = detect_repeat_agent_issues(filtered)
+
+    wow = compute_agent_week_over_week(real_calls).get(agent_name, {})
+
+    lines = []
+
+    lines.append(f"COACHING SUMMARY: {agent_name}")
+    lines.append("")
+
+    lines.append(f"Completed Production Calls: {len(filtered)}")
+
+    if avg_score is not None:
+        lines.append(f"Average Score: {avg_score}")
+
+    delta = wow.get("delta")
+
+    if delta is not None:
+        lines.append(f"Week-over-Week Change: {delta}")
+
+    lines.append("")
+
+    if repeated:
+        lines.append("REPEATED COACHING ISSUES:")
+
+        for item in repeated:
+            lines.append(f"- {item['issue']} ({item['count']}x)")
+
+        lines.append("")
+
+    lines.append("RECENT CALLS:")
+
+    recent = filtered[:10]
+
+    for c in recent:
+        lines.append(
+            f"- {call_row_name(c)} | score={call_row_score(c)} | disposition={call_final_disposition(c)}"
+        )
+
+    lines.append("")
+    lines.append("Generated by AI Auditor")
+
+    return "\n".join(lines)
+
+
+def detect_repeat_agent_issues(rows):
+    """
+    Detect repeated coaching priorities for an agent.
+    """
+
+    from collections import defaultdict
+
+    counts = defaultdict(int)
+
+    for r in rows:
+        summary = build_report_summary(call_report_text(r))
+
+        coaching = (
+            summary.get("main_coaching_priority")
+            or ""
+        ).strip()
+
+        if coaching:
+            counts[coaching] += 1
+
+    repeated = []
+
+    for issue, count in sorted(
+        counts.items(),
+        key=lambda x: (-x[1], x[0])
+    ):
+        if count >= 2:
+            repeated.append({
+                "issue": issue,
+                "count": count,
+            })
+
+    return repeated
+
 
 def compute_dashboard_metrics(calls):
     """
@@ -1576,6 +1826,264 @@ def compute_dashboard_metrics(calls):
         "sold_summary_main": sold_summary_main,
         "sold_summary_sub": sold_summary_sub,
     }
+
+
+
+
+def compute_agent_scorecards(calls, selected_date=None):
+    """
+    Build manager-facing daily scorecards grouped by agent.
+    """
+    from collections import defaultdict
+    from datetime import datetime, timedelta
+
+    if selected_date:
+        target_date = selected_date
+    else:
+        target_date = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+
+    by_agent = defaultdict(list)
+
+    for c in calls:
+        ts = call_field(c, "timestamp", "")
+        if not ts or str(ts)[:10] != target_date:
+            continue
+
+        agent = detect_agent_name_from_call_name(call_field(c, "call_name", "Unknown"))
+        by_agent[agent].append(c)
+
+    cards = []
+
+    for agent, rows in sorted(by_agent.items()):
+        scores = [r[4] for r in rows if r[4] is not None]
+        avg_score = round(sum(scores) / len(scores), 1) if scores else None
+
+        pass_count = 0
+        fail_count = 0
+        risk_count = 0
+
+        coaching_counts = defaultdict(int)
+
+        for r in rows:
+            audit = parse_audit_status_from_report(call_report_text(r))
+
+            if audit == "PASS":
+                pass_count += 1
+            elif audit == "FAIL":
+                fail_count += 1
+            elif audit == "AT_RISK":
+                risk_count += 1
+
+            summary = build_report_summary(call_report_text(r))
+            coaching = (summary.get("main_coaching_priority") or "").strip()
+
+            if coaching:
+                coaching_counts[coaching] += 1
+
+        top_coaching = sorted(
+            coaching_counts.items(),
+            key=lambda x: (-x[1], x[0])
+        )[:3]
+
+        cards.append({
+            "agent": agent,
+            "date": target_date,
+            "total_calls": len(rows),
+            "avg_score": avg_score,
+            "pass": pass_count,
+            "fail": fail_count,
+            "risk": risk_count,
+            "top_coaching": top_coaching,
+        })
+
+    return cards
+
+
+
+
+
+def build_agent_leaderboard_html(calls, limit=5):
+    leaderboard = compute_agent_leaderboard(calls)[:limit]
+
+    if not leaderboard:
+        return """
+        <div class="card empty">
+            No leaderboard data available yet.
+        </div>
+        """
+
+    rows = []
+
+    for idx, entry in enumerate(leaderboard, start=1):
+        agent = entry["agent"]
+        agent_url = "/agent/" + quote(agent)
+
+        rows.append(f"""
+        <tr>
+            <td style="font-weight:900;">#{idx}</td>
+            <td><a href="{agent_url}">{escape(agent)}</a></td>
+            <td><span class="badge badge-score">{entry["avg_score"]}</span></td>
+            <td>{entry["total_calls"]}</td>
+        </tr>
+        """)
+
+    return f"""
+    <div class="card">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Rank</th>
+                    <th>Agent</th>
+                    <th>Avg Score</th>
+                    <th>Calls</th>
+                </tr>
+            </thead>
+            <tbody>
+                {''.join(rows)}
+            </tbody>
+        </table>
+    </div>
+    """
+
+
+def build_needs_attention_html(calls):
+    leaderboard = compute_agent_leaderboard(calls)
+    wow = compute_agent_week_over_week(calls)
+
+    flagged = []
+
+    for entry in leaderboard:
+        agent = entry["agent"]
+
+        delta = wow.get(agent, {}).get("delta")
+
+        if delta is not None and delta <= -5:
+            flagged.append({
+                "agent": agent,
+                "avg_score": entry["avg_score"],
+                "delta": delta,
+                "calls": entry["total_calls"],
+            })
+
+    if not flagged:
+        return """
+        <div class="card">
+            <div class="muted">
+                No agents currently flagged for attention.
+            </div>
+        </div>
+        """
+
+    rows = []
+
+    for item in flagged:
+        agent_url = "/agent/" + quote(item["agent"])
+
+        rows.append(f"""
+        <tr>
+            <td>
+                <a href="{agent_url}">{escape(item["agent"])}</a>
+            </td>
+            <td>
+                <span class="badge badge-fail">{item["delta"]}</span>
+            </td>
+            <td>
+                <span class="badge badge-score">{item["avg_score"]}</span>
+            </td>
+            <td>{item["calls"]}</td>
+        </tr>
+        """)
+
+    return f"""
+    <div class="card">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Agent</th>
+                    <th>WoW Change</th>
+                    <th>Avg Score</th>
+                    <th>Calls</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                {''.join(rows)}
+            </tbody>
+        </table>
+    </div>
+    """
+
+
+def build_agent_scorecards_html(calls, selected_date=None):
+    cards = compute_agent_scorecards(calls, selected_date)
+
+    if not cards:
+        return """
+        <div class="card empty">
+            No scorecard data available for this date.
+        </div>
+        """
+
+    parts = [
+        '<div class="scorecard-grid">'
+    ]
+
+    for c in cards:
+        avg = f'{c["avg_score"]:.1f}' if c["avg_score"] is not None else "—"
+
+        coaching_html = ""
+
+        if c["top_coaching"]:
+            coaching_items = "".join(
+                f'<li>{escape(item)} <span class="muted">({count}x)</span></li>'
+                for item, count in c["top_coaching"]
+            )
+
+            coaching_html = f"""
+            <div class="muted" style="margin-top:12px;font-size:12px;font-weight:700;">
+                Coaching Priorities
+            </div>
+            <ul style="margin:8px 0 0 18px;padding:0;font-size:13px;line-height:1.45;">
+                {coaching_items}
+            </ul>
+            """
+
+        agent_url = "/agent/" + quote(c["agent"])
+
+        parts.append(f"""
+        <a class="card scorecard-card" href="{agent_url}" style="display:block;text-decoration:none;color:inherit;">
+            <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;">
+                <div>
+                    <div style="font-size:18px;font-weight:800;">{escape(c["agent"])}</div>
+                    <div class="muted" style="font-size:12px;margin-top:4px;">
+                        {escape(c["date"])}
+                    </div>
+                </div>
+
+                <div style="text-align:right;">
+                    <div style="font-size:28px;font-weight:900;">{avg}</div>
+                    <div class="muted" style="font-size:12px;">Avg score</div>
+                </div>
+            </div>
+
+            <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:14px;font-size:13px;">
+                <div><b>{c["total_calls"]}</b> calls</div>
+                <div><b>{c["pass"]}</b> pass</div>
+                <div><b>{c["fail"]}</b> fail</div>
+                <div><b>{c["risk"]}</b> at risk</div>
+            </div>
+
+            {coaching_html}
+            <div class="muted" style="margin-top:14px;font-size:12px;font-weight:800;">
+                Click to review calls
+            </div>
+        </a>
+        """)
+
+    parts.append("</div>")
+
+    return "\n".join(parts)
+
 
 
 def build_processing_cards_inner_html(processing):
@@ -2039,6 +2547,18 @@ body {
     max-width: min(1800px, 96vw);
     margin: 0 auto;
     padding: 28px 22px 56px;
+}
+
+
+.scorecard-grid {
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(320px,1fr));
+    gap:16px;
+    margin-bottom:24px;
+}
+
+.scorecard-card {
+    min-height:220px;
 }
 
 .stats-grid {
@@ -3069,531 +3589,43 @@ def dashboard():
     </div>
     """
 
+    scorecard_date = request.args.get("scorecard_date")
+    content += """
+    <h2 class="section-head">Manager Scorecards</h2>
+    <div class="card filter-bar" style="margin-bottom:16px;">
+        <form method="GET" action="/" style="display:flex;gap:12px;align-items:end;flex-wrap:wrap;">
+            <label>Scorecard date
+                <input type="date" name="scorecard_date" value="{0}">
+            </label>
+            <button class="button" type="submit">View</button>
+        </form>
+    </div>
+    """.format(scorecard_date or "")
+
+    content += build_agent_scorecards_html(calls, scorecard_date)
+
+    content += """
+    <h2 class="section-head">Agent Leaderboard</h2>
+    """
+
+    content += build_agent_leaderboard_html(calls)
+
+    content += """
+    <h2 class="section-head">Needs Attention</h2>
+    """
+
+    content += build_needs_attention_html(calls)
+
     content += '<h2 class="section-head">Currently Processing</h2>'
     content += '<div id="dashboard-processing-mount">'
     content += build_processing_cards_inner_html(processing)
     content += "</div>"
 
-    content += '<h2 class="section-head">Completed Audits</h2>'
-
-    if not calls:
-        content += """
-        <div class="card empty">
-            No completed audits yet. Upload a call to get started.
-        </div>
-        """
-    else:
-        content += """
-        <form id="bulk-delete-form" method="POST" action="/delete-selected" onsubmit="return confirmBulkDelete();" style="margin: 0 0 12px 0; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-            <button class="delete-button" type="submit">Delete selected</button>
-            <button class="button" type="button" onclick="toggleBulkDeleteCheckboxes(true)">Select all visible</button>
-            <button class="button" type="button" onclick="toggleBulkDeleteCheckboxes(false)">Clear selected</button>
-            <span class="muted-sm">Golden calls and test fixtures are hidden/protected and cannot be deleted.</span>
-        </form>
-        <script>
-        window.__bulkDeleteSelectedIds = window.__bulkDeleteSelectedIds || new Set();
-
-        function visibleCallRows() {
-            return Array.from(document.querySelectorAll("tr.call-filter-row")).filter(function(row) {
-                return row.offsetParent !== null;
-            });
-        }
-
-        function syncBulkDeleteSelectionFromDom() {
-            document.querySelectorAll(".bulk-delete-checkbox").forEach(function(cb) {
-                if (cb.checked) {
-                    window.__bulkDeleteSelectedIds.add(cb.value);
-                } else {
-                    window.__bulkDeleteSelectedIds.delete(cb.value);
-                }
-            });
-        }
-
-        function restoreBulkDeleteSelectionToDom() {
-            document.querySelectorAll(".bulk-delete-checkbox").forEach(function(cb) {
-                cb.checked = window.__bulkDeleteSelectedIds.has(cb.value);
-            });
-        }
-
-        function toggleBulkDeleteCheckboxes(checked) {
-            visibleCallRows().forEach(function(row) {
-                const cb = row.querySelector(".bulk-delete-checkbox");
-                if (!cb) return;
-                cb.checked = checked;
-                if (checked) {
-                    window.__bulkDeleteSelectedIds.add(cb.value);
-                } else {
-                    window.__bulkDeleteSelectedIds.delete(cb.value);
-                }
-            });
-        }
-
-        function selectedBulkDeleteCount() {
-            syncBulkDeleteSelectionFromDom();
-            return window.__bulkDeleteSelectedIds.size;
-        }
-
-        function confirmBulkDelete() {
-            syncBulkDeleteSelectionFromDom();
-            const form = document.getElementById("bulk-delete-form");
-            if (form) {
-                form.querySelectorAll('input[type="hidden"][name="call_ids"]').forEach(function(el) {
-                    el.remove();
-                });
-                window.__bulkDeleteSelectedIds.forEach(function(id) {
-                    const hidden = document.createElement("input");
-                    hidden.type = "hidden";
-                    hidden.name = "call_ids";
-                    hidden.value = id;
-                    form.appendChild(hidden);
-                });
-            }
-
-            const count = window.__bulkDeleteSelectedIds.size;
-            if (!count) {
-                alert("Select at least one call to delete.");
-                return false;
-            }
-            return confirm("Delete " + count + " selected call(s) and their files?");
-        }
-
-        document.addEventListener("change", function(e) {
-            if (!e.target || !e.target.classList || !e.target.classList.contains("bulk-delete-checkbox")) {
-                return;
-            }
-            if (e.target.checked) {
-                window.__bulkDeleteSelectedIds.add(e.target.value);
-            } else {
-                window.__bulkDeleteSelectedIds.delete(e.target.value);
-            }
-        });
-
-        document.addEventListener("DOMContentLoaded", restoreBulkDeleteSelectionToDom);
-        </script>
-        """
-        rows_html = build_completed_calls_table_rows_html(calls)
-        agent_filter_options_html = build_agent_filter_options_html(calls)
-        agent_sidebar_html = build_agent_sidebar_html(calls)
-        n_calls = len(calls)
-        content += f"""
-        <div class="completed-audits-layout">
-            <aside class="agent-sidebar" aria-label="Agent filters">
-                <div class="agent-sidebar-title">Agents</div>
-                {agent_sidebar_html}
-            </aside>
-            <div class="completed-audits-main">
-        <p class="filter-count" id="filter-count" aria-live="polite"></p>
-        <select id="filter-agent" aria-label="Filter by agent" class="hidden">
-            {agent_filter_options_html}
-        </select>
-        <div class="card filter-bar" id="agent-date-metrics-filter">
-            <label>Metrics days
-                <select id="filter-days" aria-label="Filter metrics and calls by one or more days" multiple size="4" style="min-width:220px;">
-                    <option value="all" selected>All days</option>
-                </select>
-            </label>
-            <div class="muted" style="font-size:13px;line-height:1.35;">
-                Click an agent on the left, then choose one or more days. Hold Command to select multiple days.
-            </div>
-        </div>
-        <div class="card filter-bar" id="completed-filters">
-            <label>Sold status
-                <select id="filter-sold-status" aria-label="Filter by sold status or audit pass fail">
-                    <option value="all">All</option>
-                    <option value="sold">Sold</option>
-                    <option value="notsold">Not sold</option>
-                    <option value="unclear">Unclear</option>
-                    <option value="pass">Audit pass (no sale block)</option>
-                    <option value="fail">Audit fail (no sale block)</option>
-                    <option value="atrisk">Audit at risk (PASS line)</option>
-                </select>
-            </label>
-            <label>Disposition
-                <select id="filter-disposition" aria-label="Filter by disposition">
-                    <option value="all">All dispositions</option>
-                    <option value="SOLD">SOLD</option>
-                    <option value="U90">U90</option>
-                    <option value="LCR">LCR</option>
-                    <option value="BOOTC">BOOTC</option>
-                    <option value="LEAD">LEAD</option>
-                    <option value="AGE">AGE</option>
-                </select>
-            </label>
-            <label>Audit
-                <select id="filter-audit" aria-label="Filter by audit outcome">
-                    <option value="all">All</option>
-                    <option value="pass">PASS</option>
-                    <option value="fail">FAIL</option>
-                    <option value="atrisk">AT RISK</option>
-                </select>
-            </label>
-            <label>Score range
-                <select id="filter-score" aria-label="Filter by score range">
-                    <option value="all">Any</option>
-                    <option value="0-59">0 – 59</option>
-                    <option value="60-74">60 – 74</option>
-                    <option value="75-84">75 – 84</option>
-                    <option value="85-94">85 – 94</option>
-                    <option value="95-100">95 – 100</option>
-                </select>
-            </label>
-            <label>Sort by
-                <select id="sort-by" aria-label="Sort completed calls">
-                    <option value="date-desc" selected>Date (newest first)</option>
-                    <option value="score-desc">Score (high → low)</option>
-                    <option value="score-asc">Score (low → high)</option>
-                    <option value="audit-pass-first">Audit (PASS first)</option>
-                </select>
-            </label>
-        </div>
-        <div class="data-table-wrap">
-            <div class="completed-calls-wrap"><table class="data-table" id="completed-calls-table">
-                <thead>
-                    <tr>
-                        <th>Call</th>
-                        <th>Agent</th>
-                        <th>Score</th>
-                        <th>Sold status</th>
-                        <th>Disposition</th>
-                        <th>Audit</th>
-                        <th>Stage</th>
-                        <th>Date / time</th>
-                        <th class="actions">Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="completed-calls-tbody">
-                    {rows_html}
-                </tbody>
-            </table></div>
-        </div>
-            </div>
-        </div>
-        <script>
-        (function() {{
-            function parseRange(v) {{
-                if (!v || v === "all") return null;
-                var p = v.split("-");
-                return {{ lo: parseInt(p[0], 10), hi: parseInt(p[1], 10) }};
-            }}
-            function sortRows() {{
-                var tbody = document.getElementById("completed-calls-tbody");
-                var sortEl = document.getElementById("sort-by");
-                if (!tbody || !sortEl) return;
-                var mode = sortEl.value;
-                var rows = Array.prototype.slice.call(tbody.querySelectorAll(".call-filter-row"));
-                rows.sort(function(a, b) {{
-                    if (mode === "date-desc") {{
-                        var ta = parseInt(a.getAttribute("data-sort-date"), 10) || 0;
-                        var tb = parseInt(b.getAttribute("data-sort-date"), 10) || 0;
-                        var d = tb - ta;
-                        if (d !== 0) return d;
-                        return (parseInt(b.getAttribute("data-call-id"), 10) || 0) - (parseInt(a.getAttribute("data-call-id"), 10) || 0);
-                    }}
-                    if (mode === "score-desc") {{
-                        var sa = a.getAttribute("data-score");
-                        var sb = b.getAttribute("data-score");
-                        var na = sa ? parseInt(sa, 10) : -1;
-                        var nb = sb ? parseInt(sb, 10) : -1;
-                        if (isNaN(na)) na = -1;
-                        if (isNaN(nb)) nb = -1;
-                        var d = nb - na;
-                        if (d !== 0) return d;
-                        return (parseInt(b.getAttribute("data-call-id"), 10) || 0) - (parseInt(a.getAttribute("data-call-id"), 10) || 0);
-                    }}
-                    if (mode === "score-asc") {{
-                        var sa = a.getAttribute("data-score");
-                        var sb = b.getAttribute("data-score");
-                        var na = sa ? parseInt(sa, 10) : 10000;
-                        var nb = sb ? parseInt(sb, 10) : 10000;
-                        if (isNaN(na)) na = 10000;
-                        if (isNaN(nb)) nb = 10000;
-                        var d = na - nb;
-                        if (d !== 0) return d;
-                        return (parseInt(b.getAttribute("data-call-id"), 10) || 0) - (parseInt(a.getAttribute("data-call-id"), 10) || 0);
-                    }}
-                    if (mode === "audit-pass-first") {{
-                        var ra = parseInt(a.getAttribute("data-audit-rank"), 10) || 0;
-                        var rb = parseInt(b.getAttribute("data-audit-rank"), 10) || 0;
-                        var d2 = rb - ra;
-                        if (d2 !== 0) return d2;
-                        return (parseInt(b.getAttribute("data-call-id"), 10) || 0) - (parseInt(a.getAttribute("data-call-id"), 10) || 0);
-                    }}
-                    return 0;
-                }});
-                rows.forEach(function(tr) {{ tbody.appendChild(tr); }});
-            }}
-            function selectedDays() {{
-                var dayF = document.getElementById("filter-days");
-                if (!dayF) return ["all"];
-                var vals = Array.prototype.slice.call(dayF.selectedOptions).map(function(o) {{ return o.value; }});
-                if (!vals.length || vals.indexOf("all") !== -1) return ["all"];
-                return vals;
-            }}
-
-            function rowMatchesAgentAndDays(tr) {{
-                var agentF = document.getElementById("filter-agent");
-                var agentV = agentF ? agentF.value : "all";
-                var days = selectedDays();
-                var agent = tr.getAttribute("data-agent") || "Unknown";
-                var date = tr.getAttribute("data-call-date") || "";
-                if (agentV !== "all" && agent !== agentV) return false;
-                if (days.indexOf("all") === -1 && days.indexOf(date) === -1) return false;
-                return true;
-            }}
-
-            function rebuildDayOptions() {{
-                var dayF = document.getElementById("filter-days");
-                if (!dayF) return;
-
-                var oldVals = Array.prototype.slice.call(dayF.selectedOptions).map(function(o) {{ return o.value; }});
-                var useAll = !oldVals.length || oldVals.indexOf("all") !== -1;
-
-                var dates = {{}};
-                var agentF = document.getElementById("filter-agent");
-                var agentV = agentF ? agentF.value : "all";
-
-                document.querySelectorAll(".call-filter-row").forEach(function(tr) {{
-                    var agent = tr.getAttribute("data-agent") || "Unknown";
-                    var date = tr.getAttribute("data-call-date") || "";
-                    if (!date) return;
-                    if (agentV !== "all" && agent !== agentV) return;
-                    dates[date] = true;
-                }});
-
-                var sorted = Object.keys(dates).sort().reverse();
-                var html = '<option value="all">All days</option>';
-                sorted.forEach(function(d) {{
-                    html += '<option value="' + d + '">' + d + '</option>';
-                }});
-                dayF.innerHTML = html;
-
-                Array.prototype.slice.call(dayF.options).forEach(function(opt) {{
-                    if (useAll && opt.value === "all") opt.selected = true;
-                    else if (!useAll && oldVals.indexOf(opt.value) !== -1) opt.selected = true;
-                }});
-
-                if (!Array.prototype.slice.call(dayF.selectedOptions).length && dayF.options.length) {{
-                    dayF.options[0].selected = true;
-                }}
-            }}
-
-            function formatPct(num, den) {{
-                if (!den) return "—";
-                return (Math.round((1000 * num / den)) / 10).toFixed(1) + "%";
-            }}
-
-            function updateVisibleMetrics() {{
-                var rows = Array.prototype.slice.call(document.querySelectorAll(".call-filter-row"))
-                    .filter(rowMatchesAgentAndDays);
-
-                var total = rows.length;
-                var scores = [];
-                var soldYes = 0, soldNo = 0, soldUnclear = 0;
-                var auditPass = 0, auditFail = 0, auditAtRisk = 0;
-
-                rows.forEach(function(tr) {{
-                    var sc = tr.getAttribute("data-score");
-                    if (sc) {{
-                        var n = parseInt(sc, 10);
-                        if (!isNaN(n)) scores.push(n);
-                    }}
-
-                    var sale = tr.getAttribute("data-sale") || "none";
-                    if (sale === "yes") soldYes++;
-                    else if (sale === "no") soldNo++;
-                    else if (sale === "unclear") soldUnclear++;
-
-                    var au = tr.getAttribute("data-audit") || "unknown";
-                    if (au === "pass") auditPass++;
-                    else if (au === "fail") auditFail++;
-                    else if (au === "atrisk") auditAtRisk++;
-                }});
-
-                var avg = "—";
-                if (scores.length) {{
-                    var sum = scores.reduce(function(a, b) {{ return a + b; }}, 0);
-                    avg = (Math.round((10 * sum / scores.length)) / 10).toFixed(1);
-                }}
-
-                var soldKnown = soldYes + soldNo + soldUnclear;
-                var soldMain = soldKnown ? formatPct(soldYes, soldKnown).replace(".0%", "%") + " sold" : "—";
-                var auditKnown = auditPass + auditFail + auditAtRisk;
-                var auditMain = formatPct(auditPass, auditKnown);
-
-                var totalEl = document.getElementById("metric-total-calls");
-                var avgEl = document.getElementById("metric-avg-score");
-                var soldEl = document.getElementById("metric-sold-main");
-                var soldSub = document.getElementById("metric-sold-sub");
-                var auditEl = document.getElementById("metric-audit-pass-rate");
-                var auditSub = document.getElementById("metric-audit-breakdown");
-
-                if (totalEl) totalEl.textContent = String(total);
-                if (avgEl) avgEl.textContent = avg;
-                if (soldEl) soldEl.textContent = soldMain;
-                if (soldSub) soldSub.textContent = soldKnown ? (soldYes + " sold · " + soldNo + " not sold · " + soldUnclear + " unclear · audit pass " + auditMain) : "";
-                if (auditEl) auditEl.textContent = auditMain;
-                if (auditSub) auditSub.textContent = auditKnown ? (auditPass + " pass · " + auditFail + " fail · " + auditAtRisk + " at risk") : "";
-            }}
-
-            function applyFilters() {{
-                var agentF = document.getElementById("filter-agent");
-                var statusF = document.getElementById("filter-sold-status");
-                var dispositionF = document.getElementById("filter-disposition");
-                var auditF = document.getElementById("filter-audit");
-                var scoreF = document.getElementById("filter-score");
-                var countEl = document.getElementById("filter-count");
-                var agentButtons = Array.prototype.slice.call(document.querySelectorAll(".agent-filter-button"));
-                if (!agentF || !statusF || !dispositionF || !auditF || !scoreF) return;
-                var agentV = agentF.value;
-                var pv = statusF.value;
-                var dv = dispositionF.value;
-                var av = auditF.value;
-                var sv = scoreF.value;
-                var range = parseRange(sv);
-                var days = selectedDays();
-                var visible = 0;
-
-                document.querySelectorAll(".call-filter-row").forEach(function(tr) {{
-                    var ok = true;
-                    var agent = tr.getAttribute("data-agent") || "Unknown";
-                    var date = tr.getAttribute("data-call-date") || "";
-                    var sale = tr.getAttribute("data-sale") || "none";
-                    var disp = tr.getAttribute("data-disposition") || "";
-                    var au = tr.getAttribute("data-audit") || "unknown";
-
-                    if (agentV !== "all" && agent !== agentV) ok = false;
-                    if (days.indexOf("all") === -1 && days.indexOf(date) === -1) ok = false;
-                    if (dv !== "all" && disp !== dv) ok = false;
-
-                    if (pv === "sold" && sale !== "yes") ok = false;
-                    if (pv === "notsold" && sale !== "no") ok = false;
-                    if (pv === "unclear" && sale !== "unclear") ok = false;
-                    if (pv === "pass" && (sale !== "none" || au !== "pass")) ok = false;
-                    if (pv === "fail" && (sale !== "none" || au !== "fail")) ok = false;
-                    if (pv === "atrisk" && au !== "atrisk") ok = false;
-
-                    if (av === "pass" && au !== "pass") ok = false;
-                    if (av === "fail" && au !== "fail") ok = false;
-                    if (av === "atrisk" && au !== "atrisk") ok = false;
-
-                    var sc = tr.getAttribute("data-score");
-                    if (range) {{
-                        if (!sc) ok = false;
-                        else {{
-                            var n = parseInt(sc, 10);
-                            if (isNaN(n) || n < range.lo || n > range.hi) ok = false;
-                        }}
-                    }}
-
-                    tr.style.display = ok ? "" : "none";
-                    if (ok) visible++;
-                }});
-
-                var rowNodes = document.querySelectorAll(".call-filter-row");
-                var denom = rowNodes.length;
-                if (countEl) {{
-                    if (denom === 0) countEl.textContent = "";
-                    else if (visible === denom) countEl.textContent = "Showing all " + denom + " call" + (denom === 1 ? "" : "s");
-                    else countEl.textContent = "Showing " + visible + " of " + denom + " calls";
-                }}
-
-                agentButtons.forEach(function(btn) {{
-                    btn.classList.toggle("active", btn.getAttribute("data-agent") === agentV);
-                }});
-
-                updateVisibleMetrics();
-            }}
-
-            document.querySelectorAll(".agent-filter-button").forEach(function(btn) {{
-                btn.addEventListener("click", function() {{
-                    var agentF = document.getElementById("filter-agent");
-                    var dayF = document.getElementById("filter-days");
-                    if (!agentF) return;
-                    agentF.value = btn.getAttribute("data-agent") || "all";
-                    if (dayF) {{
-                        Array.prototype.slice.call(dayF.options).forEach(function(opt) {{ opt.selected = opt.value === "all"; }});
-                    }}
-                    rebuildDayOptions();
-                    applyFilters();
-                }});
-            }});
-
-            function refresh() {{
-                sortRows();
-                rebuildDayOptions();
-                applyFilters();
-            }}
-            ["filter-agent", "filter-days", "filter-sold-status", "filter-disposition", "filter-audit", "filter-score", "sort-by"].forEach(function(id) {{
-                var el = document.getElementById(id);
-                if (el) el.addEventListener("change", refresh);
-            }});
-            refresh();
-            window.__dashboardReapplyFilters = refresh;
-        }})();
-        </script>
-        """
-
     content += """
-    <script>
-    (function() {
-        function applyMetrics(m) {
-            var map = {
-                "metric-total-calls": m.total_calls,
-                "metric-avg-score": m.average_score_display,
-                "metric-sold-main": m.sold_summary_main,
-                "metric-audit-pass-rate": m.audit_pass_rate_main
-            };
-            for (var id in map) {
-                var el = document.getElementById(id);
-                if (el) el.textContent = String(map[id]);
-            }
-            var sub = document.getElementById("metric-sold-sub");
-            if (sub) sub.textContent = m.sold_summary_sub != null ? String(m.sold_summary_sub) : "";
-            var ab = document.getElementById("metric-audit-breakdown");
-            if (ab) ab.textContent = m.audit_pass_rate_sub != null ? String(m.audit_pass_rate_sub) : "";
-        }
-        function pollDashboard() {
-            fetch("/api/dashboard-partial")
-                .then(function(r) { return r.json(); })
-                .then(function(d) {
-                    var pm = document.getElementById("dashboard-processing-mount");
-                    if (pm && d.processing_html != null) {
-                        pm.innerHTML = d.processing_html;
-                    }
-                    var tb = document.getElementById("completed-calls-tbody");
-                    if (tb && d.completed_tbody_html != null) {
-                        if (window.syncBulkDeleteSelectionFromDom) {
-                            window.syncBulkDeleteSelectionFromDom();
-                        }
-                        tb.innerHTML = d.completed_tbody_html;
-                        if (window.__dashboardReapplyFilters) {
-                            window.__dashboardReapplyFilters();
-                        }
-                        if (window.restoreBulkDeleteSelectionToDom) {
-                            window.restoreBulkDeleteSelectionToDom();
-                        }
-                    }
-                    document.querySelectorAll(".timeago").forEach(function(el) {
-                        var uploaded = parseInt(el.getAttribute("data-time"), 10);
-                        if (!isNaN(uploaded)) {
-                            var now = Math.floor(Date.now() / 1000);
-                            el.textContent = (now - uploaded) + " sec ago";
-                        }
-                    });
-                })
-                .catch(function() {});
-        }
-        function startPolling() {
-            pollDashboard();
-            setInterval(pollDashboard, 5000);
-        }
-        if (document.readyState === "loading") {
-            document.addEventListener("DOMContentLoaded", startPolling);
-        } else {
-            startPolling();
-        }
-    })();
-    </script>
+    <h2 class="section-head">Agent Review Tabs</h2>
+    <div class="card">
+        Use the manager scorecards above to choose who needs review. Agent-specific call lists will live on agent tabs.
+    </div>
     """
 
     return render_template_string(BASE, content=content)
@@ -3672,6 +3704,172 @@ def disposition_select_options(selected):
         sel = " selected" if d == selected else ""
         opts.append(f'<option value="{d}"{sel}>{d}</option>')
     return "\n".join(opts)
+
+
+
+
+@app.route("/agent/<agent_name>")
+@login_required
+def view_agent(agent_name):
+    calls = get_calls()
+
+    filtered_calls = [
+        c for c in calls
+        if detect_agent_name_from_call_name(call_field(c, "call_name", "")) == agent_name
+    ]
+
+    filtered_calls = get_real_production_calls(filtered_calls)
+
+    week_data = compute_agent_week_over_week(calls).get(agent_name, {})
+    repeated_issues = detect_repeat_agent_issues(filtered_calls)
+    leaderboard = compute_agent_leaderboard(calls)
+
+    leaderboard_rank = None
+    for idx, entry in enumerate(leaderboard, start=1):
+        if entry["agent"] == agent_name:
+            leaderboard_rank = idx
+            break
+
+    scores = [call_row_score(c) for c in filtered_calls if call_row_score(c) is not None]
+    avg_score = round(sum(scores) / len(scores), 1) if scores else None
+
+    needs_attention = week_data.get("delta") is not None and week_data["delta"] <= -5
+    repeated_high_risk = len(repeated_issues) >= 2
+
+    content = f"""
+    <div class="header">
+        <div>
+            <h1>Agent Review: {escape(agent_name)}</h1>
+            <div class="muted">
+                Review completed audits, coaching patterns, and call outcomes for this agent.
+            </div>
+
+            <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;">
+                {f'<span class="badge badge-fail">Needs Attention</span>' if needs_attention else ''}
+                {f'<span class="badge badge-warn">Repeated Coaching Issues</span>' if repeated_high_risk else ''}
+                {f'<span class="badge badge-score">Leaderboard Rank #{leaderboard_rank}</span>' if leaderboard_rank else ''}
+            </div>
+        </div>
+
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <a class="button" href="/agent/{quote(agent_name)}/coaching_export">Export Coaching Summary</a>
+            <a class="button" href="/">Back to Dashboard</a>
+        </div>
+    </div>
+    """
+
+    rows_html = build_completed_calls_table_rows_html(filtered_calls)
+
+    repeated_html = ""
+
+    if repeated_issues:
+        items = "".join(
+            f"<li>{escape(r['issue'])} <span class='muted'>({r['count']}x)</span></li>"
+            for r in repeated_issues
+        )
+
+        repeated_html = f"""
+        <div style="margin-top:14px;">
+            <div style="font-weight:700;margin-bottom:6px;">
+                Repeated Coaching Issues
+            </div>
+
+            <ul style="margin:0 0 0 18px;padding:0;line-height:1.5;">
+                {items}
+            </ul>
+        </div>
+        """
+
+    delta = week_data.get("delta")
+
+    if delta is None:
+        wow_html = '<span class="muted">Not enough historical data yet.</span>'
+    elif delta > 0:
+        wow_html = f'<span class="badge badge-pass">Improved +{delta}</span>'
+    elif delta < 0:
+        wow_html = f'<span class="badge badge-fail">Down {delta}</span>'
+    else:
+        wow_html = '<span class="badge badge-neutral">No change</span>'
+
+    content += f"""
+    <div class="card">
+        <strong>{len(filtered_calls)}</strong> completed audited production calls found for this agent.
+    </div>
+
+    <div class="stats-grid" style="margin-top:20px;">
+        <div class="stat">
+            <div class="label">Average Score</div>
+            <div class="value">{avg_score if avg_score is not None else "?"}</div>
+        </div>
+
+        <div class="stat">
+            <div class="label">Week-over-Week</div>
+            <div class="value">{wow_html}</div>
+        </div>
+
+        <div class="stat">
+            <div class="label">Leaderboard Rank</div>
+            <div class="value">{leaderboard_rank if leaderboard_rank else "?"}</div>
+        </div>
+    </div>
+
+    <div class="card" style="margin-top:18px;">
+        <div style="font-size:18px;font-weight:800;">
+            Coaching Trend Summary
+        </div>
+
+        <div class="muted" style="margin-top:8px;line-height:1.5;">
+            Analytics are based only on completed production audits and exclude protected golden/test calls.
+        </div>
+
+        {repeated_html}
+    </div>
+
+    <div class="data-table-wrap" style="margin-top:20px;">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th></th>
+                    <th>Call</th>
+                    <th>Agent</th>
+                    <th>Score</th>
+                    <th>Status</th>
+                    <th>Disposition</th>
+                    <th>Audit</th>
+                    <th>Stage</th>
+                    <th>Date</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {rows_html}
+            </tbody>
+        </table>
+    </div>
+    """
+
+    return render_template_string(BASE, content=content)
+
+
+
+@app.route("/agent/<agent_name>/coaching_export")
+@login_required
+def coaching_export(agent_name):
+    calls = get_calls()
+
+    export_text = build_agent_coaching_export(agent_name, calls)
+
+    response = make_response(export_text)
+
+    response.headers["Content-Type"] = "text/plain; charset=utf-8"
+
+    safe_name = re.sub(r"[^a-zA-Z0-9_-]+", "_", agent_name)
+
+    response.headers["Content-Disposition"] = (
+        f'attachment; filename="{safe_name}_coaching_summary.txt"'
+    )
+
+    return response
 
 
 @app.route("/call/<int:call_id>")

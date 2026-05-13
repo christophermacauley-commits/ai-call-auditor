@@ -6,6 +6,7 @@ import re
 import sqlite3
 import shutil
 import json
+from datetime import datetime
 from dotenv import load_dotenv
 from faster_whisper import WhisperModel
 from openai import OpenAI
@@ -2339,6 +2340,19 @@ def detect_auto_disposition(call_name, transcript, report, duration_seconds=None
     return "LEAD", "No sold, age, health-disqualification, BOOTC, or U90 indicator detected."
 
 
+
+def call_timestamp_from_name(call_name):
+    """Return YYYY-MM-DD HH:MM:SS from Vicidial-style call names, else None."""
+    match = re.search(r"_(\d{8})-(\d{6})_", call_name or "")
+    if not match:
+        return None
+    try:
+        dt = datetime.strptime(match.group(1) + match.group(2), "%Y%m%d%H%M%S")
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return None
+
+
 def save_to_db(call_name, transcript, report, score, risk):
     ensure_db()
 
@@ -2380,32 +2394,64 @@ def save_to_db(call_name, transcript, report, score, risk):
     c = conn.cursor()
 
     c.execute("DELETE FROM calls WHERE call_name=?", (call_name,))
-    c.execute("""
-        INSERT INTO calls (
+    call_timestamp = call_timestamp_from_name(call_name)
+
+    if call_timestamp:
+        c.execute("""
+            INSERT INTO calls (
+                call_name,
+                transcript,
+                report,
+                score,
+                risk,
+                timestamp,
+                auto_disposition,
+                manual_disposition,
+                final_disposition,
+                disposition_reason,
+                duration_seconds
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            call_name,
+            transcript,
+            report,
+            score,
+            risk,
+            call_timestamp,
+            auto_disposition,
+            None,
+            final_disposition,
+            disposition_reason,
+            existing_duration_seconds,
+        ))
+    else:
+        c.execute("""
+            INSERT INTO calls (
+                call_name,
+                transcript,
+                report,
+                score,
+                risk,
+                auto_disposition,
+                manual_disposition,
+                final_disposition,
+                disposition_reason,
+                duration_seconds
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
             call_name,
             transcript,
             report,
             score,
             risk,
             auto_disposition,
-            manual_disposition,
+            None,
             final_disposition,
             disposition_reason,
-            duration_seconds
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        call_name,
-        transcript,
-        report,
-        score,
-        risk,
-        auto_disposition,
-        None,
-        final_disposition,
-        disposition_reason,
-        existing_duration_seconds,
-    ))
+            existing_duration_seconds,
+        ))
 
     conn.commit()
     conn.close()
