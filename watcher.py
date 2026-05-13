@@ -12623,6 +12623,18 @@ def process_file(file_path):
 
     if os.path.exists(report_path):
         set_processing_state(call_name, filename, "complete", 100, "Complete")
+
+        processed_path = os.path.join(PROCESSED_CALLS_FOLDER, filename)
+
+        if os.path.exists(processed_path):
+            try:
+                os.remove(file_path)
+                print(f"Removed duplicate queued completed call: {filename}", flush=True)
+            except Exception as cleanup_error:
+                print(f"Could not remove duplicate queued completed call {filename}: {cleanup_error}", flush=True)
+        else:
+            move_to_processed_calls(file_path)
+
         return
 
     if not wait_until_file_ready(file_path):
