@@ -122,3 +122,20 @@ check("completed table includes call date attr", 'data-call-date="2026-05-09"' i
 check("completed table includes timestamp", "2026-05-09 12:00:00" in completed_html)
 check("completed table includes stage", ">Needs<" in completed_html)
 
+
+# Golden backup script should exist so fixture recovery is always possible.
+backup_script = Path("scripts/backup_golden_fixtures.py")
+check("golden backup script exists", backup_script.exists())
+backup_text = backup_script.read_text(encoding="utf-8", errors="replace")
+check("golden backup copies reports", "reports" in backup_text)
+check("golden backup copies transcripts", "transcripts" in backup_text)
+check("golden backup writes manifest", "MANIFEST.txt" in backup_text)
+
+# Cleanup scripts must not blindly delete protected fixtures.
+cleanup_audio = Path("scripts/cleanup_old_audio.py").read_text(encoding="utf-8", errors="replace")
+check("audio cleanup backs up golden fixtures", "backup_golden_fixtures.py" in cleanup_audio)
+
+cleanup_incoming = Path("scripts/cleanup_old_incoming_calls.ps1").read_text(encoding="utf-8", errors="replace")
+check("incoming cleanup backs up golden fixtures", "backup_golden_fixtures.py" in cleanup_incoming)
+check("incoming cleanup skips protected fixtures", "Test-ProtectedGoldenFile" in cleanup_incoming)
+

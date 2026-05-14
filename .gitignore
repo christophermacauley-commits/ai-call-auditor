@@ -39,3 +39,5 @@ temp_*.py
 
 # Local backup snapshots
 dashboard_before_scorecard_cleanup.py
+
+golden_backups/
