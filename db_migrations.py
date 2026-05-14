@@ -54,6 +54,7 @@ def migrate_database(db_file="calls.db"):
         ("final_disposition", "TEXT"),
         ("disposition_reason", "TEXT"),
         ("duration_seconds", "INTEGER"),
+        ("starred", "INTEGER DEFAULT 0"),
     ]))
 
     c.execute("""

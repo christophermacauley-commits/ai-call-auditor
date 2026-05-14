@@ -41,3 +41,7 @@ temp_*.py
 dashboard_before_scorecard_cleanup.py
 
 golden_backups/
+
+# Local recovery/runtime folders
+_golden_recovery/
+cancelled_transcript_uploads/
