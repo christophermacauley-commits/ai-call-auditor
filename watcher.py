@@ -662,6 +662,17 @@ def _final_cleanup_sold_existing_coverage_not_confirmed(report, transcript):
     if not sold_yes:
         return report
 
+    clear_no_current_coverage = bool(re.search(
+        r"(?:i don't have any now|do not have any now|don't have insurance now|"
+        r"don't have life insurance now|i don't have any life insurance now|"
+        r"have no current coverage|no current coverage|"
+        r"it would be the first time|would be the first time|first time owning a policy)",
+        transcript or "",
+        re.I,
+    ))
+    if clear_no_current_coverage:
+        return report
+
     if not _transcript_mentions_current_existing_coverage(transcript):
         return report
 
@@ -1501,7 +1512,7 @@ def _final_cleanup_unsupported_no_call_control_autofail(report, transcript):
             )
 
     report = re.sub(
-        r"(?im)^-\s*Evidence:\s*Call ended early during Opening with prospect refusal and no sale progression\s*$",
+        r"(?im)^-\s*Evidence:\s*Call ended early during (?:Opening|Who I Am / What I Do).*?$",
         "- Evidence: Call ended early during Opening / recording disclosure before any clear objection or sale progression",
         report,
         count=1,
@@ -6184,10 +6195,19 @@ def _transcript_ash_only_policy_then_past_only_no_current(transcript):
 def _transcript_only_one_coverage_ambiguity(transcript):
     """
     Prospect answered 'only one' to an existing-vs-only-policy question, without carrier verification.
-    Corrects under-flagged existing-coverage autofail when the model marks that line NO.
+    Corrects under-flagged existing-coverage autofail only when the ambiguity remains unresolved.
     """
     t = (transcript or "").lower()
     if not re.search(r"\bonly\s+one\b", t):
+        return False
+    if re.search(
+        r"(?:i don't have any now|do not have any now|don't have insurance now|"
+        r"don't have life insurance now|i don't have any life insurance now|"
+        r"no coverage|have no coverage|since you have no coverage|"
+        r"it would be the first time|would be the first time|first time owning a policy)",
+        t,
+        re.I,
+    ):
         return False
     if not re.search(
         r"\b(only\s+policy|your\s+only|final\s+expense|life\s+insurance|insurance\s+in\s+place)\b",
@@ -6604,7 +6624,7 @@ Optional JSON fields:
   If no objections, omit the field or use an empty array.
 - agent_set_callback ("YES" | "NO" | "UNCLEAR") — REQUIRED when possible: follow CALLBACK AND SCHEDULING rules; transcript evidence only. YES if the agent clearly agrees to or schedules a callback; NO if not; UNCLEAR if ambiguous. If omitted, downstream text will treat as UNCLEAR.
 - autofail_objection_no_call_control ("YES" | "NO" | "UNCLEAR") — YES only if real objection/resistance AND no proper call control attempt; NO if no objection; UNCLEAR if ambiguous.
-- autofail_coverage_not_confirmed ("YES" | "NO" | "UNCLEAR") — YES when existing coverage is **mentioned or reasonably indicated** (including **"Only one"**-type ambiguity per prompt) and the agent did NOT meet carrier/provider confirmation; follow prompt **3)** and **EXISTING COVERAGE — FOLLOW-UP** (do NOT mark NO to "clear" unresolved **Only one**). NO if coverage never mentioned or hinted. NEVER YES solely because bank/payment verification was missing.
+- autofail_coverage_not_confirmed ("YES" | "NO" | "UNCLEAR") - YES when existing coverage is clearly mentioned or reasonably indicated AND the agent did NOT meet carrier/provider confirmation requirements. "Only one" responses count ONLY when unresolved. If the prospect clearly states they do not currently have coverage or that this would be their first policy, mark NO. NEVER YES solely because bank/payment verification was missing.
 - autofail_credit_union_not_verified ("YES" | "NO" | "UNCLEAR") — YES only for CREDIT UNION + BANK/ACCOUNT/PAYMENT verification gap. NO if no credit union. NEVER YES solely because insurance coverage was not confirmed. UNCLEAR if ambiguous.
 - searchable_confirm_current_coverage ("YES" | "NO" | "UNCLEAR") — YES only with insurer/carrier/provider direct verification (or clear equivalent) of existing coverage, NOT prospect Q&A alone; NOT bank calls. NO if only asked/accepted prospect description.
 - searchable_call_insurer_coverage ("YES" | "NO" | "UNCLEAR") — YES only when transcript shows insurer/carrier/provider contacted or clearly committed for coverage verification; NOT bank. Otherwise NO.
@@ -7979,10 +7999,25 @@ def _transcript_cool_down_after_sale(transcript):
 
 
 def _transcript_no_current_coverage_only_one_first_time(transcript):
-    """Shelby-sold pattern: 'Only one' is clarified by 'first time' as no current coverage."""
+    """Shelby-sold unresolved 'Only one' pattern.
+
+    Return False when the prospect clearly says they have no current coverage
+    or that this would be their first policy.
+    """
     t = re.sub(r"\s+", " ", (transcript or "").lower()).strip()
     if not t:
         return False
+
+    clear_no_current = bool(re.search(
+        r"(?:i don't have any now|do not have any now|don't have insurance now|"
+        r"don't have life insurance now|no coverage|have no coverage|"
+        r"it would be the first time|would be the first time|first time owning a policy)",
+        t,
+        re.I,
+    ))
+    if clear_no_current:
+        return False
+
     return bool(re.search(
         r"do you have any kind of final expense plan or life insurance in place now[^?]{0,160}"
         r"(?:only policy|your only policy)[^a-z0-9]{0,20}only one\b.{0,260}"
@@ -11793,6 +11828,16 @@ def _detect_disqualification_no_agent_fault(report, transcript):
     if _transcript_has_clean_health_screening_no_dq(transcript) and not weight_height_dq:
         health_dq = False
 
+    cancer_not_free_dq = bool(re.search(
+        r"(?is)"
+        r"(?:diagnosis of .*?cancer|prostate cancer|form of cancer|cancer).{0,500}"
+        r"(?:doctor .*?cancer[- ]free|haven't had .*?doctor .*?cancer[- ]free|"
+        r"due to .*?cancer|won't be able to get you qualified|not able to get you qualified|"
+        r"can't get you qualified|cannot get you qualified)",
+        combined,
+    ))
+    health_dq = health_dq or cancer_not_free_dq
+
     if age_dq:
         return "AGE", "Prospect was outside the eligible age range."
     if no_income_dq:
@@ -12128,6 +12173,31 @@ def enforce_final_audit_consistency(report, transcript=None):
 
         if _transcript_shopping_not_current_coverage(transcript):
             report = re.sub(r"(?im)^- Existing coverage mentioned but not confirmed:\s*YES\b.*$", "- Existing coverage mentioned but not confirmed: NO", report)
+
+        clear_no_current_coverage = bool(re.search(
+            r"(?:i don't have any now|do not have any now|don't have insurance now|"
+            r"don't have life insurance now|i don't have any life insurance now|"
+            r"no coverage|have no coverage|since you have no coverage|"
+            r"it would be the first time|would be the first time|first time owning a policy)",
+            transcript or "",
+            re.I,
+        ))
+        if clear_no_current_coverage:
+            report = re.sub(
+                r"(?im)^- Existing coverage mentioned but not confirmed:\s*YES\b.*$",
+                "- Existing coverage mentioned but not confirmed: NO",
+                report,
+            )
+            report = re.sub(
+                r"(?im)^- Automatic fail triggered:\s*YES\b.*$",
+                "- Automatic fail triggered: NO",
+                report,
+            )
+            report = re.sub(
+                r"(?im)^- Reason:\s*.*existing coverage.*$",
+                "- Reason: None",
+                report,
+            )
 
         if _transcript_lowest_option_attempt_no_clear_commit(transcript):
             report = re.sub(

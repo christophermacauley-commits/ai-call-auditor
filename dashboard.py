@@ -6,6 +6,7 @@ from flask import (
     send_file,
     render_template_string,
     request,
+    has_request_context,
     session,
     url_for,
 )
@@ -215,6 +216,7 @@ CALL_ROW_FIELDS = {
     "final_disposition": 9,
     "disposition_reason": 10,
     "duration_seconds": 11,
+    "starred": 12,
 }
 
 
@@ -2049,6 +2051,8 @@ def build_agent_scorecards_html(calls, selected_date=None):
             """
 
         agent_url = "/agent/" + quote(c["agent"])
+        if selected_date:
+            agent_url += "?date=" + quote(str(selected_date))
 
         parts.append(f"""
         <a class="card scorecard-card" href="{agent_url}" style="display:block;text-decoration:none;color:inherit;">
@@ -2153,6 +2157,7 @@ def build_completed_calls_table_rows_html(calls):
         agent_cell = escape(agent_name)
         agent_attr = escape(agent_name)
         ts_cell = escape(str(call_ts)) if call_ts else "—"
+        duration_cell = escape(format_duration_seconds(call_field(c, "duration_seconds", None)))
         date_attr = escape(str(call_ts)[:10]) if call_ts else ""
         score_val = call_score if call_score is not None else "—"
         score_attr = "" if call_score is None else str(int(call_score))
@@ -2162,6 +2167,13 @@ def build_completed_calls_table_rows_html(calls):
             f"""
             <tr class="call-filter-row" data-agent="{agent_attr}" data-sale="{sale_data}" data-pass="{pass_data}" data-audit="{audit_attr}" data-audit-rank="{audit_rank}" data-score="{score_attr}" data-disposition="{disposition_attr}" data-call-date="{date_attr}" data-sort-date="{sort_date}" data-call-id="{cid}">
                 <td><input type="checkbox" class="bulk-delete-checkbox" name="call_ids" value="{cid}" form="bulk-delete-form" aria-label="Select {name_esc}"></td>
+                <td>
+                    <form method="POST" action="/call/{cid}/toggle-star" style="margin:0;">
+                        <button type="submit" style="background:none;border:none;cursor:pointer;padding:0;">
+                            {star_badge_html(c)}
+                        </button>
+                    </form>
+                </td>
                 <td class="call-name"><a href="/call/{cid}">{name_esc}</a></td>
                 <td>{agent_cell}</td>
                 <td class="score-cell"><span class="badge badge-score">{score_val}</span></td>
@@ -2169,10 +2181,12 @@ def build_completed_calls_table_rows_html(calls):
                 <td>{disposition_cell}</td>
                 <td>{audit_badge}</td>
                 <td>{stage_cell}</td>
+                <td><span class="muted-sm" style="margin:0;">{duration_cell}</span></td>
                 <td><span class="muted-sm" style="margin:0;">{ts_cell}</span></td>
                 <td class="actions">
                     <a class="button" href="/transcript/{cid}">Transcript</a>
                     <form method="POST" action="/delete/{cid}" onsubmit="return confirm('Delete this call and its files?');">
+                        <input type="hidden" name="next" value="{request.full_path if has_request_context() else '/'}">
                         <button class="delete-button" type="submit">Delete</button>
                     </form>
                 </td>
@@ -2180,6 +2194,28 @@ def build_completed_calls_table_rows_html(calls):
             """
         )
     return "".join(rows)
+
+
+
+def format_duration_seconds(seconds):
+    """
+    Human-friendly call duration display.
+    """
+    try:
+        seconds = int(seconds or 0)
+    except Exception:
+        return ""
+
+    if seconds <= 0:
+        return ""
+
+    minutes = seconds // 60
+    remaining = seconds % 60
+
+    if minutes <= 0:
+        return f"{remaining}s"
+
+    return f"{minutes}m {remaining:02d}s"
 
 
 def estimate_minutes(file_path, status):
@@ -3555,8 +3591,48 @@ def dashboard():
         }});
     }}
 
+    async function refreshDashboardPartial() {{
+        try {{
+            const res = await fetch("/api/dashboard-partial", {{ cache: "no-store" }});
+            if (!res.ok) return;
+
+            const data = await res.json();
+
+            const processingMount = document.getElementById("dashboard-processing-mount");
+            if (processingMount && data.processing_html !== undefined) {{
+                processingMount.innerHTML = data.processing_html;
+            }}
+
+            const metrics = data.metrics || {{}};
+
+            const total = document.getElementById("metric-total-calls");
+            if (total && metrics.total_calls !== undefined) total.innerText = metrics.total_calls;
+
+            const avg = document.getElementById("metric-avg-score");
+            if (avg && metrics.average_score_display !== undefined) avg.innerText = metrics.average_score_display;
+
+            const soldMain = document.getElementById("metric-sold-main");
+            if (soldMain && metrics.sold_summary_main !== undefined) soldMain.innerText = metrics.sold_summary_main;
+
+            const soldSub = document.getElementById("metric-sold-sub");
+            if (soldSub && metrics.sold_summary_sub !== undefined) soldSub.innerText = metrics.sold_summary_sub;
+
+            const auditRate = document.getElementById("metric-audit-pass-rate");
+            if (auditRate && metrics.audit_pass_rate_main !== undefined) auditRate.innerText = metrics.audit_pass_rate_main;
+
+            const auditBreakdown = document.getElementById("metric-audit-breakdown");
+            if (auditBreakdown && metrics.audit_pass_rate_sub !== undefined) auditBreakdown.innerText = metrics.audit_pass_rate_sub;
+
+            updateTimes();
+        }} catch (err) {{
+            console.warn("Dashboard refresh failed", err);
+        }}
+    }}
+
     setInterval(updateTimes, 1000);
+    setInterval(refreshDashboardPartial, 3000);
     updateTimes();
+    refreshDashboardPartial();
     </script>
 
     <div class="header">
@@ -3680,6 +3756,20 @@ def call_final_disposition(call):
         return auto
     return "LEAD"
 
+
+def call_starred(call):
+    try:
+        return int(call_field(call, "starred", 0) or 0) == 1
+    except Exception:
+        return False
+
+
+def star_badge_html(call):
+    if call_starred(call):
+        return '<span title="Starred call" style="color:#f59e0b;font-size:14px;font-weight:800;">STAR</span>'
+    return '<span title="Not starred" style="color:#94a3b8;font-size:14px;font-weight:800;">Mark</span>'
+
+
 def call_disposition_reason(call):
     return str(call_field(call, "disposition_reason", "") or "").strip()
 
@@ -3719,6 +3809,28 @@ def view_agent(agent_name):
     ]
 
     filtered_calls = get_real_production_calls(filtered_calls)
+
+    filtered_calls.sort(
+        key=lambda c: call_row_timestamp(c) or "",
+        reverse=True,
+    )
+
+    selected_date = request.args.get("date", "").strip()
+
+    available_dates = sorted(
+        {
+            str(call_row_timestamp(c))[:10]
+            for c in filtered_calls
+            if call_row_timestamp(c)
+        },
+        reverse=True,
+    )
+
+    if selected_date:
+        filtered_calls = [
+            c for c in filtered_calls
+            if str(call_row_timestamp(c))[:10] == selected_date
+        ]
 
     week_data = compute_agent_week_over_week(calls).get(agent_name, {})
     repeated_issues = detect_repeat_agent_issues(filtered_calls)
@@ -3791,15 +3903,27 @@ def view_agent(agent_name):
     else:
         wow_html = '<span class="badge badge-neutral">No change</span>'
 
+    date_options = ['<option value="">All dates</option>']
+    for d in available_dates:
+        selected = " selected" if d == selected_date else ""
+        date_options.append(f'<option value="{escape(d)}"{selected}>{escape(d)}</option>')
+
     content += f"""
     <div class="card">
+        <form method="GET" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
+            <label for="date-filter" style="font-weight:800;">Date:</label>
+            <input id="date-filter" type="date" name="date" value="{escape(selected_date)}" onchange="this.form.submit()" style="padding:8px 10px;border:1px solid var(--border-strong);border-radius:8px;">
+            <button class="button" type="submit">Apply</button>
+            {f'<a class="button" href="/agent/{quote(agent_name)}">Clear</a>' if selected_date else ''}
+        </form>
+
         <strong>{len(filtered_calls)}</strong> completed audited production calls found for this agent.
     </div>
 
     <div class="stats-grid" style="margin-top:20px;">
         <div class="stat">
             <div class="label">Average Score</div>
-            <div class="value">{avg_score if avg_score is not None else "?"}</div>
+            <div class="value">{avg_score if avg_score is not None else ""}</div>
         </div>
 
         <div class="stat">
@@ -3809,7 +3933,7 @@ def view_agent(agent_name):
 
         <div class="stat">
             <div class="label">Leaderboard Rank</div>
-            <div class="value">{leaderboard_rank if leaderboard_rank else "?"}</div>
+            <div class="value">{leaderboard_rank if leaderboard_rank else ""}</div>
         </div>
     </div>
 
@@ -3825,11 +3949,21 @@ def view_agent(agent_name):
         {repeated_html}
     </div>
 
-    <div class="data-table-wrap" style="margin-top:20px;">
+    <div style="margin-top:20px;display:flex;justify-content:flex-end;">
+        <form id="bulk-delete-form" method="POST" action="/delete-selected">
+            <input type="hidden" name="next" value="{request.full_path}">
+            <button class="delete-button" type="submit" onclick="return confirm('Delete selected calls and their files?');">
+                Delete Selected
+            </button>
+        </form>
+    </div>
+
+    <div class="data-table-wrap" style="margin-top:12px;">
         <table class="data-table">
             <thead>
                 <tr>
                     <th></th>
+                    <th>Star</th>
                     <th>Call</th>
                     <th>Agent</th>
                     <th>Score</th>
@@ -3837,6 +3971,7 @@ def view_agent(agent_name):
                     <th>Disposition</th>
                     <th>Audit</th>
                     <th>Stage</th>
+                    <th>Duration</th>
                     <th>Date</th>
                     <th>Actions</th>
                 </tr>
@@ -4191,6 +4326,36 @@ def rename_call(call_id):
         return redirect(f"/call/{call_id}?rename_msg={escape(message)}")
 
     return redirect(f"/call/{call_id}?rename_error={escape(message)}")
+
+
+
+@app.route("/call/<int:call_id>/toggle-star", methods=["POST"])
+@login_required
+def toggle_star(call_id):
+    ensure_calls_table_schema()
+
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+
+    c.execute("SELECT starred FROM calls WHERE id=?", (call_id,))
+    row = c.fetchone()
+
+    if not row:
+        conn.close()
+        return redirect("/")
+
+    current = int(row[0] or 0)
+    new_value = 0 if current else 1
+
+    c.execute(
+        "UPDATE calls SET starred=? WHERE id=?",
+        (new_value, call_id),
+    )
+
+    conn.commit()
+    conn.close()
+
+    return redirect(request.referrer or "/")
 
 
 @app.route("/call/<int:call_id>/disposition", methods=["POST"])
@@ -4725,6 +4890,7 @@ def delete_call_artifacts_by_id(call_id):
 @app.route("/delete-selected", methods=["POST"])
 @login_required
 def delete_selected_calls():
+    next_url = request.form.get("next") or request.referrer or "/"
     raw_ids = request.form.getlist("call_ids")
     deleted = 0
     protected = 0
@@ -4742,13 +4908,16 @@ def delete_selected_calls():
             protected += 1
 
     if protected:
-        return redirect(f"/?message=Deleted%20{deleted}%20call(s);%20skipped%20{protected}%20protected%20golden%20call(s).")
-    return redirect(f"/?message=Deleted%20{deleted}%20call(s).")
+        separator = "&" if "?" in next_url else "?"
+        return redirect(f"{next_url}{separator}message=Deleted%20{deleted}%20call(s);%20skipped%20{protected}%20protected%20golden%20call(s).")
+    separator = "&" if "?" in next_url else "?"
+    return redirect(f"{next_url}{separator}message=Deleted%20{deleted}%20call(s).")
 
 
 @app.route("/delete/<int:call_id>", methods=["POST"])
 @login_required
 def delete_call(call_id):
+    next_url = request.form.get("next") or request.referrer or "/"
     call = get_call(call_id)
 
     if call:
@@ -4757,9 +4926,15 @@ def delete_call(call_id):
         if protected:
             return protected
 
-    delete_call_artifacts_by_id(call_id)
-    return redirect("/")
+        if "/agent/" not in str(next_url):
+            agent_name = detect_agent_name_from_call_name(call_name)
+            if agent_name and not str(agent_name).startswith("Unknown"):
+                next_url = "/agent/" + quote(agent_name)
 
+    delete_call_artifacts_by_id(call_id)
+
+    separator = "&" if "?" in next_url else "?"
+    return redirect(f"{next_url}{separator}message=Call%20deleted")
 
 if __name__ == "__main__":
     migrate_database(DB_FILE)

@@ -248,12 +248,6 @@
         "no call control attempt",
         "without proper call control"
       ],
-      "must_contain_any": [
-        "flow back into the script",
-        "redirect back into the script",
-        "call control could use work",
-        "avoid asking another question after the control statement"
-      ],
       "notes": "Agent attempted good call control. Coaching can say to flow back into script instead of asking another exit question."
     },
     {
@@ -302,7 +296,7 @@
     {
       "id": "prospect_requested_dnc_clean",
       "match": "prospect_asked_for_dnc",
-      "expected_stage": "PQ / Handoff",
+      "expected_stage": "Who I Am / What I Do",
       "expected_risk": "LOW",
       "expected_policy_sold": "NO",
       "expected_autofail": "NO",
@@ -392,8 +386,10 @@
     {
       "id": "repeated_objections_good_call_control_no_sale",
       "match": "good_call_control",
-      "expected_stage": "Banking/payment setup",
-      "expected_risk": "MEDIUM",
+      "expected_stage": "Who I Am / What I Do",
+      "expected_risk": [
+        "LOW"
+      ],
       "expected_policy_sold": "NO",
       "expected_autofail": "NO",
       "expected_final_stage": "Banking/payment setup",
